@@ -1,0 +1,18 @@
+{
+  "timestamp": "20260309_153446",
+  "policy_tag": "region_off_unrestricted",
+  "policy_label": "Policy: Unrestricted (no Hx/Hy enforcement)",
+  "enforce_region_policy": 0,
+  "hx": 0.3,
+  "hy": 0.1,
+  "seed": 910042,
+  "jobs_target": 80,
+  "maint_mode": "DQN",
+  "tard": 196.91842795961733,
+  "maint": 420.05028141860157,
+  "total": 616.9687093782189,
+  "overdue_ratio_ops": 0.0353356890459364,
+  "overdue_ratio_time": 0.05143422832069851,
+  "overdue_ops": 10.0,
+  "total_ops": 283.0
+}
