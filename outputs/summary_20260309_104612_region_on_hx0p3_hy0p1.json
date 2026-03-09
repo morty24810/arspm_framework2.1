@@ -1,0 +1,18 @@
+{
+  "timestamp": "20260309_104612",
+  "policy_tag": "region_on_hx0p3_hy0p1",
+  "policy_label": "Policy: Region constrained (Hx=0.3, Hy=0.1)",
+  "enforce_region_policy": 1,
+  "hx": 0.3,
+  "hy": 0.1,
+  "seed": 910042,
+  "jobs_target": 80,
+  "maint_mode": "DQN",
+  "tard": 83.46566337904842,
+  "maint": 1011.6021657878372,
+  "total": 1095.0678291668855,
+  "overdue_ratio_ops": 0.039285714285714285,
+  "overdue_ratio_time": 0.05288782604956819,
+  "overdue_ops": 11.0,
+  "total_ops": 280.0
+}
