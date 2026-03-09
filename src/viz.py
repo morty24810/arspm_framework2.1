@@ -297,6 +297,83 @@ def plot_maint_vs_slack(points, out_path: str, policy_label: Optional[str] = Non
     fig.savefig(out_path, dpi=200)
     plt.close(fig)
 
+def plot_maint_mode_comparison(summary: Dict[str, object], compare_rows: List[Dict[str, object]],
+                               out_path: str, policy_label: Optional[str] = None):
+    if not compare_rows:
+        compare_rows = []
+    fig = plt.figure(figsize=(12, 8))
+    gs = fig.add_gridspec(2, 1, height_ratios=[1.0, 1.4])
+    ax_top = fig.add_subplot(gs[0])
+    ax_bottom = fig.add_subplot(gs[1])
+
+    modes = [str(summary.get("primary_mode", "POMCP")), str(summary.get("compare_mode", "DQN"))]
+    action_order = ["DN", "IM", "CM"]
+    primary_counts = [float(summary.get("primary_action_counts", {}).get(a, 0.0)) for a in action_order]
+    compare_counts = [float(summary.get("compare_action_counts", {}).get(a, 0.0)) for a in action_order]
+    x = np.arange(len(action_order), dtype=np.float32)
+    width = 0.35
+    ax_top.bar(x - width / 2.0, primary_counts, width=width, label=modes[0], color="#1f77b4")
+    ax_top.bar(x + width / 2.0, compare_counts, width=width, label=modes[1], color="#ff7f0e")
+    ax_top.set_xticks(x)
+    ax_top.set_xticklabels(action_order)
+    ax_top.set_ylabel("Decision Count")
+    ax_top.set_title("Maintenance Action Distribution")
+    ax_top.grid(True, axis="y", alpha=0.3)
+    ax_top.legend()
+    subtitle = (
+        f"divergence={int(summary.get('divergence_count', 0))}/"
+        f"{int(summary.get('decision_union_count', 0))} "
+        f"({float(summary.get('divergence_rate', 0.0)):.3f})"
+    )
+    _annotate_policy(ax_top, policy_label, extra_note=subtitle)
+
+    ax_bottom.axis("off")
+    ax_bottom.set_title("Decision Diff (aligned by machine + maintenance sequence)")
+    rows_sorted = sorted(
+        compare_rows,
+        key=lambda r: (
+            int(r.get("mid", -1)),
+            int(r.get("maint_seq_machine", -1)),
+        ),
+    )
+    lines = []
+    max_rows = 18
+    for row in rows_sorted[:max_rows]:
+        mid = int(row.get("mid", -1))
+        seq = int(row.get("maint_seq_machine", -1))
+        status = str(row.get("status", "unknown"))
+        p_action = row.get("primary_action")
+        c_action = row.get("compare_action")
+        p_time = row.get("primary_time")
+        c_time = row.get("compare_time")
+        p_h = row.get("primary_h")
+        c_h = row.get("compare_h")
+        p_dur = row.get("primary_duration")
+        c_dur = row.get("compare_duration")
+        lines.append(
+            f"M{mid}#{seq:02d} {status:<16} "
+            f"{modes[0]}={p_action}@t={p_time},h={p_h},d={p_dur} | "
+            f"{modes[1]}={c_action}@t={c_time},h={c_h},d={c_dur}"
+        )
+    if len(rows_sorted) > max_rows:
+        lines.append(f"... {len(rows_sorted) - max_rows} more rows in CSV/JSON")
+    if not lines:
+        lines = ["No maintenance decisions recorded for comparison."]
+    ax_bottom.text(
+        0.01,
+        0.98,
+        "\n".join(lines),
+        ha="left",
+        va="top",
+        family="monospace",
+        fontsize=9,
+        transform=ax_bottom.transAxes,
+    )
+    fig.tight_layout()
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=200)
+    plt.close(fig)
+
 def plot_im_damage(im_damage_log: Dict[int, List[Tuple[float, float]]], out_path: str):
     if not im_damage_log:
         return

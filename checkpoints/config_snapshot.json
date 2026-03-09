@@ -5,7 +5,7 @@
     60.0
   ],
   "ARRIVAL_WINDOW": 200.0,
-  "BASE_DEGRADATION_RATE": 44.8,
+  "BASE_DEGRADATION_RATE": 56.0,
   "BATCH": 256,
   "BEST_METRIC": "total_cost",
   "BREAKDOWN_ENABLE": false,
@@ -30,8 +30,8 @@
     ]
   ],
   "DEGRAD_ALPHA": 1.0,
-  "DEGRAD_HIGH": 60.0,
-  "DEGRAD_LOW": 28.0,
+  "DEGRAD_HIGH": 75.0,
+  "DEGRAD_LOW": 35.0,
   "DEGRAD_NOISE_STD": 0.02,
   "DH_TREND": 0.02,
   "DIAG_EVERY": 1,
@@ -120,7 +120,7 @@
   "MAINT_BIAS_IM": 0.6,
   "MAINT_CM_RATIO": 1.0,
   "MAINT_IM_RATIO": 0.5,
-  "MAINT_MODE": "DQN",
+  "MAINT_MODE": "POMCP",
   "MAT_COST_CM": 2.0,
   "MAT_COST_DN": 0.0,
   "MAT_COST_IM": 1.0,

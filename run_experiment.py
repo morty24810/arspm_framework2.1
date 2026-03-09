@@ -16,7 +16,15 @@ from src.degradation import DegradationReplay
 from src.rul_predictor import RULPredictorWrapper
 from src.env import EventDrivenShopEnv
 from src.agents import MaintenanceAgentDDQN, THDQNAgent
-from src.viz import plot_gantt, plot_rul_curves, plot_rule_vs_features, plot_training_curves, plot_maint_action_rates, plot_maint_vs_slack
+from src.viz import (
+    plot_gantt,
+    plot_rul_curves,
+    plot_rule_vs_features,
+    plot_training_curves,
+    plot_maint_action_rates,
+    plot_maint_vs_slack,
+    plot_maint_mode_comparison,
+)
 from src.pomcp import POMCPPlanner
 from checkpointing import CheckpointManager
 
@@ -61,6 +69,15 @@ def build_policy_label(cfg: SimConfig, enforce_region: bool) -> str:
     if enforce_region:
         return f"Policy: Region constrained (Hx={cfg.Hx:.1f}, Hy={cfg.Hy:.1f})"
     return "Policy: Unrestricted (no Hx/Hy enforcement)"
+
+def build_maint_mode_tag(maint_mode: str) -> str:
+    return f"maint_{str(maint_mode).lower()}"
+
+def build_maint_mode_label(maint_mode: str) -> str:
+    return f"Maintenance: {str(maint_mode).upper()}"
+
+def build_policy_context_label(cfg: SimConfig, enforce_region: bool, maint_mode: str) -> str:
+    return f"{build_policy_label(cfg, enforce_region)} | {build_maint_mode_label(maint_mode)}"
 
 def allowed_actions_by_region(h_obs: float, cfg: SimConfig, enforce_region: bool) -> List[int]:
     if not enforce_region:
@@ -366,6 +383,28 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
         maint_scatter = [] if generate_outputs else None
         pending_maint = {}
         pomcp_beliefs = {m.mid: [] for m in env.machines}
+        maint_seq_global = 0
+        maint_seq_machine = {m.mid: 0 for m in env.machines}
+
+        def append_decision_log(row: Dict[str, Any]):
+            nonlocal maint_seq_global
+            if decision_log is None:
+                return
+            rec = dict(row)
+            rec.setdefault("maint_mode", str(maint_mode).upper())
+            if rec.get("event") == "maintenance":
+                mid_val = rec.get("mid")
+                maint_seq_global += 1
+                rec["maint_seq_global"] = maint_seq_global
+                if mid_val is not None:
+                    maint_seq_machine[mid_val] = maint_seq_machine.get(mid_val, 0) + 1
+                    rec["maint_seq_machine"] = maint_seq_machine[mid_val]
+                else:
+                    rec["maint_seq_machine"] = None
+            else:
+                rec.setdefault("maint_seq_global", None)
+                rec.setdefault("maint_seq_machine", None)
+            decision_log.append(rec)
 
         while not env.done():
             done_flag, etype, payload = env.step_until_decision()
@@ -391,7 +430,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                             if maint_scatter is not None:
                                 maint_scatter.append((slack_pressure, 0))
                             if decision_log is not None:
-                                decision_log.append({
+                                append_decision_log({
                                     "time": env.time,
                                     "event": "maintenance",
                                     "mid": m.mid,
@@ -437,7 +476,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                             if maint_scatter is not None:
                                 maint_scatter.append((slack_pressure, action_now))
                             if decision_log is not None:
-                                decision_log.append({
+                                append_decision_log({
                                     "time": env.time,
                                     "event": "maintenance",
                                     "mid": m.mid,
@@ -529,7 +568,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                             if maint_scatter is not None:
                                 maint_scatter.append((slack_pressure, a))
                             if decision_log is not None:
-                                decision_log.append({
+                                append_decision_log({
                                     "time": env.time,
                                     "event": "maintenance",
                                     "mid": m.mid,
@@ -584,7 +623,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                 if maint_scatter is not None:
                                     maint_scatter.append((slack_pressure, action_now))
                                 if decision_log is not None:
-                                    decision_log.append({
+                                    append_decision_log({
                                         "time": env.time,
                                         "event": "maintenance",
                                         "mid": m.mid,
@@ -641,7 +680,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         overdue = (t1 > job_due) if job_due is not None else None
                         op_info = {"mid": mid, "t0": t0, "t1": t1, "jid": jid, "oid": oid}
 
-                    decision_log.append({
+                    append_decision_log({
                         "time": env.time,
                         "event": "scheduling",
                         "state": S.tolist(),
@@ -667,12 +706,15 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
         tard, maint = env.compute_costs()
         metrics = {"tard": float(tard), "maint": float(maint), "total": float(tard + maint)}
         overdue_stats = compute_overdue_stats(env.timeline_ops, env.jobs)
+        env.last_decision_log = list(decision_log or [])
+        env.last_policy_label = policy_label
+        env.last_maint_mode = str(maint_mode).upper()
 
         if generate_outputs:
             outdir = Path(outdir or "outputs")
             outdir.mkdir(parents=True, exist_ok=True)
             suffix = f"_{plot_prefix}" if plot_prefix else ""
-            policy_text = policy_label or build_policy_label(cfg, enforce_region)
+            policy_text = policy_label or build_policy_context_label(cfg, enforce_region, maint_mode)
             t_end = 0.0
             for _, t0, t1, _, _ in env.timeline_ops:
                 t_end = max(t_end, t1)
@@ -705,7 +747,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                 with csv_path.open("w", newline="") as f:
                     writer = csv.writer(f)
                     writer.writerow([
-                        "time", "event", "mid", "state", "action", "kind", "duration", "h", "dh", "eta", "slack_pressure",
+                        "time", "event", "maint_mode", "maint_seq_global", "maint_seq_machine", "mid", "state", "action", "kind", "duration", "h", "dh", "eta", "slack_pressure",
                         "im_count", "im_damage", "risk_h", "risk_trend", "im_longterm_penalty", "opportunity_cost",
                         "p_fail", "expected_fail_cost", "downtime_cost", "delta_t_since_last_maint",
                         "lambda_hat", "ddt_hat",
@@ -715,7 +757,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                     ])
                     for row in decision_log:
                         writer.writerow([
-                            row.get("time"), row.get("event"), row.get("mid"),
+                            row.get("time"), row.get("event"), row.get("maint_mode"), row.get("maint_seq_global"), row.get("maint_seq_machine"), row.get("mid"),
                             json.dumps(row.get("state"), separators=(",", ":"), ensure_ascii=True) if row.get("state") is not None else "",
                             row.get("action"), row.get("kind"), row.get("duration"),
                             row.get("h"), row.get("dh"), row.get("eta"), row.get("slack_pressure"),
@@ -1276,12 +1318,13 @@ def main():
     combo_rng = random.Random(eval_combo_seed)
     eval_combos, eval_seq = build_episode_combos(cfg, combo_rng, eval_jobs)
     final_results: Dict[str, Dict[str, Any]] = {}
+    maint_mode_tag = build_maint_mode_tag(maint_mode)
     for enforce_region in (True, False):
         eval_cfg = copy.deepcopy(cfg)
         eval_cfg.BASE_DEGRADATION_RATE = base_degrad
         eval_cfg.ENFORCE_REGION_POLICY = enforce_region
         policy_tag = build_policy_tag(eval_cfg, enforce_region)
-        policy_label = build_policy_label(eval_cfg, enforce_region)
+        policy_label = build_policy_context_label(eval_cfg, enforce_region, maint_mode)
         route_seed = cfg.SEED + 910_000
         eval_rng = random.Random(route_seed)
         eval_pomcp = POMCPPlanner(num_actions=3, gamma=cfg.GAMMA, c_ucb=cfg.POMCP_UCB_C, rng=eval_rng) if maint_mode == "POMCP" else None
@@ -1292,8 +1335,8 @@ def main():
             episode_combo_seq=eval_seq,
             generate_outputs=True,
             outdir=outdir,
-            plot_prefix=f"{ts}_{policy_tag}",
-            decision_log_name=f"decision_log_{ts}_{policy_tag}.csv",
+            plot_prefix=f"{ts}_{maint_mode_tag}_{policy_tag}",
+            decision_log_name=f"decision_log_{ts}_{maint_mode_tag}_{policy_tag}.csv",
             freeze_steps=True,
             policy_label=policy_label,
             threshold_enforced=enforce_region,
@@ -1309,6 +1352,7 @@ def main():
             "timestamp": ts,
             "policy_tag": policy_tag,
             "policy_label": policy_label,
+            "maint_mode_tag": maint_mode_tag,
             "enforce_region_policy": int(enforce_region),
             "hx": float(eval_cfg.Hx),
             "hy": float(eval_cfg.Hy),
@@ -1323,11 +1367,11 @@ def main():
             "overdue_ops": float(overdue_stats["overdue_ops"]),
             "total_ops": float(overdue_stats["total_ops"]),
         }
-        write_summary_files(outdir, f"summary_{ts}_{policy_tag}", summary_row)
+        write_summary_files(outdir, f"summary_{ts}_{maint_mode_tag}_{policy_tag}", summary_row)
 
-    plot_training_curves(ep_tard, ep_maint, str(outdir / f"training_curves_{ts}.png"),
+    plot_training_curves(ep_tard, ep_maint, str(outdir / f"training_curves_{ts}_{maint_mode_tag}.png"),
                          smooth_window=cfg.CURVE_SMOOTH_WINDOW, stop_ep=stop_ep)
-    plot_maint_action_rates(ep_dn_rate, ep_im_rate, ep_cm_rate, str(outdir / f"maint_action_rates_{ts}.png"),
+    plot_maint_action_rates(ep_dn_rate, ep_im_rate, ep_cm_rate, str(outdir / f"maint_action_rates_{ts}_{maint_mode_tag}.png"),
                             avg_im_counts=ep_avg_im)
 
     constrained_tag = build_policy_tag(cfg, True)

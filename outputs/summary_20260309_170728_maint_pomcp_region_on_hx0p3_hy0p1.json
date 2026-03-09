@@ -1,0 +1,19 @@
+{
+  "timestamp": "20260309_170728",
+  "policy_tag": "region_on_hx0p3_hy0p1",
+  "policy_label": "Policy: Region constrained (Hx=0.3, Hy=0.1) | Maintenance: POMCP",
+  "maint_mode_tag": "maint_pomcp",
+  "enforce_region_policy": 1,
+  "hx": 0.3,
+  "hy": 0.1,
+  "seed": 910042,
+  "jobs_target": 80,
+  "maint_mode": "POMCP",
+  "tard": 101.07844449402339,
+  "maint": 782.6923512298504,
+  "total": 883.7707957238738,
+  "overdue_ratio_ops": 0.03914590747330961,
+  "overdue_ratio_time": 0.05552046449709502,
+  "overdue_ops": 11.0,
+  "total_ops": 281.0
+}

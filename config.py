@@ -155,7 +155,7 @@ class SimConfig:
     MAINT_BIAS_DN: float = 0.2
     MAINT_BIAS_IM: float = 0.6
     MAINT_BIAS_CM: float = 0.2
-    MAINT_MODE: str = "DQN"
+    MAINT_MODE: str = "POMCP"
     POMCP_NUM_SIMS: int = 80
     POMCP_HORIZON: int = 6
     POMCP_UCB_C: float = 1.2

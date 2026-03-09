@@ -220,3 +220,20 @@ def load_checkpoint(path: str, sched_agent=None, maint_agent=None, observer=None
     _restore_observer(observer, states.get("observer"))
 
     return ckpt
+
+
+def load_maintenance_only(path: str, maint_agent, map_location="cpu", allow_missing_maint: bool = False):
+    if maint_agent is None:
+        raise ValueError("maint_agent is required for maintenance-only checkpoint loading.")
+    ckpt = torch.load(path, map_location=map_location)
+    models = ckpt.get("models", {})
+    if "maint_q" in models and "maint_target" in models:
+        _safe_load_model(maint_agent.q, models.get("maint_q", {}), "maint_q")
+        _safe_load_model(maint_agent.qt, models.get("maint_target", {}), "maint_target")
+    elif not allow_missing_maint:
+        raise ValueError("Checkpoint missing maintenance weights.")
+
+    states = ckpt.get("states", {})
+    if "maint_extra" in states:
+        maint_agent.steps = int(states["maint_extra"].get("steps", maint_agent.steps))
+    return ckpt
