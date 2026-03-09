@@ -43,8 +43,8 @@ class SimConfig:
     # Rush indicator threshold: smaller mean inter-arrival means heavier load.
     RUSH_LAM_MEAN_THRESH: float = 80.0
     RUSH_SLACK_THRESH: float = 0.7
-    DEGRAD_LOW: float = 28.0
-    DEGRAD_HIGH: float = 60.0
+    DEGRAD_LOW: float = 35.0
+    DEGRAD_HIGH: float = 75.0
     CURR_FRAC: float = 0.35
     IM_WEAR_NOISE: float = 0.02  # legacy / unused
     FAIL_COST_NOISE: float = 0.10  # legacy / unused
@@ -52,7 +52,7 @@ class SimConfig:
     # --- degradation / RUL ---
     RUL_WINDOW: int = 30
     DEGRAD_NOISE_STD: float = 0.02
-    BASE_DEGRADATION_RATE: float = 44.8
+    BASE_DEGRADATION_RATE: float = 56.0
     DEGRAD_ALPHA: float = 1.0
     PT_REF: float = 50.0
     ARRIVAL_WINDOW: float = 200.0
