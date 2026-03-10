@@ -1,0 +1,2 @@
+primary_mode,compare_mode,divergence_count,decision_union_count,divergence_rate,primary_tard,compare_tard,primary_maint,compare_maint,primary_total,compare_total,primary_overdue_ratio,compare_overdue_ratio,primary_dispatch_count,compare_dispatch_count,primary_makespan,compare_makespan
+DQN,POMCP,281,281,1.0,684.4145976255254,101.71928541407256,24200.0,329.90091244676114,24884.414597625524,431.6201978608337,0.11469534050179211,0.03225806451612903,279,279,3880.137089102976,3770.458054793587

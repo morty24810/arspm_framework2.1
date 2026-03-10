@@ -1,13 +1,11 @@
 from __future__ import annotations
 import argparse
 import copy
-import csv
-import json
 import math
 import random
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Dict
 
 import torch
 
@@ -15,16 +13,18 @@ from config import SimConfig
 from src.utils import set_seed
 from src.agents import MaintenanceAgentDDQN, THDQNAgent
 from src.pomcp import POMCPPlanner
-from src.viz import plot_maint_mode_comparison
+from src.compare import compare_mode_results, write_mode_comparison_outputs
 from checkpointing import load_checkpoint, load_maintenance_only
 from run_experiment import (
     build_degradation_and_rul,
     build_episode_combos,
+    build_episode_scenario,
     evaluate_once,
     build_policy_tag,
     build_policy_label,
     build_policy_context_label,
     build_maint_mode_tag,
+    make_rng,
     write_summary_files,
     validate_region_thresholds,
 )
@@ -73,175 +73,6 @@ def parse_combo_plan(plan: str):
 
 def make_maint_agent(cfg: SimConfig, seed: int, device: torch.device) -> MaintenanceAgentDDQN:
     return MaintenanceAgentDDQN(state_dim=17, cfg=cfg, rng=random.Random(seed), device=device)
-
-
-def extract_maintenance_rows(decision_log: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return [dict(row) for row in (decision_log or []) if row.get("event") == "maintenance"]
-
-
-def summarize_action_counts(rows: List[Dict[str, Any]]) -> Dict[str, int]:
-    counts = {"DN": 0, "IM": 0, "CM": 0}
-    for row in rows:
-        kind = str(row.get("kind", "")).upper()
-        if kind in counts:
-            counts[kind] += 1
-    return counts
-
-
-def _safe_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except Exception:
-        return None
-
-
-def _missing_status_label(mode: str) -> str:
-    mode = str(mode).upper()
-    if mode == "POMCP":
-        return "missing_on_pomcp"
-    if mode == "DQN":
-        return "missing_on_dqn"
-    return f"missing_on_{mode.lower()}"
-
-
-def compare_maintenance_decisions(
-    primary_rows: List[Dict[str, Any]],
-    compare_rows: List[Dict[str, Any]],
-    primary_mode: str,
-    compare_mode: str,
-    primary_metrics: Dict[str, float],
-    compare_metrics: Dict[str, float],
-    primary_overdue: Dict[str, float],
-    compare_overdue: Dict[str, float],
-) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
-    primary_mode = str(primary_mode).upper()
-    compare_mode = str(compare_mode).upper()
-    primary_map = {
-        (int(row.get("mid", -1)), int(row.get("maint_seq_machine", -1))): row
-        for row in extract_maintenance_rows(primary_rows)
-    }
-    compare_map = {
-        (int(row.get("mid", -1)), int(row.get("maint_seq_machine", -1))): row
-        for row in extract_maintenance_rows(compare_rows)
-    }
-    union_keys = sorted(set(primary_map.keys()) | set(compare_map.keys()))
-    missing_on_primary_label = _missing_status_label(primary_mode)
-    missing_on_compare_label = _missing_status_label(compare_mode)
-
-    rows: List[Dict[str, Any]] = []
-    aligned_count = 0
-    divergence_count = 0
-    missing_on_primary = 0
-    missing_on_compare = 0
-
-    for mid, seq in union_keys:
-        primary = primary_map.get((mid, seq))
-        compare = compare_map.get((mid, seq))
-        if primary is None:
-            status = missing_on_primary_label
-            missing_on_primary += 1
-            divergence_count += 1
-        elif compare is None:
-            status = missing_on_compare_label
-            missing_on_compare += 1
-            divergence_count += 1
-        else:
-            aligned_count += 1
-            same_action = str(primary.get("kind", "")).upper() == str(compare.get("kind", "")).upper()
-            status = "same_action" if same_action else "different_action"
-            if not same_action:
-                divergence_count += 1
-
-        rows.append({
-            "mid": int(mid),
-            "maint_seq_machine": int(seq),
-            "status": status,
-            "primary_mode": primary_mode,
-            "compare_mode": compare_mode,
-            "primary_action": primary.get("kind") if primary else None,
-            "compare_action": compare.get("kind") if compare else None,
-            "primary_time": _safe_float(primary.get("time")) if primary else None,
-            "compare_time": _safe_float(compare.get("time")) if compare else None,
-            "primary_h": _safe_float(primary.get("h")) if primary else None,
-            "compare_h": _safe_float(compare.get("h")) if compare else None,
-            "primary_duration": _safe_float(primary.get("duration")) if primary else None,
-            "compare_duration": _safe_float(compare.get("duration")) if compare else None,
-        })
-
-    action_counts_primary = summarize_action_counts(extract_maintenance_rows(primary_rows))
-    action_counts_compare = summarize_action_counts(extract_maintenance_rows(compare_rows))
-    union_count = len(union_keys)
-    summary = {
-        "primary_mode": primary_mode,
-        "compare_mode": compare_mode,
-        "primary_action_counts": action_counts_primary,
-        "compare_action_counts": action_counts_compare,
-        "decision_union_count": int(union_count),
-        "decision_aligned_count": int(aligned_count),
-        "divergence_count": int(divergence_count),
-        "divergence_rate": float(divergence_count / union_count) if union_count else 0.0,
-        "missing_on_pomcp": int(missing_on_primary if primary_mode == "POMCP" else missing_on_compare if compare_mode == "POMCP" else 0),
-        "missing_on_dqn": int(missing_on_primary if primary_mode == "DQN" else missing_on_compare if compare_mode == "DQN" else 0),
-        "primary_metrics": {
-            "tard": float(primary_metrics["tard"]),
-            "maint": float(primary_metrics["maint"]),
-            "total": float(primary_metrics["total"]),
-            "overdue_ratio": float(primary_overdue["ratio_ops"]),
-        },
-        "compare_metrics": {
-            "tard": float(compare_metrics["tard"]),
-            "maint": float(compare_metrics["maint"]),
-            "total": float(compare_metrics["total"]),
-            "overdue_ratio": float(compare_overdue["ratio_ops"]),
-        },
-        "delta_compare_minus_primary": {
-            "tard": float(compare_metrics["tard"] - primary_metrics["tard"]),
-            "maint": float(compare_metrics["maint"] - primary_metrics["maint"]),
-            "total": float(compare_metrics["total"] - primary_metrics["total"]),
-            "overdue_ratio": float(compare_overdue["ratio_ops"] - primary_overdue["ratio_ops"]),
-        },
-    }
-    return summary, rows
-
-
-def write_maint_compare_outputs(
-    outdir: Path,
-    stem: str,
-    summary: Dict[str, Any],
-    rows: List[Dict[str, Any]],
-    policy_label: str,
-):
-    outdir.mkdir(parents=True, exist_ok=True)
-    payload = {"summary": summary, "rows": rows}
-    json_path = outdir / f"{stem}.json"
-    csv_path = outdir / f"{stem}.csv"
-    png_path = outdir / f"{stem}.png"
-    with json_path.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=True, indent=2)
-    with csv_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=[
-                "mid",
-                "maint_seq_machine",
-                "status",
-                "primary_mode",
-                "compare_mode",
-                "primary_action",
-                "compare_action",
-                "primary_time",
-                "compare_time",
-                "primary_h",
-                "compare_h",
-                "primary_duration",
-                "compare_duration",
-            ],
-        )
-        writer.writeheader()
-        writer.writerows(rows)
-    plot_maint_mode_comparison(summary, rows, str(png_path), policy_label=policy_label)
 
 
 def main():
@@ -339,6 +170,16 @@ def main():
             cfg_eval_base.COMBO_RANDOMIZE = False
         else:
             combos, seq = build_episode_combos(cfg_eval_base, combo_rng, int(args.jobs_target))
+        scenario = build_episode_scenario(
+            cfg_eval_base,
+            degr,
+            jobs_target=int(args.jobs_target),
+            scenario_rng=make_rng(seed, "infer", ep + 1, "scenario"),
+            degradation_rate=float(cfg_eval_base.BASE_DEGRADATION_RATE),
+            episode_combos=combos,
+            episode_combo_seq=seq,
+            machine_curve_ids=machine_curve_ids,
+        )
         outdir = base_outdir if args.episodes == 1 else (base_outdir / f"episode_{ep+1:03d}")
         outdir.mkdir(parents=True, exist_ok=True)
 
@@ -391,6 +232,10 @@ def main():
                         env_state=env_state,
                         policy_label=policy_label,
                         threshold_enforced=enforce_region,
+                        scenario=scenario,
+                        env_rng=make_rng(seed, "infer", ep + 1, policy_tag, "env_breakdown"),
+                        rul_obs_rng=make_rng(seed, "infer", ep + 1, policy_tag, "env_obs"),
+                        belief_rng=make_rng(seed, maint_mode, "infer", ep + 1, policy_tag, "belief"),
                     )
                 route_results[policy_tag][maint_mode] = {
                     "metrics": metrics,
@@ -430,18 +275,18 @@ def main():
 
             if compare_maint_modes and "POMCP" in route_results[policy_tag] and "DQN" in route_results[policy_tag]:
                 primary_mode = cfg.MAINT_MODE if cfg.MAINT_MODE in route_results[policy_tag] else "POMCP"
-                compare_mode = "DQN" if primary_mode != "DQN" else "POMCP"
+                if "DQN" in route_results[policy_tag] and "POMCP" in route_results[policy_tag]:
+                    primary_mode = "DQN"
+                    compare_mode = "POMCP"
+                else:
+                    compare_mode = "DQN" if primary_mode != "DQN" else "POMCP"
                 primary_result = route_results[policy_tag][primary_mode]
                 compare_result = route_results[policy_tag][compare_mode]
-                compare_summary, compare_rows = compare_maintenance_decisions(
-                    primary_result["decision_log"],
-                    compare_result["decision_log"],
+                compare_summary, compare_rows = compare_mode_results(
+                    primary_result,
+                    compare_result,
                     primary_mode,
                     compare_mode,
-                    primary_result["metrics"],
-                    compare_result["metrics"],
-                    primary_result["overdue"],
-                    compare_result["overdue"],
                 )
                 compare_summary["policy_tag"] = policy_tag
                 compare_summary["policy_label"] = build_policy_label(cfg_eval_base, enforce_region)
@@ -453,7 +298,7 @@ def main():
                     f"{build_policy_label(cfg_eval_base, enforce_region)} | "
                     f"Maintenance: {primary_mode} vs {compare_mode}"
                 )
-                write_maint_compare_outputs(
+                write_mode_comparison_outputs(
                     outdir,
                     "_".join(compare_stem_parts),
                     compare_summary,

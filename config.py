@@ -195,6 +195,11 @@ class SimConfig:
     MAX_EVENTS: int = 20000
     TARGET_MAINT_DECISIONS_PER_MACHINE: int = 6
 
+    # paired experiment runner
+    EXPERIMENT_SEEDS: tuple = (42,)
+    TRAIN_MAINT_MODES: tuple = ("DQN", "POMCP")
+    SCENARIO_LOCK_SCOPE: str = "full"
+
     # --- checkpointing ---
     CKPT_DIR: str = "checkpoints"
     SAVE_BEST: bool = True

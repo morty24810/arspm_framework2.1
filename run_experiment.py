@@ -2,8 +2,10 @@ from __future__ import annotations
 import csv
 import json
 import math
+import hashlib
 import os, random
 import copy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Tuple, Optional, Dict, Any, List
 import time
@@ -14,8 +16,15 @@ from config import SimConfig
 from src.utils import set_seed
 from src.degradation import DegradationReplay
 from src.rul_predictor import RULPredictorWrapper
-from src.env import EventDrivenShopEnv
+from src.env import EventDrivenShopEnv, EpisodeScenario, JobTemplate, OperationTemplate
 from src.agents import MaintenanceAgentDDQN, THDQNAgent
+from src.compare import (
+    compare_mode_results,
+    write_mode_comparison_outputs,
+    extract_maintenance_rows,
+    summarize_action_counts,
+    summarize_scheduling_strategy,
+)
 from src.viz import (
     plot_gantt,
     plot_rul_curves,
@@ -23,7 +32,6 @@ from src.viz import (
     plot_training_curves,
     plot_maint_action_rates,
     plot_maint_vs_slack,
-    plot_maint_mode_comparison,
 )
 from src.pomcp import POMCPPlanner
 from checkpointing import CheckpointManager
@@ -206,6 +214,163 @@ def build_episode_combos(cfg: SimConfig, rng: random.Random, jobs_target: int):
         seq.append(seg)
     return combos, seq
 
+
+@dataclass
+class ScenarioBank:
+    train_scenarios: List[EpisodeScenario]
+    periodic_eval_scenarios: Dict[int, EpisodeScenario]
+    final_eval_scenario: EpisodeScenario
+
+
+def derive_seed(base_seed: int, *parts: Any) -> int:
+    payload = "::".join([str(base_seed), *[str(p) for p in parts]]).encode("utf-8")
+    digest = hashlib.sha256(payload).digest()
+    return int.from_bytes(digest[:8], "big") % (2**31 - 1)
+
+
+def make_rng(base_seed: int, *parts: Any) -> random.Random:
+    return random.Random(derive_seed(base_seed, *parts))
+
+
+def compute_train_jobs_target(cfg: SimConfig) -> int:
+    avg_ops = 0.5 * (cfg.OPS_PER_JOB_MIN + cfg.OPS_PER_JOB_MAX)
+    target_decisions = cfg.TARGET_MAINT_DECISIONS_PER_MACHINE * cfg.NUM_MACHINES
+    auto_jobs = int(math.ceil(target_decisions / max(avg_ops, 1e-6)))
+    return max(cfg.TRAIN_JOBS_TARGET, auto_jobs)
+
+
+def compute_machine_time_scale(cfg: SimConfig, degr: DegradationReplay, machine_curve_ids: List[int]) -> Dict[int, float]:
+    lifespans = [
+        degr.lifespan(int(machine_curve_ids[i % len(machine_curve_ids)]))
+        for i in range(cfg.NUM_MACHINES)
+    ]
+    avg_life = float(np.mean(lifespans)) if lifespans else 1.0
+    machine_time_scale: Dict[int, float] = {}
+    for i in range(cfg.NUM_MACHINES):
+        scale = lifespans[i] / max(avg_life, 1e-6)
+        scale = min(max(scale, cfg.MACHINE_PT_SCALE_MIN), cfg.MACHINE_PT_SCALE_MAX)
+        machine_time_scale[i] = float(scale)
+    return machine_time_scale
+
+
+def build_episode_scenario(
+    cfg: SimConfig,
+    degr: DegradationReplay,
+    jobs_target: int,
+    scenario_rng: random.Random,
+    degradation_rate: float,
+    episode_combos: Optional[list[tuple[float, float]]] = None,
+    episode_combo_seq: Optional[list[int]] = None,
+    machine_curve_ids: Optional[List[int]] = None,
+) -> EpisodeScenario:
+    machine_curve_ids = list(machine_curve_ids or list(cfg.MACHINE_CURVE_IDS))
+    if episode_combos is None or episode_combo_seq is None:
+        combos, seq = build_episode_combos(cfg, scenario_rng, jobs_target)
+    else:
+        combos = [(float(lam), float(ddt)) for lam, ddt in episode_combos]
+        seq = [int(x) for x in episode_combo_seq]
+    segment_jobs = max(1, int(getattr(cfg, "COMBO_SEGMENT_JOBS", 1)))
+    machine_time_scale = compute_machine_time_scale(cfg, degr, machine_curve_ids)
+
+    def combo_for_job(job_id: int) -> Tuple[float, float]:
+        seg = min(job_id // segment_jobs, len(seq) - 1)
+        level_idx = seq[seg]
+        lam, ddt = combos[level_idx]
+        return float(lam), float(ddt)
+
+    arrival_times: List[float] = []
+    job_templates: List[JobTemplate] = []
+    t_now = 0.0
+    for job_id in range(jobs_target):
+        lam, ddt = combo_for_job(job_id)
+        if lam <= 0.0 or not math.isfinite(t_now):
+            t_now = math.inf
+        else:
+            u = scenario_rng.random()
+            t_now = t_now + (-math.log(max(u, 1e-12)) * lam)
+        arrival = float(t_now)
+        arrival_times.append(arrival)
+
+        num_ops = scenario_rng.randint(cfg.OPS_PER_JOB_MIN, cfg.OPS_PER_JOB_MAX)
+        ops: List[OperationTemplate] = []
+        for _ in range(num_ops):
+            k = scenario_rng.randint(cfg.FEASIBLE_M_MIN, min(cfg.FEASIBLE_M_MAX, cfg.NUM_MACHINES))
+            feasible = scenario_rng.sample(list(range(cfg.NUM_MACHINES)), k=k)
+            proc = {
+                int(m): float(scenario_rng.uniform(cfg.PT_MIN, cfg.PT_MAX) * machine_time_scale.get(m, 1.0))
+                for m in feasible
+            }
+            ops.append(OperationTemplate(feasible_machines=list(feasible), proc_times=proc))
+        avg_sum = 0.0
+        for op in ops:
+            avg_sum += float(np.mean(list(op.proc_times.values())))
+        due = arrival + avg_sum * ddt if math.isfinite(arrival) else math.inf
+        urgency = float(scenario_rng.uniform(0.8, 1.2))
+        job_templates.append(
+            JobTemplate(arrival=arrival, due=float(due), urgency=urgency, ops=ops)
+        )
+
+    return EpisodeScenario(
+        jobs_target=int(jobs_target),
+        machine_curve_ids=machine_curve_ids,
+        combos=combos,
+        combo_seq=seq,
+        degradation_rate=float(degradation_rate),
+        arrival_times=arrival_times,
+        job_templates=job_templates,
+    )
+
+
+def build_scenario_bank(base_seed: int, cfg: SimConfig, degr: DegradationReplay,
+                        machine_curve_ids: Optional[List[int]] = None) -> ScenarioBank:
+    if str(getattr(cfg, "SCENARIO_LOCK_SCOPE", "full")).lower() != "full":
+        raise NotImplementedError("Only SCENARIO_LOCK_SCOPE='full' is implemented.")
+    train_jobs_target = compute_train_jobs_target(cfg)
+    train_scenarios: List[EpisodeScenario] = []
+    periodic_eval_scenarios: Dict[int, EpisodeScenario] = {}
+    machine_curve_ids = list(machine_curve_ids or list(cfg.MACHINE_CURVE_IDS))
+    base_degrad = float(cfg.BASE_DEGRADATION_RATE)
+
+    for ep in range(cfg.TRAIN_EPISODES):
+        ep_num = ep + 1
+        scenario_rng = make_rng(base_seed, "train", ep_num, "scenario")
+        degrad_rng = make_rng(base_seed, "train", ep_num, "degradation")
+        degrad_rate = sample_degradation_rate(ep, cfg, degrad_rng)
+        scenario = build_episode_scenario(
+            cfg,
+            degr,
+            jobs_target=train_jobs_target,
+            scenario_rng=scenario_rng,
+            degradation_rate=degrad_rate,
+            machine_curve_ids=machine_curve_ids,
+        )
+        train_scenarios.append(scenario)
+        if cfg.EVAL_EVERY > 0 and ep_num % cfg.EVAL_EVERY == 0:
+            eval_jobs = cfg.EVAL_JOBS_TARGET * 2
+            eval_rng = make_rng(base_seed, "periodic_eval", ep_num, "scenario")
+            periodic_eval_scenarios[ep_num] = build_episode_scenario(
+                cfg,
+                degr,
+                jobs_target=eval_jobs,
+                scenario_rng=eval_rng,
+                degradation_rate=base_degrad,
+                machine_curve_ids=machine_curve_ids,
+            )
+
+    final_eval_scenario = build_episode_scenario(
+        cfg,
+        degr,
+        jobs_target=cfg.EVAL_JOBS_TARGET * 2,
+        scenario_rng=make_rng(base_seed, "final_eval", "scenario"),
+        degradation_rate=base_degrad,
+        machine_curve_ids=machine_curve_ids,
+    )
+    return ScenarioBank(
+        train_scenarios=train_scenarios,
+        periodic_eval_scenarios=periodic_eval_scenarios,
+        final_eval_scenario=final_eval_scenario,
+    )
+
 def init_belief(h_obs: float, slack_pressure: float, cfg: SimConfig, rng: random.Random,
                 baseline_rul: float = 1.0, region_b_elapsed: float = 0.0):
     particles = []
@@ -346,7 +511,11 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                   observer_state: Optional[Dict[str, Any]] = None,
                   env_state: Optional[Dict[str, Any]] = None,
                   policy_label: Optional[str] = None,
-                  threshold_enforced: Optional[bool] = None):
+                  threshold_enforced: Optional[bool] = None,
+                  scenario: Optional[EpisodeScenario] = None,
+                  env_rng: Optional[random.Random] = None,
+                  rul_obs_rng: Optional[random.Random] = None,
+                  belief_rng: Optional[random.Random] = None):
     step_state = None
     if freeze_steps:
         step_state = {
@@ -356,16 +525,21 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
 
     try:
         enforce_region = bool(getattr(cfg, "ENFORCE_REGION_POLICY", True) if threshold_enforced is None else threshold_enforced)
-        env = EventDrivenShopEnv(cfg, rng, degr, rul)
+        env_rng = env_rng if env_rng is not None else rng
+        rul_obs_rng = rul_obs_rng if rul_obs_rng is not None else env_rng
+        belief_rng = belief_rng if belief_rng is not None else rng
+        env = EventDrivenShopEnv(cfg, env_rng, degr, rul, breakdown_rng=env_rng, obs_rng=rul_obs_rng)
         if episode_combos is not None:
             env.episode_combos = list(episode_combos)
         if episode_combo_seq is not None:
             env.episode_combo_seq = list(episode_combo_seq)
-        if jobs_target is None:
+        if scenario is not None:
+            env.cfg.JOBS_TARGET = int(scenario.jobs_target)
+        elif jobs_target is None:
             env.cfg.JOBS_TARGET = cfg.EVAL_JOBS_TARGET * 2
         else:
             env.cfg.JOBS_TARGET = int(jobs_target)
-        env.reset(machine_curve_ids=machine_curve_ids)
+        env.reset(machine_curve_ids=machine_curve_ids, scenario=scenario)
         if observer_state:
             env.observer.reset()
             env.observer.arrivals.extend(observer_state.get("arrivals", []))
@@ -535,20 +709,20 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                             h,
                             slack_pressure,
                             cfg,
-                            rng,
+                            belief_rng,
                             baseline_rul=env.machines[mid].maint_rul_baseline,
                             region_b_elapsed=env.get_region_b_elapsed(mid, h),
                         )
                         pf_dn = estimate_p_fail_horizon(
-                            env, mid, belief, slack_pressure, rng, cfg,
+                            env, mid, belief, slack_pressure, belief_rng, cfg,
                             first_action=0, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                         )
                         pf_im = estimate_p_fail_horizon(
-                            env, mid, belief, slack_pressure, rng, cfg,
+                            env, mid, belief, slack_pressure, belief_rng, cfg,
                             first_action=1, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                         )
                         pf_cm = estimate_p_fail_horizon(
-                            env, mid, belief, slack_pressure, rng, cfg,
+                            env, mid, belief, slack_pressure, belief_rng, cfg,
                             first_action=2, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                         )
                         pf_dn = max(0.0, min(1.0, pf_dn))
@@ -560,7 +734,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                                     pf_dn, pf_im, pf_cm)
                         a = select_maintenance_action(
                             maint_mode, maint_agent, pomcp, pomcp_beliefs, env, mid, h, s,
-                            slack_pressure, local_urgency, cfg, rng, explore=False
+                            slack_pressure, local_urgency, cfg, belief_rng, explore=False
                         )
                         if a == 0:
                             if p_fail_plot is not None:
@@ -874,54 +1048,137 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
     fallback_action = 2 if h_obs < cfg.Hy else 0
     return int(enforce_action_by_region(fallback_action, h_obs, cfg, enforce_region))
 
-def main():
-    cfg = SimConfig()
-    validate_region_thresholds(cfg)
+def _make_scheduler_agent(cfg: SimConfig, seed: int, device) -> THDQNAgent:
+    return THDQNAgent(state_dim=12, cfg=cfg, rng=make_rng(seed, "sched_agent"), device=device)
+
+
+def _make_maint_agent(cfg: SimConfig, seed: int, device) -> MaintenanceAgentDDQN:
+    return MaintenanceAgentDDQN(state_dim=17, cfg=cfg, rng=make_rng(seed, "maint_agent"), device=device)
+
+
+def _build_run_record(seed: int, mode: str, policy_tag: str, final_result: Dict[str, Any]) -> Dict[str, Any]:
+    decision_log = list(final_result.get("decision_log", []))
+    maint_counts = summarize_action_counts(extract_maintenance_rows(decision_log), key="kind", values=["DN", "IM", "CM"])
+    schedule_summary = summarize_scheduling_strategy(decision_log)
+    return {
+        "seed": int(seed),
+        "maint_mode": str(mode),
+        "maint_mode_tag": build_maint_mode_tag(mode),
+        "policy_tag": policy_tag,
+        "policy_label": final_result["policy_label"],
+        "tard": float(final_result["metrics"]["tard"]),
+        "maint": float(final_result["metrics"]["maint"]),
+        "total": float(final_result["metrics"]["total"]),
+        "overdue_ratio_ops": float(final_result["overdue"]["ratio_ops"]),
+        "overdue_ratio_time": float(final_result["overdue"]["ratio_time"]),
+        "dispatch_count": int(schedule_summary["dispatch_count"]),
+        "scheduling_events": int(schedule_summary["scheduling_events"]),
+        "breakdown_count": int(schedule_summary["breakdown_count"]),
+        "makespan": float(schedule_summary["makespan"]),
+        "maint_dn": int(maint_counts.get("DN", 0)),
+        "maint_im": int(maint_counts.get("IM", 0)),
+        "maint_cm": int(maint_counts.get("CM", 0)),
+    }
+
+
+def _calc_mean_std(values: List[float]) -> Dict[str, float]:
+    if not values:
+        return {"mean": 0.0, "std": 0.0}
+    arr = np.array(values, dtype=np.float64)
+    return {"mean": float(np.mean(arr)), "std": float(np.std(arr))}
+
+
+def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
+                                    result_rows: List[Dict[str, Any]],
+                                    compare_rows: List[Dict[str, Any]]):
+    outdir.mkdir(parents=True, exist_ok=True)
+    policy_rows = [row for row in result_rows if row["policy_tag"] == policy_tag]
+    compare_policy_rows = [row for row in compare_rows if row["policy_tag"] == policy_tag]
+    payload: Dict[str, Any] = {"policy_tag": policy_tag, "modes": {}, "delta_pomcp_minus_dqn": {}}
+    csv_rows: List[Dict[str, Any]] = []
+    metrics = ["tard", "maint", "total", "overdue_ratio_ops", "dispatch_count", "makespan"]
+    for mode in ("DQN", "POMCP"):
+        mode_rows = [row for row in policy_rows if row["maint_mode"] == mode]
+        summary = {"mode": mode}
+        for metric in metrics:
+            stats = _calc_mean_std([float(row[metric]) for row in mode_rows])
+            summary[f"{metric}_mean"] = stats["mean"]
+            summary[f"{metric}_std"] = stats["std"]
+        payload["modes"][mode] = summary
+        csv_rows.append(summary)
+    delta_summary = {"mode": "POMCP_MINUS_DQN"}
+    delta_map = {
+        "tard": "delta_tard",
+        "maint": "delta_maint",
+        "total": "delta_total",
+        "overdue_ratio_ops": "delta_overdue_ratio",
+        "dispatch_count": "delta_dispatch_count",
+        "makespan": "delta_makespan",
+    }
+    for out_metric, source_key in delta_map.items():
+        stats = _calc_mean_std([float(row[source_key]) for row in compare_policy_rows])
+        delta_summary[f"{out_metric}_mean"] = stats["mean"]
+        delta_summary[f"{out_metric}_std"] = stats["std"]
+    payload["delta_pomcp_minus_dqn"] = delta_summary
+    csv_rows.append(delta_summary)
+    json_path = outdir / f"aggregate_compare_{policy_tag}.json"
+    csv_path = outdir / f"aggregate_compare_{policy_tag}.csv"
+    with json_path.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=True, indent=2)
+    fieldnames = sorted({key for row in csv_rows for key in row.keys()})
+    with csv_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(csv_rows)
+
+
+def train_one_mode(
+    base_cfg: SimConfig,
+    mode: str,
+    seed: int,
+    device,
+    degr: DegradationReplay,
+    rul: RULPredictorWrapper,
+    scenario_bank: ScenarioBank,
+    outdir: Path,
+    ckpt_dir: Path,
+    ts: str,
+) -> Dict[str, Any]:
+    cfg = copy.deepcopy(base_cfg)
+    cfg.SEED = int(seed)
+    cfg.MAINT_MODE = str(mode).upper()
+    cfg.CKPT_DIR = str(ckpt_dir)
     cfg.ENFORCE_REGION_POLICY = True
-    set_seed(cfg.SEED)
-    rng = random.Random(cfg.SEED)
-    if torch.backends.mps.is_available():
-        device = torch.device("mps")
-    elif torch.cuda.is_available():
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
-    print("device:", device)
+    set_seed(derive_seed(seed, "global_init"))
 
-    machine_curve_ids = list(cfg.MACHINE_CURVE_IDS)
-    _, degr, rul = build_degradation_and_rul(cfg, machine_curve_ids)
+    sched_agent = _make_scheduler_agent(cfg, seed, device)
+    maint_agent = _make_maint_agent(cfg, seed, device) if cfg.MAINT_MODE == "DQN" else None
+    ckpt_mgr = CheckpointManager(str(ckpt_dir), cfg, device)
 
-    env = EventDrivenShopEnv(cfg, rng, degr, rul)
-
-    # agents
-    maint_mode = cfg.MAINT_MODE.upper()
-    maint_agent = MaintenanceAgentDDQN(state_dim=17, cfg=cfg, rng=rng, device=device) if maint_mode == "DQN" else None
-    sched_agent = THDQNAgent(state_dim=12, cfg=cfg, rng=rng, device=device)
-    pomcp = POMCPPlanner(num_actions=3, gamma=cfg.GAMMA, c_ucb=cfg.POMCP_UCB_C, rng=rng) if maint_mode == "POMCP" else None
-    ckpt_mgr = CheckpointManager(cfg.CKPT_DIR, cfg, device)
-
-    # training
-    base_degrad = cfg.BASE_DEGRADATION_RATE
-    ep_tard = []
-    ep_maint = []
-    ep_dn_rate = []
-    ep_im_rate = []
-    ep_cm_rate = []
-    ep_avg_im = []
+    base_degrad = float(base_cfg.BASE_DEGRADATION_RATE)
+    ep_tard: List[float] = []
+    ep_maint: List[float] = []
+    ep_dn_rate: List[float] = []
+    ep_im_rate: List[float] = []
+    ep_cm_rate: List[float] = []
+    ep_avg_im: List[float] = []
     stable_count = 0
     stop_ep = None
-    for ep in range(cfg.TRAIN_EPISODES):
-        avg_ops = 0.5 * (cfg.OPS_PER_JOB_MIN + cfg.OPS_PER_JOB_MAX)
-        target_decisions = cfg.TARGET_MAINT_DECISIONS_PER_MACHINE * cfg.NUM_MACHINES
-        auto_jobs = int(math.ceil(target_decisions / max(avg_ops, 1e-6)))
-        env.cfg.JOBS_TARGET = max(cfg.TRAIN_JOBS_TARGET, auto_jobs)
+    last_env = None
 
-        combos, seq = build_episode_combos(cfg, rng, env.cfg.JOBS_TARGET)
-        env.episode_combos = combos
-        env.episode_combo_seq = seq
+    for ep, scenario in enumerate(scenario_bank.train_scenarios):
+        ep_num = ep + 1
+        cfg.BASE_DEGRADATION_RATE = float(scenario.degradation_rate)
+        env_breakdown_rng = make_rng(seed, "train", ep_num, "env_breakdown")
+        env_obs_rng = make_rng(seed, "train", ep_num, "env_obs")
+        belief_rng = make_rng(seed, mode, "train", ep_num, "belief")
+        env = EventDrivenShopEnv(cfg, env_breakdown_rng, degr, rul, breakdown_rng=env_breakdown_rng, obs_rng=env_obs_rng)
+        env.reset(machine_curve_ids=scenario.machine_curve_ids, scenario=scenario)
+        episode_pomcp = (
+            POMCPPlanner(num_actions=3, gamma=cfg.GAMMA, c_ucb=cfg.POMCP_UCB_C, rng=make_rng(seed, mode, "train", ep_num, "pomcp"))
+            if cfg.MAINT_MODE == "POMCP" else None
+        )
 
-        cfg.BASE_DEGRADATION_RATE = sample_degradation_rate(ep, cfg, rng)
-        env.reset(machine_curve_ids=machine_curve_ids)
         prev_tard, prev_maint = 0.0, 0.0
         last_h = {m.mid: None for m in env.machines}
         slack_samples = []
@@ -992,20 +1249,20 @@ def main():
                                 h2,
                                 slack_pressure,
                                 cfg,
-                                rng,
+                                belief_rng,
                                 baseline_rul=env.machines[mid].maint_rul_baseline,
                                 region_b_elapsed=env.get_region_b_elapsed(mid, h2),
                             )
                             pf_dn2 = estimate_p_fail_horizon(
-                                env, mid, belief, slack_pressure, rng, cfg,
+                                env, mid, belief, slack_pressure, belief_rng, cfg,
                                 first_action=0, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                             )
                             pf_im2 = estimate_p_fail_horizon(
-                                env, mid, belief, slack_pressure, rng, cfg,
+                                env, mid, belief, slack_pressure, belief_rng, cfg,
                                 first_action=1, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                             )
                             pf_cm2 = estimate_p_fail_horizon(
-                                env, mid, belief, slack_pressure, rng, cfg,
+                                env, mid, belief, slack_pressure, belief_rng, cfg,
                                 first_action=2, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                             )
                             pf_dn2 = max(0.0, min(1.0, pf_dn2))
@@ -1044,20 +1301,20 @@ def main():
                             h,
                             slack_pressure,
                             cfg,
-                            rng,
+                            belief_rng,
                             baseline_rul=env.machines[mid].maint_rul_baseline,
                             region_b_elapsed=env.get_region_b_elapsed(mid, h),
                         )
                         pf_dn = estimate_p_fail_horizon(
-                            env, mid, belief, slack_pressure, rng, cfg,
+                            env, mid, belief, slack_pressure, belief_rng, cfg,
                             first_action=0, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                         )
                         pf_im = estimate_p_fail_horizon(
-                            env, mid, belief, slack_pressure, rng, cfg,
+                            env, mid, belief, slack_pressure, belief_rng, cfg,
                             first_action=1, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                         )
                         pf_cm = estimate_p_fail_horizon(
-                            env, mid, belief, slack_pressure, rng, cfg,
+                            env, mid, belief, slack_pressure, belief_rng, cfg,
                             first_action=2, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                         )
                         pf_dn = max(0.0, min(1.0, pf_dn))
@@ -1068,8 +1325,8 @@ def main():
                                                     rul_mu, rul_sigma, env.time, m.last_maint_end,
                                                     pf_dn, pf_im, pf_cm)
                         a = select_maintenance_action(
-                            maint_mode, maint_agent, pomcp, pomcp_beliefs, env, mid, h, s,
-                            slack_pressure, local_urgency, cfg, rng, explore=True
+                            cfg.MAINT_MODE, maint_agent, episode_pomcp, pomcp_beliefs, env, mid, h, s,
+                            slack_pressure, local_urgency, cfg, belief_rng, explore=True
                         )
                         sbin = bin_index(slack_pressure, cfg.SLACK_PRESSURE_BINS)
                         ebin = bin_index(eta, cfg.ETA_BINS)
@@ -1101,7 +1358,6 @@ def main():
                                 "t_l": t_l,
                             }
                             if env.time >= t_e or (enforce_region_train and h < cfg.Hy):
-                                # execute immediately if window is open
                                 rec = pending_maint[mid]
                                 h_now = h
                                 window_violation = env.time > rec["t_l"]
@@ -1134,20 +1390,20 @@ def main():
                                     h2,
                                     slack_pressure,
                                     cfg,
-                                    rng,
+                                    belief_rng,
                                     baseline_rul=env.machines[mid].maint_rul_baseline,
                                     region_b_elapsed=env.get_region_b_elapsed(mid, h2),
                                 )
                                 pf_dn2 = estimate_p_fail_horizon(
-                                    env, mid, belief, slack_pressure, rng, cfg,
+                                    env, mid, belief, slack_pressure, belief_rng, cfg,
                                     first_action=0, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                                 )
                                 pf_im2 = estimate_p_fail_horizon(
-                                    env, mid, belief, slack_pressure, rng, cfg,
+                                    env, mid, belief, slack_pressure, belief_rng, cfg,
                                     first_action=1, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                                 )
                                 pf_cm2 = estimate_p_fail_horizon(
-                                    env, mid, belief, slack_pressure, rng, cfg,
+                                    env, mid, belief, slack_pressure, belief_rng, cfg,
                                     first_action=2, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                                 )
                                 pf_dn2 = max(0.0, min(1.0, pf_dn2))
@@ -1184,14 +1440,15 @@ def main():
         tard, maint = env.compute_costs()
         ep_tard.append(float(tard))
         ep_maint.append(float(maint))
-        if (ep+1) % 20 == 0:
-            print(f"ep {ep+1}/{cfg.TRAIN_EPISODES} tard={tard:.1f} maint={maint:.1f} events={len(env.timeline_ops)}")
-        if (ep + 1) % cfg.DIAG_EVERY == 0:
+        last_env = env
+        if ep_num % 20 == 0:
+            print(f"[seed {seed}][{build_maint_mode_tag(mode)}] ep {ep_num}/{cfg.TRAIN_EPISODES} tard={tard:.1f} maint={maint:.1f} events={len(env.timeline_ops)}")
+        if ep_num % cfg.DIAG_EVERY == 0:
             if slack_samples:
                 slack_q = np.quantile(slack_samples, [0.1, 0.5, 0.9])
                 press_q = np.quantile(pressure_samples, [0.1, 0.5, 0.9]) if pressure_samples else [0.0, 0.0, 0.0]
                 print(
-                    f"diag ep {ep+1}: avg_slack_q10/50/90="
+                    f"diag [{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: avg_slack_q10/50/90="
                     f"{slack_q[0]:.1f}/{slack_q[1]:.1f}/{slack_q[2]:.1f} "
                     f"slack_pressure_q10/50/90="
                     f"{press_q[0]:.2f}/{press_q[1]:.2f}/{press_q[2]:.2f} "
@@ -1205,7 +1462,7 @@ def main():
                         rates = [c / total for c in cnt]
                         lo = cfg.SLACK_PRESSURE_BINS[i]
                         hi = cfg.SLACK_PRESSURE_BINS[i + 1]
-                        print(f"diag ep {ep+1}: slack_bin[{lo:.2f},{hi:.2f}) DN/IM/CM={rates[0]:.2f}/{rates[1]:.2f}/{rates[2]:.2f}")
+                        print(f"diag [{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: slack_bin[{lo:.2f},{hi:.2f}) DN/IM/CM={rates[0]:.2f}/{rates[1]:.2f}/{rates[2]:.2f}")
                 if eta_action_counts:
                     for i, cnt in enumerate(eta_action_counts):
                         total = sum(cnt)
@@ -1214,7 +1471,7 @@ def main():
                         rates = [c / total for c in cnt]
                         lo = cfg.ETA_BINS[i]
                         hi = cfg.ETA_BINS[i + 1]
-                        print(f"diag ep {ep+1}: eta_bin[{lo:.1f},{hi:.1f}) DN/IM/CM={rates[0]:.2f}/{rates[1]:.2f}/{rates[2]:.2f}")
+                        print(f"diag [{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: eta_bin[{lo:.1f},{hi:.1f}) DN/IM/CM={rates[0]:.2f}/{rates[1]:.2f}/{rates[2]:.2f}")
                 if h_action_counts:
                     for i, cnt in enumerate(h_action_counts):
                         total = sum(cnt)
@@ -1223,15 +1480,15 @@ def main():
                         rates = [c / total for c in cnt]
                         lo = cfg.H_BINS[i]
                         hi = cfg.H_BINS[i + 1]
-                        print(f"diag ep {ep+1}: h_bin[{lo:.2f},{hi:.2f}) DN/IM/CM={rates[0]:.2f}/{rates[1]:.2f}/{rates[2]:.2f}")
+                        print(f"diag [{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: h_bin[{lo:.2f},{hi:.2f}) DN/IM/CM={rates[0]:.2f}/{rates[1]:.2f}/{rates[2]:.2f}")
                 if maint_intervals:
                     avg_gap = float(np.mean(maint_intervals))
-                    print(f"diag ep {ep+1}: avg_time_between_maint={avg_gap:.1f}")
+                    print(f"diag [{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: avg_time_between_maint={avg_gap:.1f}")
                 if any(urgency_action_vals[a] for a in urgency_action_vals):
                     avg_urg = {a: (float(np.mean(v)) if v else 0.0) for a, v in urgency_action_vals.items()}
-                    print(f"diag ep {ep+1}: avg_local_urgency DN/IM/CM={avg_urg[0]:.2f}/{avg_urg[1]:.2f}/{avg_urg[2]:.2f}")
+                    print(f"diag [{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: avg_local_urgency DN/IM/CM={avg_urg[0]:.2f}/{avg_urg[1]:.2f}/{avg_urg[2]:.2f}")
             else:
-                print(f"diag ep {ep+1}: no slack samples")
+                print(f"diag [{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: no slack samples")
 
         total_actions = maint_counts.get(0, 0) + maint_counts.get(1, 0) + maint_counts.get(2, 0)
         if total_actions > 0:
@@ -1244,43 +1501,53 @@ def main():
             ep_im_rate.append(0.0)
             ep_cm_rate.append(0.0)
             ep_avg_im.append(0.0)
+
         saved_latest = False
-        if cfg.EVAL_EVERY > 0 and (ep + 1) % cfg.EVAL_EVERY == 0:
+        if cfg.EVAL_EVERY > 0 and ep_num in scenario_bank.periodic_eval_scenarios:
             eval_cfg = copy.deepcopy(cfg)
             eval_cfg.BASE_DEGRADATION_RATE = base_degrad
             eval_cfg.ENFORCE_REGION_POLICY = True
-            eval_seed = cfg.SEED + (ep + 1) * 1000
-            eval_rng = random.Random(eval_seed)
-            eval_jobs = eval_cfg.EVAL_JOBS_TARGET * 2
-            eval_combos, eval_seq = build_episode_combos(eval_cfg, eval_rng, eval_jobs)
-            eval_pomcp = POMCPPlanner(num_actions=3, gamma=cfg.GAMMA, c_ucb=cfg.POMCP_UCB_C, rng=eval_rng) if maint_mode == "POMCP" else pomcp
+            eval_scenario = scenario_bank.periodic_eval_scenarios[ep_num]
+            eval_pomcp = (
+                POMCPPlanner(num_actions=3, gamma=cfg.GAMMA, c_ucb=cfg.POMCP_UCB_C, rng=make_rng(seed, mode, "periodic_eval", ep_num, "pomcp"))
+                if cfg.MAINT_MODE == "POMCP" else None
+            )
             eval_metrics, _, _ = evaluate_once(
-                eval_cfg, eval_rng, degr, rul, sched_agent, maint_agent, maint_mode, eval_pomcp, machine_curve_ids,
-                jobs_target=eval_jobs,
-                episode_combos=eval_combos,
-                episode_combo_seq=eval_seq,
+                eval_cfg,
+                make_rng(seed, mode, "periodic_eval", ep_num, "root"),
+                degr,
+                rul,
+                sched_agent,
+                maint_agent,
+                cfg.MAINT_MODE,
+                eval_pomcp,
+                eval_scenario.machine_curve_ids,
                 generate_outputs=False,
                 freeze_steps=True,
+                scenario=eval_scenario,
+                env_rng=make_rng(seed, "periodic_eval", ep_num, "env_breakdown"),
+                rul_obs_rng=make_rng(seed, "periodic_eval", ep_num, "env_obs"),
+                belief_rng=make_rng(seed, mode, "periodic_eval", ep_num, "belief"),
             )
-            eval_metrics["episode"] = ep + 1
-            ckpt_mgr.append_metrics(eval_metrics, eval_seed)
+            eval_metrics["episode"] = ep_num
+            ckpt_mgr.append_metrics(eval_metrics, derive_seed(seed, "periodic_eval", ep_num))
             env_state = {
                 "slack_scale": env.slack_scale,
                 "last_slack_pressure": env.last_slack_pressure,
             }
             ckpt_mgr.maybe_save_best(
                 sched_agent, maint_agent, env.observer, env_state, eval_metrics,
-                step_info={"episode": ep + 1, "phase": "eval"},
+                step_info={"episode": ep_num, "phase": "eval"},
             )
-            if cfg.SAVE_EVERY > 0 and (ep + 1) % cfg.SAVE_EVERY == 0:
+            if cfg.SAVE_EVERY > 0 and ep_num % cfg.SAVE_EVERY == 0:
                 ckpt_mgr.save_latest(
                     sched_agent, maint_agent, env.observer, env_state, eval_metrics,
-                    step_info={"episode": ep + 1, "phase": "eval"},
+                    step_info={"episode": ep_num, "phase": "eval"},
                 )
                 saved_latest = True
-        if cfg.SAVE_EVERY > 0 and (ep + 1) % cfg.SAVE_EVERY == 0 and not saved_latest:
+        if cfg.SAVE_EVERY > 0 and ep_num % cfg.SAVE_EVERY == 0 and not saved_latest:
             train_metrics = {
-                "episode": ep + 1,
+                "episode": ep_num,
                 "tard": float(tard),
                 "maint": float(maint),
                 "total": float(tard + maint),
@@ -1291,7 +1558,7 @@ def main():
             }
             ckpt_mgr.save_latest(
                 sched_agent, maint_agent, env.observer, env_state, train_metrics,
-                step_info={"episode": ep + 1, "phase": "train"},
+                step_info={"episode": ep_num, "phase": "train"},
             )
         if cfg.EARLY_STOP_ENABLED and len(ep_tard) >= 2 * cfg.EARLY_STOP_WINDOW:
             w = cfg.EARLY_STOP_WINDOW
@@ -1304,35 +1571,34 @@ def main():
             else:
                 stable_count = 0
             if stable_count >= cfg.EARLY_STOP_PATIENCE:
-                stop_ep = ep + 1
-                print(f"early stop at ep {stop_ep}: rel_change={rel:.4f}, window={w}")
+                stop_ep = ep_num
+                print(f"[seed {seed}][{build_maint_mode_tag(mode)}] early stop at ep {stop_ep}: rel_change={rel:.4f}, window={w}")
                 break
 
-    # final evaluation (dual-route comparison)
     cfg.BASE_DEGRADATION_RATE = base_degrad
-    outdir = Path("outputs")
-    outdir.mkdir(exist_ok=True)
-    ts = time.strftime("%Y%m%d_%H%M%S")
-    eval_jobs = cfg.EVAL_JOBS_TARGET * 2
-    eval_combo_seed = cfg.SEED + 900_000
-    combo_rng = random.Random(eval_combo_seed)
-    eval_combos, eval_seq = build_episode_combos(cfg, combo_rng, eval_jobs)
     final_results: Dict[str, Dict[str, Any]] = {}
-    maint_mode_tag = build_maint_mode_tag(maint_mode)
+    maint_mode_tag = build_maint_mode_tag(cfg.MAINT_MODE)
+    final_scenario = scenario_bank.final_eval_scenario
     for enforce_region in (True, False):
         eval_cfg = copy.deepcopy(cfg)
-        eval_cfg.BASE_DEGRADATION_RATE = base_degrad
+        eval_cfg.BASE_DEGRADATION_RATE = float(final_scenario.degradation_rate)
         eval_cfg.ENFORCE_REGION_POLICY = enforce_region
         policy_tag = build_policy_tag(eval_cfg, enforce_region)
-        policy_label = build_policy_context_label(eval_cfg, enforce_region, maint_mode)
-        route_seed = cfg.SEED + 910_000
-        eval_rng = random.Random(route_seed)
-        eval_pomcp = POMCPPlanner(num_actions=3, gamma=cfg.GAMMA, c_ucb=cfg.POMCP_UCB_C, rng=eval_rng) if maint_mode == "POMCP" else None
+        policy_label = build_policy_context_label(eval_cfg, enforce_region, cfg.MAINT_MODE)
+        eval_pomcp = (
+            POMCPPlanner(num_actions=3, gamma=cfg.GAMMA, c_ucb=cfg.POMCP_UCB_C, rng=make_rng(seed, cfg.MAINT_MODE, "final_eval", policy_tag, "pomcp"))
+            if cfg.MAINT_MODE == "POMCP" else None
+        )
         eval_metrics, eval_env, overdue_stats = evaluate_once(
-            eval_cfg, eval_rng, degr, rul, sched_agent, maint_agent, maint_mode, eval_pomcp, machine_curve_ids,
-            jobs_target=eval_jobs,
-            episode_combos=eval_combos,
-            episode_combo_seq=eval_seq,
+            eval_cfg,
+            make_rng(seed, cfg.MAINT_MODE, "final_eval", policy_tag, "root"),
+            degr,
+            rul,
+            sched_agent,
+            maint_agent,
+            cfg.MAINT_MODE,
+            eval_pomcp,
+            final_scenario.machine_curve_ids,
             generate_outputs=True,
             outdir=outdir,
             plot_prefix=f"{ts}_{maint_mode_tag}_{policy_tag}",
@@ -1340,6 +1606,10 @@ def main():
             freeze_steps=True,
             policy_label=policy_label,
             threshold_enforced=enforce_region,
+            scenario=final_scenario,
+            env_rng=make_rng(seed, "final_eval", policy_tag, "env_breakdown"),
+            rul_obs_rng=make_rng(seed, "final_eval", policy_tag, "env_obs"),
+            belief_rng=make_rng(seed, cfg.MAINT_MODE, "final_eval", policy_tag, "belief"),
         )
         final_results[policy_tag] = {
             "metrics": eval_metrics,
@@ -1347,18 +1617,19 @@ def main():
             "overdue": overdue_stats,
             "policy_label": policy_label,
             "enforce_region": enforce_region,
+            "decision_log": list(getattr(eval_env, "last_decision_log", [])),
         }
         summary_row = {
             "timestamp": ts,
+            "seed": int(seed),
             "policy_tag": policy_tag,
             "policy_label": policy_label,
             "maint_mode_tag": maint_mode_tag,
             "enforce_region_policy": int(enforce_region),
             "hx": float(eval_cfg.Hx),
             "hy": float(eval_cfg.Hy),
-            "seed": int(route_seed),
-            "jobs_target": int(eval_jobs),
-            "maint_mode": str(maint_mode),
+            "jobs_target": int(final_scenario.jobs_target),
+            "maint_mode": str(cfg.MAINT_MODE),
             "tard": float(eval_metrics["tard"]),
             "maint": float(eval_metrics["maint"]),
             "total": float(eval_metrics["total"]),
@@ -1375,46 +1646,144 @@ def main():
                             avg_im_counts=ep_avg_im)
 
     constrained_tag = build_policy_tag(cfg, True)
-    unconstrained_tag = build_policy_tag(cfg, False)
-    if constrained_tag not in final_results:
-        raise RuntimeError(f"missing constrained evaluation result: {constrained_tag}")
     constrained = final_results[constrained_tag]
-    eval_metrics = dict(constrained["metrics"])
-    eval_metrics["episode"] = stop_ep or cfg.TRAIN_EPISODES
-    ckpt_mgr.append_metrics(eval_metrics, cfg.SEED)
+    final_metrics = dict(constrained["metrics"])
+    final_metrics["episode"] = stop_ep or cfg.TRAIN_EPISODES
+    ckpt_mgr.append_metrics(final_metrics, seed)
     env_state = {
         "slack_scale": constrained["env"].slack_scale,
         "last_slack_pressure": constrained["env"].last_slack_pressure,
     }
     ckpt_mgr.save_latest(
-        sched_agent, maint_agent, constrained["env"].observer, env_state, eval_metrics,
-        step_info={"episode": eval_metrics["episode"], "phase": "final_eval"},
+        sched_agent, maint_agent, constrained["env"].observer, env_state, final_metrics,
+        step_info={"episode": final_metrics["episode"], "phase": "final_eval"},
     )
     ckpt_mgr.maybe_save_best(
-        sched_agent, maint_agent, constrained["env"].observer, env_state, eval_metrics,
-        step_info={"episode": eval_metrics["episode"], "phase": "final_eval"},
+        sched_agent, maint_agent, constrained["env"].observer, env_state, final_metrics,
+        step_info={"episode": final_metrics["episode"], "phase": "final_eval"},
     )
     ckpt_mgr.ensure_best_exists()
 
-    print("EVAL finished (dual-route)")
-    print(f"[{constrained_tag}] tardiness_cost: {constrained['metrics']['tard']}")
-    print(f"[{constrained_tag}] maintenance_cost_proxy: {constrained['metrics']['maint']}")
-    print(f"[{constrained_tag}] total_cost: {constrained['metrics']['total']}")
-    print(f"[{constrained_tag}] overdue_ops_ratio: {constrained['overdue']['ratio_ops']:.3f}")
-    if unconstrained_tag in final_results:
-        unrestricted = final_results[unconstrained_tag]
-        print(f"[{unconstrained_tag}] tardiness_cost: {unrestricted['metrics']['tard']}")
-        print(f"[{unconstrained_tag}] maintenance_cost_proxy: {unrestricted['metrics']['maint']}")
-        print(f"[{unconstrained_tag}] total_cost: {unrestricted['metrics']['total']}")
-        print(f"[{unconstrained_tag}] overdue_ops_ratio: {unrestricted['overdue']['ratio_ops']:.3f}")
-        print(
-            "delta(unrestricted-constrained): "
-            f"tard={unrestricted['metrics']['tard'] - constrained['metrics']['tard']:.3f}, "
-            f"maint={unrestricted['metrics']['maint'] - constrained['metrics']['maint']:.3f}, "
-            f"total={unrestricted['metrics']['total'] - constrained['metrics']['total']:.3f}, "
-            f"overdue_ratio={unrestricted['overdue']['ratio_ops'] - constrained['overdue']['ratio_ops']:.3f}"
-        )
-    print("plots saved to outputs/")
+    return {
+        "seed": int(seed),
+        "maint_mode": cfg.MAINT_MODE,
+        "maint_mode_tag": maint_mode_tag,
+        "outdir": outdir,
+        "ckpt_dir": ckpt_dir,
+        "final_results": final_results,
+        "stop_ep": stop_ep or cfg.TRAIN_EPISODES,
+        "last_env": last_env,
+    }
+
+
+def main():
+    cfg = SimConfig()
+    validate_region_thresholds(cfg)
+    cfg.ENFORCE_REGION_POLICY = True
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+    print("device:", device)
+
+    base_machine_curve_ids = list(cfg.MACHINE_CURVE_IDS)
+    _, degr, rul = build_degradation_and_rul(cfg, base_machine_curve_ids)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    output_root = Path("outputs") / f"paired_{ts}"
+    ckpt_root = Path(cfg.CKPT_DIR) / f"paired_{ts}"
+    output_root.mkdir(parents=True, exist_ok=True)
+    ckpt_root.mkdir(parents=True, exist_ok=True)
+
+    experiment_seeds = [int(s) for s in getattr(cfg, "EXPERIMENT_SEEDS", (cfg.SEED,))]
+    maint_modes = [str(m).upper() for m in getattr(cfg, "TRAIN_MAINT_MODES", ("DQN", "POMCP"))]
+    all_result_rows: List[Dict[str, Any]] = []
+    all_compare_rows: List[Dict[str, Any]] = []
+
+    for seed in experiment_seeds:
+        print(f"paired experiment seed={seed}")
+        scenario_bank = build_scenario_bank(seed, cfg, degr, machine_curve_ids=base_machine_curve_ids)
+        seed_results: Dict[str, Dict[str, Any]] = {}
+        seed_root = output_root / f"seed_{seed:04d}"
+        seed_root.mkdir(parents=True, exist_ok=True)
+        for mode in maint_modes:
+            mode_tag = build_maint_mode_tag(mode)
+            mode_outdir = seed_root / mode_tag
+            mode_ckpt_dir = ckpt_root / f"seed_{seed:04d}" / mode_tag
+            mode_outdir.mkdir(parents=True, exist_ok=True)
+            mode_ckpt_dir.mkdir(parents=True, exist_ok=True)
+            run_result = train_one_mode(
+                cfg,
+                mode,
+                seed,
+                device,
+                degr,
+                rul,
+                scenario_bank,
+                mode_outdir,
+                mode_ckpt_dir,
+                ts,
+            )
+            seed_results[mode] = run_result
+            for policy_tag, final_result in run_result["final_results"].items():
+                all_result_rows.append(_build_run_record(seed, mode, policy_tag, final_result))
+
+        if "DQN" in seed_results and "POMCP" in seed_results:
+            compare_dir = seed_root / "compare"
+            compare_dir.mkdir(parents=True, exist_ok=True)
+            for enforce_region in (True, False):
+                policy_tag = build_policy_tag(cfg, enforce_region)
+                if policy_tag not in seed_results["DQN"]["final_results"] or policy_tag not in seed_results["POMCP"]["final_results"]:
+                    continue
+                compare_summary, compare_rows = compare_mode_results(
+                    seed_results["DQN"]["final_results"][policy_tag],
+                    seed_results["POMCP"]["final_results"][policy_tag],
+                    "DQN",
+                    "POMCP",
+                )
+                compare_summary["seed"] = int(seed)
+                compare_summary["policy_tag"] = policy_tag
+                compare_summary["policy_label"] = build_policy_label(cfg, enforce_region)
+                compare_summary["delta_tard"] = float(compare_summary["delta_compare_minus_primary"]["tard"])
+                compare_summary["delta_maint"] = float(compare_summary["delta_compare_minus_primary"]["maint"])
+                compare_summary["delta_total"] = float(compare_summary["delta_compare_minus_primary"]["total"])
+                compare_summary["delta_overdue_ratio"] = float(compare_summary["delta_compare_minus_primary"]["overdue_ratio"])
+                compare_summary["delta_dispatch_count"] = int(compare_summary["delta_schedule_summary"]["dispatch_count"])
+                compare_summary["delta_makespan"] = float(compare_summary["delta_schedule_summary"]["makespan"])
+                all_compare_rows.append(dict(compare_summary))
+                write_mode_comparison_outputs(
+                    compare_dir,
+                    f"maint_compare_{ts}_{policy_tag}",
+                    compare_summary,
+                    compare_rows,
+                    policy_label=f"{build_policy_label(cfg, enforce_region)} | Maintenance: DQN vs POMCP",
+                )
+                print(
+                    f"[seed {seed}][{policy_tag}] delta(POMCP-DQN): "
+                    f"tard={compare_summary['delta_tard']:.3f}, "
+                    f"maint={compare_summary['delta_maint']:.3f}, "
+                    f"total={compare_summary['delta_total']:.3f}, "
+                    f"overdue_ratio={compare_summary['delta_overdue_ratio']:.3f}, "
+                    f"dispatch={compare_summary['delta_dispatch_count']}, "
+                    f"makespan={compare_summary['delta_makespan']:.3f}"
+                )
+
+    paired_results_csv = output_root / "paired_final_eval_rows.csv"
+    paired_results_json = output_root / "paired_final_eval_rows.json"
+    with paired_results_json.open("w", encoding="utf-8") as f:
+        json.dump(all_result_rows, f, ensure_ascii=True, indent=2)
+    if all_result_rows:
+        fieldnames = sorted({key for row in all_result_rows for key in row.keys()})
+        with paired_results_csv.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(all_result_rows)
+
+    for policy_tag in {row["policy_tag"] for row in all_result_rows}:
+        write_aggregate_compare_outputs(output_root, policy_tag, all_result_rows, all_compare_rows)
+
+    print(f"paired training finished; outputs saved to {output_root}")
 
 if __name__ == "__main__":
     main()

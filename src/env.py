@@ -8,6 +8,28 @@ from .observer import ObserverAgent
 from .sensor_bank import SensorReplayBank, GRUCache
 
 @dataclass
+class OperationTemplate:
+    feasible_machines: List[int]
+    proc_times: Dict[int, float]
+
+@dataclass
+class JobTemplate:
+    arrival: float
+    due: float
+    urgency: float
+    ops: List[OperationTemplate]
+
+@dataclass
+class EpisodeScenario:
+    jobs_target: int
+    machine_curve_ids: List[int]
+    combos: List[Tuple[float, float]]
+    combo_seq: List[int]
+    degradation_rate: float
+    arrival_times: List[float]
+    job_templates: List[JobTemplate]
+
+@dataclass
 class Operation:
     job_id: int
     op_id: int
@@ -48,9 +70,13 @@ class EventDrivenShopEnv:
     - MACHINE_IDLE (after operation or maintenance)
     Maintenance decisions are evaluated *before* scheduling decisions to avoid conflicts.
     """
-    def __init__(self, cfg, rng: random.Random, degr, rul_predictor):
+    def __init__(self, cfg, rng: random.Random, degr, rul_predictor,
+                 breakdown_rng: Optional[random.Random] = None,
+                 obs_rng: Optional[random.Random] = None):
         self.cfg = cfg
         self.rng = rng
+        self.breakdown_rng = breakdown_rng if breakdown_rng is not None else rng
+        self.obs_rng = obs_rng if obs_rng is not None else self.breakdown_rng
         self.degr = degr
         self.rul = rul_predictor
         self.observer = ObserverAgent(cfg)
@@ -96,6 +122,9 @@ class EventDrivenShopEnv:
         self.machine_pt_sum: Dict[int, float] = {}
         self.machine_pt_count: Dict[int, int] = {}
         self.machine_pt_base: Dict[int, float] = {}
+        self.episode_scenario: Optional[EpisodeScenario] = None
+        self._scenario_arrival_times: Dict[int, float] = {}
+        self._scenario_job_templates: Dict[int, JobTemplate] = {}
 
     # ------------------- scenario sampling -------------------
     def _build_combo_plan(self):
@@ -192,6 +221,8 @@ class EventDrivenShopEnv:
         return log
 
     def _sample_next_arrival(self, t: float, job_id: int) -> float:
+        if self._scenario_arrival_times:
+            return float(self._scenario_arrival_times.get(job_id, math.inf))
         lam, _, _, _ = self._combo_for_job(job_id)
         if lam <= 0:
             return math.inf
@@ -200,6 +231,25 @@ class EventDrivenShopEnv:
         return t + (-math.log(max(u, 1e-12)) * lam)
 
     def _make_job(self, job_id: int, arrival: float) -> Job:
+        template = self._scenario_job_templates.get(job_id)
+        if template is not None:
+            self._update_combo_on_job(job_id, arrival)
+            ops = [
+                Operation(
+                    job_id=job_id,
+                    op_id=op_id,
+                    feasible_machines=list(op_tpl.feasible_machines),
+                    proc_times={int(m): float(pt) for m, pt in op_tpl.proc_times.items()},
+                )
+                for op_id, op_tpl in enumerate(template.ops)
+            ]
+            return Job(
+                job_id=job_id,
+                arrival=float(template.arrival),
+                due=float(template.due),
+                urgency=float(template.urgency),
+                ops=ops,
+            )
         # operations and flexibility
         num_ops = self.rng.randint(self.cfg.OPS_PER_JOB_MIN, self.cfg.OPS_PER_JOB_MAX)
         ops: List[Operation] = []
@@ -225,7 +275,24 @@ class EventDrivenShopEnv:
         return Job(job_id=job_id, arrival=arrival, due=due, urgency=urgency, ops=ops)
 
     # ------------------- reset / step -------------------
-    def reset(self, machine_curve_ids: List[int]):
+    def reset(self, machine_curve_ids: Optional[List[int]] = None,
+              scenario: Optional[EpisodeScenario] = None):
+        scenario = scenario if scenario is not None else self.episode_scenario
+        self.episode_scenario = scenario
+        if scenario is not None:
+            machine_curve_ids = list(scenario.machine_curve_ids)
+            self._scenario_arrival_times = {
+                job_id: float(t) for job_id, t in enumerate(scenario.arrival_times)
+            }
+            self._scenario_job_templates = {
+                job_id: tpl for job_id, tpl in enumerate(scenario.job_templates)
+            }
+            self.episode_combos = list(scenario.combos)
+            self.episode_combo_seq = list(scenario.combo_seq)
+            self.cfg.JOBS_TARGET = int(scenario.jobs_target)
+        else:
+            self._scenario_arrival_times = {}
+            self._scenario_job_templates = {}
         if not machine_curve_ids:
             default_ids = list(getattr(self.cfg, "MACHINE_CURVE_IDS", []))
             if not default_ids:
@@ -265,7 +332,7 @@ class EventDrivenShopEnv:
             self.machine_pt_base[i] = float(base_mean)
         self.sensor_bank = SensorReplayBank(self.degr, self.machine_curve)
         self.rul_cache = GRUCache(self.rul, self.sensor_bank, self.cfg.RUL_WINDOW,
-                                  noise_std=self.cfg.RUL_OBS_NOISE, rng=self.rng)
+                                  noise_std=self.cfg.RUL_OBS_NOISE, rng=self.obs_rng)
         self.rul_cache.build()
 
         self.timeline_ops.clear()
@@ -693,7 +760,7 @@ class EventDrivenShopEnv:
         if self.cfg.BREAKDOWN_ENABLE:
             p_break = self.failure_prob(h) * (pt / max(self.cfg.PT_REF, 1e-6)) * self.cfg.BREAKDOWN_W
             p_break = max(0.0, min(1.0, p_break))
-            if self.rng.random() < p_break:
+            if self.breakdown_rng.random() < p_break:
                 dur = self._maintenance_duration(mid, action=2)
                 t1 = self.time + dur
                 m.status = "MAINT"

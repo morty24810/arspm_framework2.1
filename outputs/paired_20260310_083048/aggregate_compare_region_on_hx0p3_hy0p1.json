@@ -1,0 +1,50 @@
+{
+  "policy_tag": "region_on_hx0p3_hy0p1",
+  "modes": {
+    "DQN": {
+      "mode": "DQN",
+      "tard_mean": 177.21273507463542,
+      "tard_std": 0.0,
+      "maint_mean": 597.1966011453142,
+      "maint_std": 0.0,
+      "total_mean": 774.4093362199496,
+      "total_std": 0.0,
+      "overdue_ratio_ops_mean": 0.04659498207885305,
+      "overdue_ratio_ops_std": 0.0,
+      "dispatch_count_mean": 279.0,
+      "dispatch_count_std": 0.0,
+      "makespan_mean": 3770.458054793587,
+      "makespan_std": 0.0
+    },
+    "POMCP": {
+      "mode": "POMCP",
+      "tard_mean": 159.3731444208992,
+      "tard_std": 0.0,
+      "maint_mean": 836.4456503600143,
+      "maint_std": 0.0,
+      "total_mean": 995.8187947809134,
+      "total_std": 0.0,
+      "overdue_ratio_ops_mean": 0.03942652329749104,
+      "overdue_ratio_ops_std": 0.0,
+      "dispatch_count_mean": 279.0,
+      "dispatch_count_std": 0.0,
+      "makespan_mean": 3821.7457349565543,
+      "makespan_std": 0.0
+    }
+  },
+  "delta_pomcp_minus_dqn": {
+    "mode": "POMCP_MINUS_DQN",
+    "tard_mean": -17.839590653736224,
+    "tard_std": 0.0,
+    "maint_mean": 239.2490492147001,
+    "maint_std": 0.0,
+    "total_mean": 221.4094585609638,
+    "total_std": 0.0,
+    "overdue_ratio_ops_mean": -0.007168458781362012,
+    "overdue_ratio_ops_std": 0.0,
+    "dispatch_count_mean": 0.0,
+    "dispatch_count_std": 0.0,
+    "makespan_mean": 51.28768016296726,
+    "makespan_std": 0.0
+  }
+}

@@ -20,12 +20,11 @@ python run_experiment.py
 ```
 
 It will:
-- Train agents for a small number of episodes (fast default)
-- Run one evaluation episode
-- Save plots into `outputs/`:
-  - Gantt chart with maintenance blocks
-  - RUL curves with maintenance markers and thresholds
-  - Rule/goal selection vs features
+- Run a paired experiment for each seed in `EXPERIMENT_SEEDS`
+- Train both `DQN` and `POMCP` maintenance modes on the same locked scenarios
+- Run final evaluation for both `region_on` and `region_off`
+- Save per-run artifacts under `outputs/paired_<timestamp>/seed_<seed>/maint_<mode>/`
+- Save per-seed `DQN vs POMCP` compare artifacts under `outputs/paired_<timestamp>/seed_<seed>/compare/`
 
 ## Final Eval / Inference Output Modes
 
@@ -43,6 +42,7 @@ Generated artifacts include the policy tag in filename, for example:
 - `rul_curves_<timestamp>_maint_pomcp_region_on_hx0p3_hy0p1.png`
 - `summary_<timestamp>_maint_dqn_region_off_unrestricted.json` and `.csv`
 - `maint_compare_<timestamp>_<policy_tag>.json`, `.csv`, `.png` for `POMCP` vs `DQN` decision diffs
+- `aggregate_compare_<policy_tag>.json`, `.csv` for multi-seed aggregate comparison
 
 Each visualization also contains an in-plot policy label:
 

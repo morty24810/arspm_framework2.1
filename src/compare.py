@@ -1,0 +1,275 @@
+from __future__ import annotations
+
+import csv
+import json
+import math
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+from .viz import plot_maint_mode_comparison
+
+
+def _safe_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _safe_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def _missing_status_label(mode: str) -> str:
+    mode = str(mode).upper()
+    if mode == "POMCP":
+        return "missing_on_pomcp"
+    if mode == "DQN":
+        return "missing_on_dqn"
+    return f"missing_on_{mode.lower()}"
+
+
+def _normalize_op(op: Any) -> Dict[str, Any] | None:
+    if op is None:
+        return None
+    if isinstance(op, dict):
+        return op
+    if isinstance(op, str) and op:
+        try:
+            parsed = json.loads(op)
+            return parsed if isinstance(parsed, dict) else None
+        except Exception:
+            return None
+    return None
+
+
+def extract_maintenance_rows(decision_log: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [dict(row) for row in (decision_log or []) if row.get("event") == "maintenance"]
+
+
+def extract_scheduling_rows(decision_log: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [dict(row) for row in (decision_log or []) if row.get("event") == "scheduling"]
+
+
+def summarize_action_counts(rows: List[Dict[str, Any]], key: str, values: List[Any]) -> Dict[str, int]:
+    counts = {str(v): 0 for v in values}
+    for row in rows:
+        raw = row.get(key)
+        normalized = raw
+        if isinstance(raw, float) and raw.is_integer():
+            normalized = int(raw)
+        label = str(normalized)
+        if label in counts:
+            counts[label] += 1
+    return counts
+
+
+def compute_decision_log_makespan(decision_log: List[Dict[str, Any]]) -> float:
+    t_end = 0.0
+    for row in decision_log or []:
+        if row.get("event") == "maintenance":
+            t0 = _safe_float(row.get("time")) or 0.0
+            dur = _safe_float(row.get("duration")) or 0.0
+            t_end = max(t_end, t0 + dur)
+            continue
+        if row.get("event") != "scheduling":
+            continue
+        op = _normalize_op(row.get("op"))
+        if op is not None:
+            t_end = max(t_end, _safe_float(op.get("t1")) or 0.0)
+        else:
+            t_end = max(t_end, _safe_float(row.get("time")) or 0.0)
+    return float(t_end)
+
+
+def summarize_scheduling_strategy(decision_log: List[Dict[str, Any]]) -> Dict[str, Any]:
+    sched_rows = extract_scheduling_rows(decision_log)
+    goal_counts = summarize_action_counts(sched_rows, key="goal", values=[0, 1, 2, 3])
+    rule_counts = summarize_action_counts(sched_rows, key="rule", values=[0, 1, 2, 3, 4, 5])
+    dispatched_count = sum(1 for row in sched_rows if bool(row.get("dispatched")))
+    breakdown_count = sum(1 for row in sched_rows if bool(row.get("breakdown_flag")))
+    return {
+        "goal_counts": goal_counts,
+        "rule_counts": rule_counts,
+        "dispatch_count": int(dispatched_count),
+        "scheduling_events": int(len(sched_rows)),
+        "breakdown_count": int(breakdown_count),
+        "makespan": compute_decision_log_makespan(decision_log),
+    }
+
+
+def compare_mode_results(
+    primary_result: Dict[str, Any],
+    compare_result: Dict[str, Any],
+    primary_mode: str,
+    compare_mode: str,
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    primary_mode = str(primary_mode).upper()
+    compare_mode = str(compare_mode).upper()
+    primary_rows = extract_maintenance_rows(primary_result.get("decision_log", []))
+    compare_rows = extract_maintenance_rows(compare_result.get("decision_log", []))
+    primary_map = {
+        (int(row.get("mid", -1)), int(row.get("maint_seq_machine", -1))): row
+        for row in primary_rows
+    }
+    compare_map = {
+        (int(row.get("mid", -1)), int(row.get("maint_seq_machine", -1))): row
+        for row in compare_rows
+    }
+    union_keys = sorted(set(primary_map.keys()) | set(compare_map.keys()))
+    missing_on_primary_label = _missing_status_label(primary_mode)
+    missing_on_compare_label = _missing_status_label(compare_mode)
+
+    rows: List[Dict[str, Any]] = []
+    aligned_count = 0
+    divergence_count = 0
+    missing_on_primary = 0
+    missing_on_compare = 0
+    for mid, seq in union_keys:
+        primary = primary_map.get((mid, seq))
+        compare = compare_map.get((mid, seq))
+        if primary is None:
+            status = missing_on_primary_label
+            missing_on_primary += 1
+            divergence_count += 1
+        elif compare is None:
+            status = missing_on_compare_label
+            missing_on_compare += 1
+            divergence_count += 1
+        else:
+            aligned_count += 1
+            same_action = str(primary.get("kind", "")).upper() == str(compare.get("kind", "")).upper()
+            status = "same_action" if same_action else "different_action"
+            if not same_action:
+                divergence_count += 1
+        rows.append({
+            "mid": int(mid),
+            "maint_seq_machine": int(seq),
+            "status": status,
+            "primary_mode": primary_mode,
+            "compare_mode": compare_mode,
+            "primary_action": primary.get("kind") if primary else None,
+            "compare_action": compare.get("kind") if compare else None,
+            "primary_time": _safe_float(primary.get("time")) if primary else None,
+            "compare_time": _safe_float(compare.get("time")) if compare else None,
+            "primary_h": _safe_float(primary.get("h")) if primary else None,
+            "compare_h": _safe_float(compare.get("h")) if compare else None,
+            "primary_duration": _safe_float(primary.get("duration")) if primary else None,
+            "compare_duration": _safe_float(compare.get("duration")) if compare else None,
+        })
+
+    primary_schedule_summary = summarize_scheduling_strategy(primary_result.get("decision_log", []))
+    compare_schedule_summary = summarize_scheduling_strategy(compare_result.get("decision_log", []))
+    primary_metrics = primary_result["metrics"]
+    compare_metrics = compare_result["metrics"]
+    primary_overdue = primary_result["overdue"]
+    compare_overdue = compare_result["overdue"]
+    union_count = len(union_keys)
+    summary = {
+        "primary_mode": primary_mode,
+        "compare_mode": compare_mode,
+        "primary_action_counts": summarize_action_counts(primary_rows, key="kind", values=["DN", "IM", "CM"]),
+        "compare_action_counts": summarize_action_counts(compare_rows, key="kind", values=["DN", "IM", "CM"]),
+        "decision_union_count": int(union_count),
+        "decision_aligned_count": int(aligned_count),
+        "divergence_count": int(divergence_count),
+        "divergence_rate": float(divergence_count / union_count) if union_count else 0.0,
+        "missing_on_pomcp": int(missing_on_primary if primary_mode == "POMCP" else missing_on_compare if compare_mode == "POMCP" else 0),
+        "missing_on_dqn": int(missing_on_primary if primary_mode == "DQN" else missing_on_compare if compare_mode == "DQN" else 0),
+        "primary_metrics": {
+            "tard": float(primary_metrics["tard"]),
+            "maint": float(primary_metrics["maint"]),
+            "total": float(primary_metrics["total"]),
+            "overdue_ratio": float(primary_overdue["ratio_ops"]),
+        },
+        "compare_metrics": {
+            "tard": float(compare_metrics["tard"]),
+            "maint": float(compare_metrics["maint"]),
+            "total": float(compare_metrics["total"]),
+            "overdue_ratio": float(compare_overdue["ratio_ops"]),
+        },
+        "delta_compare_minus_primary": {
+            "tard": float(compare_metrics["tard"] - primary_metrics["tard"]),
+            "maint": float(compare_metrics["maint"] - primary_metrics["maint"]),
+            "total": float(compare_metrics["total"] - primary_metrics["total"]),
+            "overdue_ratio": float(compare_overdue["ratio_ops"] - primary_overdue["ratio_ops"]),
+        },
+        "primary_schedule_summary": primary_schedule_summary,
+        "compare_schedule_summary": compare_schedule_summary,
+        "delta_schedule_summary": {
+            "dispatch_count": int(compare_schedule_summary["dispatch_count"] - primary_schedule_summary["dispatch_count"]),
+            "scheduling_events": int(compare_schedule_summary["scheduling_events"] - primary_schedule_summary["scheduling_events"]),
+            "breakdown_count": int(compare_schedule_summary["breakdown_count"] - primary_schedule_summary["breakdown_count"]),
+            "makespan": float(compare_schedule_summary["makespan"] - primary_schedule_summary["makespan"]),
+        },
+    }
+    return summary, rows
+
+
+def write_mode_comparison_outputs(
+    outdir: Path,
+    stem: str,
+    summary: Dict[str, Any],
+    rows: List[Dict[str, Any]],
+    policy_label: str,
+):
+    outdir.mkdir(parents=True, exist_ok=True)
+    payload = {"summary": summary, "rows": rows}
+    json_path = outdir / f"{stem}.json"
+    csv_path = outdir / f"{stem}.csv"
+    summary_csv_path = outdir / f"{stem}_summary.csv"
+    png_path = outdir / f"{stem}.png"
+    with json_path.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=True, indent=2)
+    with csv_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "mid",
+                "maint_seq_machine",
+                "status",
+                "primary_mode",
+                "compare_mode",
+                "primary_action",
+                "compare_action",
+                "primary_time",
+                "compare_time",
+                "primary_h",
+                "compare_h",
+                "primary_duration",
+                "compare_duration",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+    summary_row = {
+        "primary_mode": summary.get("primary_mode"),
+        "compare_mode": summary.get("compare_mode"),
+        "divergence_count": summary.get("divergence_count"),
+        "decision_union_count": summary.get("decision_union_count"),
+        "divergence_rate": summary.get("divergence_rate"),
+        "primary_tard": summary.get("primary_metrics", {}).get("tard"),
+        "compare_tard": summary.get("compare_metrics", {}).get("tard"),
+        "primary_maint": summary.get("primary_metrics", {}).get("maint"),
+        "compare_maint": summary.get("compare_metrics", {}).get("maint"),
+        "primary_total": summary.get("primary_metrics", {}).get("total"),
+        "compare_total": summary.get("compare_metrics", {}).get("total"),
+        "primary_overdue_ratio": summary.get("primary_metrics", {}).get("overdue_ratio"),
+        "compare_overdue_ratio": summary.get("compare_metrics", {}).get("overdue_ratio"),
+        "primary_dispatch_count": summary.get("primary_schedule_summary", {}).get("dispatch_count"),
+        "compare_dispatch_count": summary.get("compare_schedule_summary", {}).get("dispatch_count"),
+        "primary_makespan": summary.get("primary_schedule_summary", {}).get("makespan"),
+        "compare_makespan": summary.get("compare_schedule_summary", {}).get("makespan"),
+    }
+    with summary_csv_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(summary_row.keys()))
+        writer.writeheader()
+        writer.writerow(summary_row)
+    plot_maint_mode_comparison(summary, rows, str(png_path), policy_label=policy_label)

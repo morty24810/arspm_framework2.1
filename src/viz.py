@@ -325,6 +325,15 @@ def plot_maint_mode_comparison(summary: Dict[str, object], compare_rows: List[Di
         f"{int(summary.get('decision_union_count', 0))} "
         f"({float(summary.get('divergence_rate', 0.0)):.3f})"
     )
+    p_sched = summary.get("primary_schedule_summary", {}) or {}
+    c_sched = summary.get("compare_schedule_summary", {}) or {}
+    if p_sched or c_sched:
+        subtitle += (
+            f" | dispatch={int(p_sched.get('dispatch_count', 0))}/"
+            f"{int(c_sched.get('dispatch_count', 0))}"
+            f" makespan={float(p_sched.get('makespan', 0.0)):.1f}/"
+            f"{float(c_sched.get('makespan', 0.0)):.1f}"
+        )
     _annotate_policy(ax_top, policy_label, extra_note=subtitle)
 
     ax_bottom.axis("off")
@@ -338,6 +347,17 @@ def plot_maint_mode_comparison(summary: Dict[str, object], compare_rows: List[Di
     )
     lines = []
     max_rows = 18
+    if p_sched or c_sched:
+        lines.append(
+            f"Scheduling: {modes[0]} dispatch={int(p_sched.get('dispatch_count', 0))}, makespan={float(p_sched.get('makespan', 0.0)):.1f}"
+            f" | {modes[1]} dispatch={int(c_sched.get('dispatch_count', 0))}, makespan={float(c_sched.get('makespan', 0.0)):.1f}"
+        )
+        lines.append(
+            f"Rules: {modes[0]}={p_sched.get('rule_counts', {})} | {modes[1]}={c_sched.get('rule_counts', {})}"
+        )
+        lines.append(
+            f"Goals: {modes[0]}={p_sched.get('goal_counts', {})} | {modes[1]}={c_sched.get('goal_counts', {})}"
+        )
     for row in rows_sorted[:max_rows]:
         mid = int(row.get("mid", -1))
         seq = int(row.get("maint_seq_machine", -1))
