@@ -110,6 +110,11 @@ def compare_mode_results(
     compare_result: Dict[str, Any],
     primary_mode: str,
     compare_mode: str,
+    *,
+    compare_type: str = "full_system",
+    train_policy_tag: str | None = None,
+    eval_policy_tag: str | None = None,
+    scheduler_anchor: str | None = None,
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     primary_mode = str(primary_mode).upper()
     compare_mode = str(compare_mode).upper()
@@ -175,12 +180,18 @@ def compare_mode_results(
     summary = {
         "primary_mode": primary_mode,
         "compare_mode": compare_mode,
+        "compare_type": compare_type,
+        "train_policy_tag": train_policy_tag,
+        "eval_policy_tag": eval_policy_tag,
+        "scheduler_anchor": scheduler_anchor,
         "primary_action_counts": summarize_action_counts(primary_rows, key="kind", values=["DN", "IM", "CM"]),
         "compare_action_counts": summarize_action_counts(compare_rows, key="kind", values=["DN", "IM", "CM"]),
         "decision_union_count": int(union_count),
         "decision_aligned_count": int(aligned_count),
         "divergence_count": int(divergence_count),
         "divergence_rate": float(divergence_count / union_count) if union_count else 0.0,
+        "missing_on_primary": int(missing_on_primary),
+        "missing_on_compare": int(missing_on_compare),
         "missing_on_pomcp": int(missing_on_primary if primary_mode == "POMCP" else missing_on_compare if compare_mode == "POMCP" else 0),
         "missing_on_dqn": int(missing_on_primary if primary_mode == "DQN" else missing_on_compare if compare_mode == "DQN" else 0),
         "primary_metrics": {
@@ -252,6 +263,10 @@ def write_mode_comparison_outputs(
     summary_row = {
         "primary_mode": summary.get("primary_mode"),
         "compare_mode": summary.get("compare_mode"),
+        "compare_type": summary.get("compare_type"),
+        "train_policy_tag": summary.get("train_policy_tag"),
+        "eval_policy_tag": summary.get("eval_policy_tag"),
+        "scheduler_anchor": summary.get("scheduler_anchor"),
         "divergence_count": summary.get("divergence_count"),
         "decision_union_count": summary.get("decision_union_count"),
         "divergence_rate": summary.get("divergence_rate"),

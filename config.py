@@ -161,7 +161,7 @@ class SimConfig:
     POMCP_UCB_C: float = 1.2
     POMCP_PARTICLES: int = 64
     POMCP_OBS_NOISE: float = 0.02
-    POMCP_H_DECAY: float = 0.02
+    POMCP_H_DECAY: float = 0.02            # legacy (no longer the primary generative decay)
     # failure probability feature (generative rollout)
     PFAIL_HORIZON: int = 6
     PFAIL_NUM_SIMS: int = 64
@@ -198,7 +198,9 @@ class SimConfig:
     # paired experiment runner
     EXPERIMENT_SEEDS: tuple = (42,)
     TRAIN_MAINT_MODES: tuple = ("DQN", "POMCP")
+    TRAIN_POLICY_ROUTES: tuple = ("region_on", "region_off")
     SCENARIO_LOCK_SCOPE: str = "full"
+    ENABLE_OOD_DIAGNOSTIC_EVAL: bool = False
 
     # --- checkpointing ---
     CKPT_DIR: str = "checkpoints"

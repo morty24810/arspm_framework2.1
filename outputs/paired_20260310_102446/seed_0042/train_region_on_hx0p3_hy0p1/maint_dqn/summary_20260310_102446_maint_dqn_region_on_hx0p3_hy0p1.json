@@ -1,0 +1,23 @@
+{
+  "timestamp": "20260310_102446",
+  "seed": 42,
+  "policy_tag": "region_on_hx0p3_hy0p1",
+  "train_policy_tag": "region_on_hx0p3_hy0p1",
+  "eval_policy_tag": "region_on_hx0p3_hy0p1",
+  "policy_label": "Policy: Region constrained (Hx=0.3, Hy=0.1) | Maintenance: DQN",
+  "maint_mode_tag": "maint_dqn",
+  "maint_mode": "DQN",
+  "compare_type": "full_system",
+  "scheduler_anchor": "none",
+  "enforce_region_policy": 1,
+  "hx": 0.3,
+  "hy": 0.1,
+  "jobs_target": 80,
+  "tard": 308.8906068183077,
+  "maint": 800.0,
+  "total": 1108.8906068183078,
+  "overdue_ratio_ops": 0.05734767025089606,
+  "overdue_ratio_time": 0.08355868379963576,
+  "overdue_ops": 16.0,
+  "total_ops": 279.0
+}

@@ -1,0 +1,806 @@
+[
+  {
+    "primary_mode": "DQN",
+    "compare_mode": "POMCP",
+    "compare_type": "full_system",
+    "train_policy_tag": "region_on_hx0p3_hy0p1",
+    "eval_policy_tag": "region_on_hx0p3_hy0p1",
+    "scheduler_anchor": "none",
+    "primary_action_counts": {
+      "DN": 271,
+      "IM": 0,
+      "CM": 8
+    },
+    "compare_action_counts": {
+      "DN": 271,
+      "IM": 1,
+      "CM": 7
+    },
+    "decision_union_count": 292,
+    "decision_aligned_count": 266,
+    "divergence_count": 34,
+    "divergence_rate": 0.11643835616438356,
+    "missing_on_primary": 13,
+    "missing_on_compare": 13,
+    "missing_on_pomcp": 13,
+    "missing_on_dqn": 13,
+    "primary_metrics": {
+      "tard": 308.8906068183077,
+      "maint": 800.0,
+      "total": 1108.8906068183078,
+      "overdue_ratio": 0.05734767025089606
+    },
+    "compare_metrics": {
+      "tard": 264.1457813789889,
+      "maint": 754.4023743741027,
+      "total": 1018.5481557530916,
+      "overdue_ratio": 0.05734767025089606
+    },
+    "delta_compare_minus_primary": {
+      "tard": -44.74482543931879,
+      "maint": -45.59762562589731,
+      "total": -90.34245106521621,
+      "overdue_ratio": 0.0
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 77,
+        "1": 135,
+        "2": 24,
+        "3": 43
+      },
+      "rule_counts": {
+        "0": 61,
+        "1": 31,
+        "2": 24,
+        "3": 74,
+        "4": 37,
+        "5": 52
+      },
+      "dispatch_count": 279,
+      "scheduling_events": 279,
+      "breakdown_count": 0,
+      "makespan": 3847.944809354688
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 125,
+        "1": 37,
+        "2": 62,
+        "3": 55
+      },
+      "rule_counts": {
+        "0": 65,
+        "1": 38,
+        "2": 17,
+        "3": 106,
+        "4": 4,
+        "5": 49
+      },
+      "dispatch_count": 279,
+      "scheduling_events": 279,
+      "breakdown_count": 0,
+      "makespan": 3839.7199246847963
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": -8.224884669891708
+    },
+    "seed": 42,
+    "policy_tag": "region_on_hx0p3_hy0p1",
+    "policy_label": "Policy: Region constrained (Hx=0.3, Hy=0.1)",
+    "delta_tard": -44.74482543931879,
+    "delta_maint": -45.59762562589731,
+    "delta_total": -90.34245106521621,
+    "delta_overdue_ratio": 0.0,
+    "delta_dispatch_count": 0,
+    "delta_makespan": -8.224884669891708
+  },
+  {
+    "primary_mode": "DQN",
+    "compare_mode": "POMCP",
+    "compare_type": "maint_only",
+    "train_policy_tag": "region_on_hx0p3_hy0p1",
+    "eval_policy_tag": "region_on_hx0p3_hy0p1",
+    "scheduler_anchor": "DQN",
+    "primary_action_counts": {
+      "DN": 0,
+      "IM": 0,
+      "CM": 0
+    },
+    "compare_action_counts": {
+      "DN": 0,
+      "IM": 0,
+      "CM": 0
+    },
+    "decision_union_count": 0,
+    "decision_aligned_count": 0,
+    "divergence_count": 0,
+    "divergence_rate": 0.0,
+    "missing_on_primary": 0,
+    "missing_on_compare": 0,
+    "missing_on_pomcp": 0,
+    "missing_on_dqn": 0,
+    "primary_metrics": {
+      "tard": 142.85056468167093,
+      "maint": 800.0,
+      "total": 942.8505646816709,
+      "overdue_ratio": 0.035842293906810034
+    },
+    "compare_metrics": {
+      "tard": 170.76739857230407,
+      "maint": 820.231661567452,
+      "total": 990.999060139756,
+      "overdue_ratio": 0.043010752688172046
+    },
+    "delta_compare_minus_primary": {
+      "tard": 27.916833890633143,
+      "maint": 20.231661567451965,
+      "total": 48.14849545808511,
+      "overdue_ratio": 0.007168458781362012
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0
+      },
+      "rule_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      },
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0
+      },
+      "rule_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      },
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "seed": 42,
+    "policy_tag": "region_on_hx0p3_hy0p1",
+    "policy_label": "Policy: Region constrained (Hx=0.3, Hy=0.1)",
+    "delta_tard": 27.916833890633143,
+    "delta_maint": 20.231661567451965,
+    "delta_total": 48.14849545808511,
+    "delta_overdue_ratio": 0.007168458781362012,
+    "delta_dispatch_count": 0,
+    "delta_makespan": 0.0
+  },
+  {
+    "primary_mode": "DQN",
+    "compare_mode": "POMCP",
+    "compare_type": "full_system",
+    "train_policy_tag": "region_off_unrestricted",
+    "eval_policy_tag": "region_off_unrestricted",
+    "scheduler_anchor": "none",
+    "primary_action_counts": {
+      "DN": 279,
+      "IM": 0,
+      "CM": 0
+    },
+    "compare_action_counts": {
+      "DN": 163,
+      "IM": 108,
+      "CM": 5
+    },
+    "decision_union_count": 285,
+    "decision_aligned_count": 270,
+    "divergence_count": 126,
+    "divergence_rate": 0.4421052631578947,
+    "missing_on_primary": 6,
+    "missing_on_compare": 9,
+    "missing_on_pomcp": 9,
+    "missing_on_dqn": 6,
+    "primary_metrics": {
+      "tard": 167.36133168341658,
+      "maint": 0.0,
+      "total": 167.36133168341658,
+      "overdue_ratio": 0.035842293906810034
+    },
+    "compare_metrics": {
+      "tard": 206.03372551264818,
+      "maint": 1928.02454810364,
+      "total": 2134.0582736162883,
+      "overdue_ratio": 0.035842293906810034
+    },
+    "delta_compare_minus_primary": {
+      "tard": 38.672393829231595,
+      "maint": 1928.02454810364,
+      "total": 1966.6969419328716,
+      "overdue_ratio": 0.0
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 150,
+        "1": 72,
+        "2": 11,
+        "3": 46
+      },
+      "rule_counts": {
+        "0": 29,
+        "1": 138,
+        "2": 36,
+        "3": 20,
+        "4": 34,
+        "5": 22
+      },
+      "dispatch_count": 279,
+      "scheduling_events": 279,
+      "breakdown_count": 0,
+      "makespan": 3795.5009695362933
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 199,
+        "1": 16,
+        "2": 49,
+        "3": 15
+      },
+      "rule_counts": {
+        "0": 30,
+        "1": 34,
+        "2": 126,
+        "3": 40,
+        "4": 31,
+        "5": 18
+      },
+      "dispatch_count": 279,
+      "scheduling_events": 279,
+      "breakdown_count": 0,
+      "makespan": 3784.8522480850206
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": -10.64872145127265
+    },
+    "seed": 42,
+    "policy_tag": "region_off_unrestricted",
+    "policy_label": "Policy: Unrestricted (no Hx/Hy enforcement)",
+    "delta_tard": 38.672393829231595,
+    "delta_maint": 1928.02454810364,
+    "delta_total": 1966.6969419328716,
+    "delta_overdue_ratio": 0.0,
+    "delta_dispatch_count": 0,
+    "delta_makespan": -10.64872145127265
+  },
+  {
+    "primary_mode": "DQN",
+    "compare_mode": "POMCP",
+    "compare_type": "maint_only",
+    "train_policy_tag": "region_off_unrestricted",
+    "eval_policy_tag": "region_off_unrestricted",
+    "scheduler_anchor": "DQN",
+    "primary_action_counts": {
+      "DN": 0,
+      "IM": 0,
+      "CM": 0
+    },
+    "compare_action_counts": {
+      "DN": 0,
+      "IM": 0,
+      "CM": 0
+    },
+    "decision_union_count": 0,
+    "decision_aligned_count": 0,
+    "divergence_count": 0,
+    "divergence_rate": 0.0,
+    "missing_on_primary": 0,
+    "missing_on_compare": 0,
+    "missing_on_pomcp": 0,
+    "missing_on_dqn": 0,
+    "primary_metrics": {
+      "tard": 167.36133168341658,
+      "maint": 0.0,
+      "total": 167.36133168341658,
+      "overdue_ratio": 0.035842293906810034
+    },
+    "compare_metrics": {
+      "tard": 462.1349972362027,
+      "maint": 2225.44282749515,
+      "total": 2687.577824731353,
+      "overdue_ratio": 0.08602150537634409
+    },
+    "delta_compare_minus_primary": {
+      "tard": 294.77366555278616,
+      "maint": 2225.44282749515,
+      "total": 2520.216493047936,
+      "overdue_ratio": 0.05017921146953406
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0
+      },
+      "rule_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      },
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0
+      },
+      "rule_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      },
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "seed": 42,
+    "policy_tag": "region_off_unrestricted",
+    "policy_label": "Policy: Unrestricted (no Hx/Hy enforcement)",
+    "delta_tard": 294.77366555278616,
+    "delta_maint": 2225.44282749515,
+    "delta_total": 2520.216493047936,
+    "delta_overdue_ratio": 0.05017921146953406,
+    "delta_dispatch_count": 0,
+    "delta_makespan": 0.0
+  },
+  {
+    "primary_mode": "CONSTRAINED",
+    "compare_mode": "UNRESTRICTED",
+    "compare_type": "full_system_route_compare",
+    "train_policy_tag": "region_on_hx0p3_hy0p1",
+    "eval_policy_tag": "region_off_unrestricted",
+    "scheduler_anchor": "none",
+    "primary_action_counts": {
+      "DN": 271,
+      "IM": 0,
+      "CM": 8
+    },
+    "compare_action_counts": {
+      "DN": 279,
+      "IM": 0,
+      "CM": 0
+    },
+    "decision_union_count": 306,
+    "decision_aligned_count": 252,
+    "divergence_count": 61,
+    "divergence_rate": 0.19934640522875818,
+    "missing_on_primary": 27,
+    "missing_on_compare": 27,
+    "missing_on_pomcp": 0,
+    "missing_on_dqn": 0,
+    "primary_metrics": {
+      "tard": 308.8906068183077,
+      "maint": 800.0,
+      "total": 1108.8906068183078,
+      "overdue_ratio": 0.05734767025089606
+    },
+    "compare_metrics": {
+      "tard": 167.36133168341658,
+      "maint": 0.0,
+      "total": 167.36133168341658,
+      "overdue_ratio": 0.035842293906810034
+    },
+    "delta_compare_minus_primary": {
+      "tard": -141.5292751348911,
+      "maint": -800.0,
+      "total": -941.5292751348912,
+      "overdue_ratio": -0.021505376344086023
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 77,
+        "1": 135,
+        "2": 24,
+        "3": 43
+      },
+      "rule_counts": {
+        "0": 61,
+        "1": 31,
+        "2": 24,
+        "3": 74,
+        "4": 37,
+        "5": 52
+      },
+      "dispatch_count": 279,
+      "scheduling_events": 279,
+      "breakdown_count": 0,
+      "makespan": 3847.944809354688
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 150,
+        "1": 72,
+        "2": 11,
+        "3": 46
+      },
+      "rule_counts": {
+        "0": 29,
+        "1": 138,
+        "2": 36,
+        "3": 20,
+        "4": 34,
+        "5": 22
+      },
+      "dispatch_count": 279,
+      "scheduling_events": 279,
+      "breakdown_count": 0,
+      "makespan": 3795.5009695362933
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": -52.443839818394736
+    },
+    "seed": 42,
+    "policy_tag": "region_on_hx0p3_hy0p1__to__region_off_unrestricted",
+    "policy_label": "Route delta: unrestricted - constrained",
+    "maint_mode": "DQN",
+    "maint_mode_tag": "maint_dqn",
+    "route_delta_direction": "unrestricted_minus_constrained",
+    "delta_tard": -141.5292751348911,
+    "delta_maint": -800.0,
+    "delta_total": -941.5292751348912,
+    "delta_overdue_ratio": -0.021505376344086023,
+    "delta_dispatch_count": 0,
+    "delta_makespan": -52.443839818394736
+  },
+  {
+    "primary_mode": "CONSTRAINED",
+    "compare_mode": "UNRESTRICTED",
+    "compare_type": "maint_only_route_compare",
+    "train_policy_tag": "region_on_hx0p3_hy0p1",
+    "eval_policy_tag": "region_off_unrestricted",
+    "scheduler_anchor": "DQN",
+    "primary_action_counts": {
+      "DN": 0,
+      "IM": 0,
+      "CM": 0
+    },
+    "compare_action_counts": {
+      "DN": 0,
+      "IM": 0,
+      "CM": 0
+    },
+    "decision_union_count": 0,
+    "decision_aligned_count": 0,
+    "divergence_count": 0,
+    "divergence_rate": 0.0,
+    "missing_on_primary": 0,
+    "missing_on_compare": 0,
+    "missing_on_pomcp": 0,
+    "missing_on_dqn": 0,
+    "primary_metrics": {
+      "tard": 142.85056468167093,
+      "maint": 800.0,
+      "total": 942.8505646816709,
+      "overdue_ratio": 0.035842293906810034
+    },
+    "compare_metrics": {
+      "tard": 167.36133168341658,
+      "maint": 0.0,
+      "total": 167.36133168341658,
+      "overdue_ratio": 0.035842293906810034
+    },
+    "delta_compare_minus_primary": {
+      "tard": 24.51076700174565,
+      "maint": -800.0,
+      "total": -775.4892329982544,
+      "overdue_ratio": 0.0
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0
+      },
+      "rule_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      },
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0
+      },
+      "rule_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      },
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "seed": 42,
+    "policy_tag": "region_on_hx0p3_hy0p1__to__region_off_unrestricted",
+    "policy_label": "Route delta: unrestricted - constrained",
+    "maint_mode": "DQN",
+    "maint_mode_tag": "maint_dqn",
+    "route_delta_direction": "unrestricted_minus_constrained",
+    "delta_tard": 24.51076700174565,
+    "delta_maint": -800.0,
+    "delta_total": -775.4892329982544,
+    "delta_overdue_ratio": 0.0,
+    "delta_dispatch_count": 0,
+    "delta_makespan": 0.0
+  },
+  {
+    "primary_mode": "CONSTRAINED",
+    "compare_mode": "UNRESTRICTED",
+    "compare_type": "full_system_route_compare",
+    "train_policy_tag": "region_on_hx0p3_hy0p1",
+    "eval_policy_tag": "region_off_unrestricted",
+    "scheduler_anchor": "none",
+    "primary_action_counts": {
+      "DN": 271,
+      "IM": 1,
+      "CM": 7
+    },
+    "compare_action_counts": {
+      "DN": 163,
+      "IM": 108,
+      "CM": 5
+    },
+    "decision_union_count": 303,
+    "decision_aligned_count": 252,
+    "divergence_count": 156,
+    "divergence_rate": 0.5148514851485149,
+    "missing_on_primary": 24,
+    "missing_on_compare": 27,
+    "missing_on_pomcp": 0,
+    "missing_on_dqn": 0,
+    "primary_metrics": {
+      "tard": 264.1457813789889,
+      "maint": 754.4023743741027,
+      "total": 1018.5481557530916,
+      "overdue_ratio": 0.05734767025089606
+    },
+    "compare_metrics": {
+      "tard": 206.03372551264818,
+      "maint": 1928.02454810364,
+      "total": 2134.0582736162883,
+      "overdue_ratio": 0.035842293906810034
+    },
+    "delta_compare_minus_primary": {
+      "tard": -58.11205586634071,
+      "maint": 1173.6221737295373,
+      "total": 1115.5101178631967,
+      "overdue_ratio": -0.021505376344086023
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 125,
+        "1": 37,
+        "2": 62,
+        "3": 55
+      },
+      "rule_counts": {
+        "0": 65,
+        "1": 38,
+        "2": 17,
+        "3": 106,
+        "4": 4,
+        "5": 49
+      },
+      "dispatch_count": 279,
+      "scheduling_events": 279,
+      "breakdown_count": 0,
+      "makespan": 3839.7199246847963
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 199,
+        "1": 16,
+        "2": 49,
+        "3": 15
+      },
+      "rule_counts": {
+        "0": 30,
+        "1": 34,
+        "2": 126,
+        "3": 40,
+        "4": 31,
+        "5": 18
+      },
+      "dispatch_count": 279,
+      "scheduling_events": 279,
+      "breakdown_count": 0,
+      "makespan": 3784.8522480850206
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": -54.86767659977568
+    },
+    "seed": 42,
+    "policy_tag": "region_on_hx0p3_hy0p1__to__region_off_unrestricted",
+    "policy_label": "Route delta: unrestricted - constrained",
+    "maint_mode": "POMCP",
+    "maint_mode_tag": "maint_pomcp",
+    "route_delta_direction": "unrestricted_minus_constrained",
+    "delta_tard": -58.11205586634071,
+    "delta_maint": 1173.6221737295373,
+    "delta_total": 1115.5101178631967,
+    "delta_overdue_ratio": -0.021505376344086023,
+    "delta_dispatch_count": 0,
+    "delta_makespan": -54.86767659977568
+  },
+  {
+    "primary_mode": "CONSTRAINED",
+    "compare_mode": "UNRESTRICTED",
+    "compare_type": "maint_only_route_compare",
+    "train_policy_tag": "region_on_hx0p3_hy0p1",
+    "eval_policy_tag": "region_off_unrestricted",
+    "scheduler_anchor": "DQN",
+    "primary_action_counts": {
+      "DN": 0,
+      "IM": 0,
+      "CM": 0
+    },
+    "compare_action_counts": {
+      "DN": 0,
+      "IM": 0,
+      "CM": 0
+    },
+    "decision_union_count": 0,
+    "decision_aligned_count": 0,
+    "divergence_count": 0,
+    "divergence_rate": 0.0,
+    "missing_on_primary": 0,
+    "missing_on_compare": 0,
+    "missing_on_pomcp": 0,
+    "missing_on_dqn": 0,
+    "primary_metrics": {
+      "tard": 170.76739857230407,
+      "maint": 820.231661567452,
+      "total": 990.999060139756,
+      "overdue_ratio": 0.043010752688172046
+    },
+    "compare_metrics": {
+      "tard": 462.1349972362027,
+      "maint": 2225.44282749515,
+      "total": 2687.577824731353,
+      "overdue_ratio": 0.08602150537634409
+    },
+    "delta_compare_minus_primary": {
+      "tard": 291.36759866389866,
+      "maint": 1405.2111659276982,
+      "total": 1696.5787645915968,
+      "overdue_ratio": 0.043010752688172046
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0
+      },
+      "rule_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      },
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0
+      },
+      "rule_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      },
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "seed": 42,
+    "policy_tag": "region_on_hx0p3_hy0p1__to__region_off_unrestricted",
+    "policy_label": "Route delta: unrestricted - constrained",
+    "maint_mode": "POMCP",
+    "maint_mode_tag": "maint_pomcp",
+    "route_delta_direction": "unrestricted_minus_constrained",
+    "delta_tard": 291.36759866389866,
+    "delta_maint": 1405.2111659276982,
+    "delta_total": 1696.5787645915968,
+    "delta_overdue_ratio": 0.043010752688172046,
+    "delta_dispatch_count": 0,
+    "delta_makespan": 0.0
+  }
+]

@@ -1,0 +1,2 @@
+primary_mode,compare_mode,compare_type,train_policy_tag,eval_policy_tag,scheduler_anchor,divergence_count,decision_union_count,divergence_rate,primary_tard,compare_tard,primary_maint,compare_maint,primary_total,compare_total,primary_overdue_ratio,compare_overdue_ratio,primary_dispatch_count,compare_dispatch_count,primary_makespan,compare_makespan
+DQN,POMCP,maint_only,region_on_hx0p3_hy0p1,region_on_hx0p3_hy0p1,DQN,0,0,0.0,142.85056468167093,170.76739857230407,800.0,820.231661567452,942.8505646816709,990.999060139756,0.035842293906810034,0.043010752688172046,0,0,0.0,0.0

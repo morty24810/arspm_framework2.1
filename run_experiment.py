@@ -78,6 +78,18 @@ def build_policy_label(cfg: SimConfig, enforce_region: bool) -> str:
         return f"Policy: Region constrained (Hx={cfg.Hx:.1f}, Hy={cfg.Hy:.1f})"
     return "Policy: Unrestricted (no Hx/Hy enforcement)"
 
+def resolve_train_policy_route(route_name: str, cfg: SimConfig) -> Tuple[str, bool, str, str]:
+    route = str(route_name).strip().lower()
+    if route in ("region_on", "on", "constrained"):
+        enforce_region = True
+        policy_tag = build_policy_tag(cfg, True)
+        return "region_on", enforce_region, policy_tag, build_policy_label(cfg, True)
+    if route in ("region_off", "off", "unrestricted"):
+        enforce_region = False
+        policy_tag = build_policy_tag(cfg, False)
+        return "region_off", enforce_region, policy_tag, build_policy_label(cfg, False)
+    raise ValueError(f"unsupported train policy route: {route_name}")
+
 def build_maint_mode_tag(maint_mode: str) -> str:
     return f"maint_{str(maint_mode).lower()}"
 
@@ -115,11 +127,15 @@ def compute_window(risk_t: float, local_urgency: float, t_now: float, cfg: SimCo
 
 def maintenance_reward(action: int, dur: float, local_urgency: float, risk_t: float,
                        window_violation: bool, cfg: SimConfig) -> float:
-    time_cost = cfg.W_TIME * (dur * local_urgency)
-    mat_cost = cfg.W_MAT * material_cost(action, cfg)
-    risk_cost = cfg.W_RISK * risk_t
+    downtime_cost = float(dur) * float(local_urgency)
+    maint_cost = 0.0
+    if action == 1:
+        maint_cost = float(cfg.IM_COST) * float(dur)
+    elif action == 2:
+        maint_cost = float(cfg.CM_COST) * float(dur)
+    risk_cost = float(cfg.W_RISK) * float(risk_t) if int(action) == 0 else 0.0
     violation = cfg.W_WINDOW_VIOLATION if window_violation else 0.0
-    return -(time_cost + mat_cost + risk_cost + violation)
+    return -(downtime_cost + maint_cost + risk_cost + violation)
 
 def scheduling_reward(goal: int, tard, maint, prev_tard, prev_maint):
     # incremental rewards, 4 goals
@@ -1056,7 +1072,9 @@ def _make_maint_agent(cfg: SimConfig, seed: int, device) -> MaintenanceAgentDDQN
     return MaintenanceAgentDDQN(state_dim=17, cfg=cfg, rng=make_rng(seed, "maint_agent"), device=device)
 
 
-def _build_run_record(seed: int, mode: str, policy_tag: str, final_result: Dict[str, Any]) -> Dict[str, Any]:
+def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_tag: str,
+                      final_result: Dict[str, Any], compare_type: str = "full_system",
+                      scheduler_anchor: str = "none") -> Dict[str, Any]:
     decision_log = list(final_result.get("decision_log", []))
     maint_counts = summarize_action_counts(extract_maintenance_rows(decision_log), key="kind", values=["DN", "IM", "CM"])
     schedule_summary = summarize_scheduling_strategy(decision_log)
@@ -1064,7 +1082,11 @@ def _build_run_record(seed: int, mode: str, policy_tag: str, final_result: Dict[
         "seed": int(seed),
         "maint_mode": str(mode),
         "maint_mode_tag": build_maint_mode_tag(mode),
-        "policy_tag": policy_tag,
+        "policy_tag": eval_policy_tag,
+        "train_policy_tag": train_policy_tag,
+        "eval_policy_tag": eval_policy_tag,
+        "compare_type": compare_type,
+        "scheduler_anchor": scheduler_anchor,
         "policy_label": final_result["policy_label"],
         "tard": float(final_result["metrics"]["tard"]),
         "maint": float(final_result["metrics"]["maint"]),
@@ -1132,6 +1154,100 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
         writer.writerows(csv_rows)
 
 
+def _make_eval_result(metrics: Dict[str, Any], env, overdue_stats: Dict[str, Any],
+                      policy_label: str, enforce_region: bool,
+                      train_policy_tag: str, eval_policy_tag: str,
+                      compare_type: str = "full_system",
+                      scheduler_anchor: str = "none") -> Dict[str, Any]:
+    return {
+        "metrics": metrics,
+        "env": env,
+        "overdue": overdue_stats,
+        "policy_label": policy_label,
+        "enforce_region": bool(enforce_region),
+        "train_policy_tag": train_policy_tag,
+        "eval_policy_tag": eval_policy_tag,
+        "compare_type": compare_type,
+        "scheduler_anchor": scheduler_anchor,
+        "decision_log": list(getattr(env, "last_decision_log", [])),
+    }
+
+
+def _finalize_compare_summary(summary: Dict[str, Any], **extra: Any) -> Dict[str, Any]:
+    finalized = dict(summary)
+    finalized.update(extra)
+    delta_metrics = finalized.get("delta_compare_minus_primary", {}) or {}
+    delta_schedule = finalized.get("delta_schedule_summary", {}) or {}
+    finalized["delta_tard"] = float(delta_metrics.get("tard", 0.0))
+    finalized["delta_maint"] = float(delta_metrics.get("maint", 0.0))
+    finalized["delta_total"] = float(delta_metrics.get("total", 0.0))
+    finalized["delta_overdue_ratio"] = float(delta_metrics.get("overdue_ratio", 0.0))
+    finalized["delta_dispatch_count"] = int(delta_schedule.get("dispatch_count", 0))
+    finalized["delta_makespan"] = float(delta_schedule.get("makespan", 0.0))
+    return finalized
+
+
+def evaluate_maint_only_results(base_cfg: SimConfig, seed: int, degr: DegradationReplay,
+                                rul: RULPredictorWrapper, scenario_bank: ScenarioBank,
+                                train_policy_tag: str, train_enforce_region: bool,
+                                sched_agent: THDQNAgent,
+                                dqn_maint_agent: Optional[MaintenanceAgentDDQN]) -> Dict[str, Dict[str, Any]]:
+    final_scenario = scenario_bank.final_eval_scenario
+    results: Dict[str, Dict[str, Any]] = {}
+    for maint_mode in ("DQN", "POMCP"):
+        if maint_mode == "DQN" and dqn_maint_agent is None:
+            continue
+        eval_cfg = copy.deepcopy(base_cfg)
+        eval_cfg.SEED = int(seed)
+        eval_cfg.MAINT_MODE = maint_mode
+        eval_cfg.BASE_DEGRADATION_RATE = float(final_scenario.degradation_rate)
+        eval_cfg.ENFORCE_REGION_POLICY = bool(train_enforce_region)
+        policy_label = (
+            f"{build_policy_context_label(eval_cfg, train_enforce_region, maint_mode)} | "
+            "Compare: maint_only | Scheduler anchor: DQN"
+        )
+        eval_pomcp = (
+            POMCPPlanner(
+                num_actions=3,
+                gamma=eval_cfg.GAMMA,
+                c_ucb=eval_cfg.POMCP_UCB_C,
+                rng=make_rng(seed, train_policy_tag, "maint_only", maint_mode, "pomcp"),
+            )
+            if maint_mode == "POMCP" else None
+        )
+        metrics, env, overdue_stats = evaluate_once(
+            eval_cfg,
+            make_rng(seed, train_policy_tag, "maint_only", maint_mode, "root"),
+            degr,
+            rul,
+            sched_agent,
+            dqn_maint_agent if maint_mode == "DQN" else None,
+            maint_mode,
+            eval_pomcp,
+            final_scenario.machine_curve_ids,
+            generate_outputs=False,
+            freeze_steps=True,
+            policy_label=policy_label,
+            threshold_enforced=train_enforce_region,
+            scenario=final_scenario,
+            env_rng=make_rng(seed, train_policy_tag, "maint_only", maint_mode, "env_breakdown"),
+            rul_obs_rng=make_rng(seed, train_policy_tag, "maint_only", maint_mode, "env_obs"),
+            belief_rng=make_rng(seed, train_policy_tag, "maint_only", maint_mode, "belief"),
+        )
+        results[maint_mode] = _make_eval_result(
+            metrics,
+            env,
+            overdue_stats,
+            policy_label,
+            train_enforce_region,
+            train_policy_tag,
+            train_policy_tag,
+            compare_type="maint_only",
+            scheduler_anchor="DQN",
+        )
+    return results
+
+
 def train_one_mode(
     base_cfg: SimConfig,
     mode: str,
@@ -1143,13 +1259,15 @@ def train_one_mode(
     outdir: Path,
     ckpt_dir: Path,
     ts: str,
+    train_enforce_region: bool,
+    train_policy_tag: str,
 ) -> Dict[str, Any]:
     cfg = copy.deepcopy(base_cfg)
     cfg.SEED = int(seed)
     cfg.MAINT_MODE = str(mode).upper()
     cfg.CKPT_DIR = str(ckpt_dir)
-    cfg.ENFORCE_REGION_POLICY = True
-    set_seed(derive_seed(seed, "global_init"))
+    cfg.ENFORCE_REGION_POLICY = bool(train_enforce_region)
+    set_seed(derive_seed(seed, train_policy_tag, mode, "global_init"))
 
     sched_agent = _make_scheduler_agent(cfg, seed, device)
     maint_agent = _make_maint_agent(cfg, seed, device) if cfg.MAINT_MODE == "DQN" else None
@@ -1169,13 +1287,18 @@ def train_one_mode(
     for ep, scenario in enumerate(scenario_bank.train_scenarios):
         ep_num = ep + 1
         cfg.BASE_DEGRADATION_RATE = float(scenario.degradation_rate)
-        env_breakdown_rng = make_rng(seed, "train", ep_num, "env_breakdown")
-        env_obs_rng = make_rng(seed, "train", ep_num, "env_obs")
-        belief_rng = make_rng(seed, mode, "train", ep_num, "belief")
+        env_breakdown_rng = make_rng(seed, train_policy_tag, mode, "train", ep_num, "env_breakdown")
+        env_obs_rng = make_rng(seed, train_policy_tag, mode, "train", ep_num, "env_obs")
+        belief_rng = make_rng(seed, train_policy_tag, mode, "train", ep_num, "belief")
         env = EventDrivenShopEnv(cfg, env_breakdown_rng, degr, rul, breakdown_rng=env_breakdown_rng, obs_rng=env_obs_rng)
         env.reset(machine_curve_ids=scenario.machine_curve_ids, scenario=scenario)
         episode_pomcp = (
-            POMCPPlanner(num_actions=3, gamma=cfg.GAMMA, c_ucb=cfg.POMCP_UCB_C, rng=make_rng(seed, mode, "train", ep_num, "pomcp"))
+            POMCPPlanner(
+                num_actions=3,
+                gamma=cfg.GAMMA,
+                c_ucb=cfg.POMCP_UCB_C,
+                rng=make_rng(seed, train_policy_tag, mode, "train", ep_num, "pomcp"),
+            )
             if cfg.MAINT_MODE == "POMCP" else None
         )
 
@@ -1184,15 +1307,17 @@ def train_one_mode(
         slack_samples = []
         pressure_samples = []
         maint_counts = {0: 0, 1: 0, 2: 0}
-        maint_intervals = []
+        slack_action_counts = [[0, 0, 0] for _ in range(max(len(cfg.SLACK_PRESSURE_BINS) - 1, 1))]
+        eta_action_counts = [[0, 0, 0] for _ in range(max(len(cfg.ETA_BINS) - 1, 1))]
+        h_action_counts = [[0, 0, 0] for _ in range(max(len(cfg.H_BINS) - 1, 1))]
         urgency_action_vals = {0: [], 1: [], 2: []}
+        maint_intervals = []
         last_maint_time = None
         pending_maint = {}
-        slack_action_counts = [[0, 0, 0] for _ in range(len(cfg.SLACK_PRESSURE_BINS) - 1)]
-        eta_action_counts = [[0, 0, 0] for _ in range(len(cfg.ETA_BINS) - 1)]
-        h_action_counts = [[0, 0, 0] for _ in range(len(cfg.H_BINS) - 1)]
         pomcp_beliefs = {m.mid: [] for m in env.machines}
-        enforce_region_train = bool(getattr(cfg, "ENFORCE_REGION_POLICY", True))
+        last_env = env
+
+        enforce_region_train = bool(train_enforce_region)
 
         while not env.done():
             done_flag, etype, payload = env.step_until_decision()
@@ -1426,95 +1551,70 @@ def train_one_mode(
                 g, rule = sched_agent.act(S, explore=True)
                 env.rule_log.append((env.time, S.copy(), int(g), int(rule)))
                 dispatched = env.dispatch(rule)
-                if dispatched:
-                    tard, maint = env.compute_costs()
-                    r_s = scheduling_reward(g, tard, maint, prev_tard, prev_maint)
-                    prev_tard, prev_maint = tard, maint
-                    Sp = env.get_global_features()
-                    sched_agent.buf_h.add(S, g, r_s, Sp, 0.0)
-                    sg = np.concatenate([S, np.eye(4, dtype=np.float32)[g]], axis=0)
-                    sgp = np.concatenate([Sp, np.eye(4, dtype=np.float32)[g]], axis=0)
-                    sched_agent.buf_l.add(sg, rule, r_s, sgp, 0.0)
-                    sched_agent.learn()
+                tard, maint = env.compute_costs()
+                r_s = scheduling_reward(g, tard, maint, prev_tard, prev_maint)
+                prev_tard, prev_maint = tard, maint
+                S2 = env.get_global_features()
+                sched_agent.buf_h.add(S, g, r_s, S2, 0.0)
+                sg = np.concatenate([S, sched_agent._onehot_goal(g)], axis=0).astype(np.float32)
+                sg2 = np.concatenate([S2, sched_agent._onehot_goal(g)], axis=0).astype(np.float32)
+                sched_agent.buf_l.add(sg, rule, r_s, sg2, 0.0)
+                sched_agent.learn()
 
         tard, maint = env.compute_costs()
         ep_tard.append(float(tard))
         ep_maint.append(float(maint))
-        last_env = env
-        if ep_num % 20 == 0:
-            print(f"[seed {seed}][{build_maint_mode_tag(mode)}] ep {ep_num}/{cfg.TRAIN_EPISODES} tard={tard:.1f} maint={maint:.1f} events={len(env.timeline_ops)}")
-        if ep_num % cfg.DIAG_EVERY == 0:
+        total_maint = max(sum(maint_counts.values()), 1)
+        ep_dn_rate.append(maint_counts.get(0, 0) / total_maint)
+        ep_im_rate.append(maint_counts.get(1, 0) / total_maint)
+        ep_cm_rate.append(maint_counts.get(2, 0) / total_maint)
+        ep_avg_im.append(np.mean([m.total_im_count for m in env.machines]))
+        print(f"[seed {seed}][{train_policy_tag}][{build_maint_mode_tag(mode)}] ep {ep_num}/{cfg.TRAIN_EPISODES} tard={tard:.1f} maint={maint:.1f} events={len(env.timeline_ops)}")
+
+        if cfg.DIAG_EVERY > 0 and ep_num % cfg.DIAG_EVERY == 0:
             if slack_samples:
-                slack_q = np.quantile(slack_samples, [0.1, 0.5, 0.9])
-                press_q = np.quantile(pressure_samples, [0.1, 0.5, 0.9]) if pressure_samples else [0.0, 0.0, 0.0]
+                qs = np.quantile(np.array(slack_samples, dtype=np.float64), [0.1, 0.5, 0.9])
+                ps = np.quantile(np.array(pressure_samples, dtype=np.float64), [0.1, 0.5, 0.9])
                 print(
-                    f"diag [{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: avg_slack_q10/50/90="
-                    f"{slack_q[0]:.1f}/{slack_q[1]:.1f}/{slack_q[2]:.1f} "
-                    f"slack_pressure_q10/50/90="
-                    f"{press_q[0]:.2f}/{press_q[1]:.2f}/{press_q[2]:.2f} "
+                    f"diag [{train_policy_tag}][{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: avg_slack_q10/50/90="
+                    f"{qs[0]:.1f}/{qs[1]:.1f}/{qs[2]:.1f} pressure_q10/50/90={ps[0]:.2f}/{ps[1]:.2f}/{ps[2]:.2f} "
                     f"maint DN/IM/CM={maint_counts.get(0,0)}/{maint_counts.get(1,0)}/{maint_counts.get(2,0)}"
                 )
-                if slack_action_counts:
-                    for i, cnt in enumerate(slack_action_counts):
-                        total = sum(cnt)
-                        if total == 0:
+                for bins, counts, name in (
+                    (cfg.SLACK_PRESSURE_BINS, slack_action_counts, "slack_bin"),
+                    (cfg.ETA_BINS, eta_action_counts, "eta_bin"),
+                    (cfg.H_BINS, h_action_counts, "h_bin"),
+                ):
+                    for i in range(len(counts)):
+                        total = sum(counts[i])
+                        if total <= 0:
                             continue
-                        rates = [c / total for c in cnt]
-                        lo = cfg.SLACK_PRESSURE_BINS[i]
-                        hi = cfg.SLACK_PRESSURE_BINS[i + 1]
-                        print(f"diag [{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: slack_bin[{lo:.2f},{hi:.2f}) DN/IM/CM={rates[0]:.2f}/{rates[1]:.2f}/{rates[2]:.2f}")
-                if eta_action_counts:
-                    for i, cnt in enumerate(eta_action_counts):
-                        total = sum(cnt)
-                        if total == 0:
-                            continue
-                        rates = [c / total for c in cnt]
-                        lo = cfg.ETA_BINS[i]
-                        hi = cfg.ETA_BINS[i + 1]
-                        print(f"diag [{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: eta_bin[{lo:.1f},{hi:.1f}) DN/IM/CM={rates[0]:.2f}/{rates[1]:.2f}/{rates[2]:.2f}")
-                if h_action_counts:
-                    for i, cnt in enumerate(h_action_counts):
-                        total = sum(cnt)
-                        if total == 0:
-                            continue
-                        rates = [c / total for c in cnt]
-                        lo = cfg.H_BINS[i]
-                        hi = cfg.H_BINS[i + 1]
-                        print(f"diag [{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: h_bin[{lo:.2f},{hi:.2f}) DN/IM/CM={rates[0]:.2f}/{rates[1]:.2f}/{rates[2]:.2f}")
+                        lo = bins[i]
+                        hi = bins[i + 1]
+                        rates = [c / total for c in counts[i]]
+                        print(f"diag [{train_policy_tag}][{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: {name}[{lo:.2f},{hi:.2f}) DN/IM/CM={rates[0]:.2f}/{rates[1]:.2f}/{rates[2]:.2f}")
+                avg_gap = float(np.mean(maint_intervals)) if maint_intervals else 0.0
+                avg_urg = [float(np.mean(urgency_action_vals[a])) if urgency_action_vals[a] else 0.0 for a in (0, 1, 2)]
                 if maint_intervals:
-                    avg_gap = float(np.mean(maint_intervals))
-                    print(f"diag [{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: avg_time_between_maint={avg_gap:.1f}")
-                if any(urgency_action_vals[a] for a in urgency_action_vals):
-                    avg_urg = {a: (float(np.mean(v)) if v else 0.0) for a, v in urgency_action_vals.items()}
-                    print(f"diag [{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: avg_local_urgency DN/IM/CM={avg_urg[0]:.2f}/{avg_urg[1]:.2f}/{avg_urg[2]:.2f}")
+                    print(f"diag [{train_policy_tag}][{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: avg_time_between_maint={avg_gap:.1f}")
+                print(f"diag [{train_policy_tag}][{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: avg_local_urgency DN/IM/CM={avg_urg[0]:.2f}/{avg_urg[1]:.2f}/{avg_urg[2]:.2f}")
             else:
-                print(f"diag [{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: no slack samples")
-
-        total_actions = maint_counts.get(0, 0) + maint_counts.get(1, 0) + maint_counts.get(2, 0)
-        if total_actions > 0:
-            ep_dn_rate.append(maint_counts.get(0, 0) / total_actions)
-            ep_im_rate.append(maint_counts.get(1, 0) / total_actions)
-            ep_cm_rate.append(maint_counts.get(2, 0) / total_actions)
-            ep_avg_im.append(0.0)
-        else:
-            ep_dn_rate.append(0.0)
-            ep_im_rate.append(0.0)
-            ep_cm_rate.append(0.0)
-            ep_avg_im.append(0.0)
+                print(f"diag [{train_policy_tag}][{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: no slack samples")
 
         saved_latest = False
         if cfg.EVAL_EVERY > 0 and ep_num in scenario_bank.periodic_eval_scenarios:
             eval_cfg = copy.deepcopy(cfg)
             eval_cfg.BASE_DEGRADATION_RATE = base_degrad
-            eval_cfg.ENFORCE_REGION_POLICY = True
+            eval_cfg.ENFORCE_REGION_POLICY = bool(train_enforce_region)
             eval_scenario = scenario_bank.periodic_eval_scenarios[ep_num]
             eval_pomcp = (
-                POMCPPlanner(num_actions=3, gamma=cfg.GAMMA, c_ucb=cfg.POMCP_UCB_C, rng=make_rng(seed, mode, "periodic_eval", ep_num, "pomcp"))
+                POMCPPlanner(num_actions=3, gamma=cfg.GAMMA, c_ucb=cfg.POMCP_UCB_C,
+                             rng=make_rng(seed, train_policy_tag, mode, "periodic_eval", ep_num, "pomcp"))
                 if cfg.MAINT_MODE == "POMCP" else None
             )
             eval_metrics, _, _ = evaluate_once(
                 eval_cfg,
-                make_rng(seed, mode, "periodic_eval", ep_num, "root"),
+                make_rng(seed, train_policy_tag, mode, "periodic_eval", ep_num, "root"),
                 degr,
                 rul,
                 sched_agent,
@@ -1524,143 +1624,218 @@ def train_one_mode(
                 eval_scenario.machine_curve_ids,
                 generate_outputs=False,
                 freeze_steps=True,
+                threshold_enforced=train_enforce_region,
                 scenario=eval_scenario,
-                env_rng=make_rng(seed, "periodic_eval", ep_num, "env_breakdown"),
-                rul_obs_rng=make_rng(seed, "periodic_eval", ep_num, "env_obs"),
-                belief_rng=make_rng(seed, mode, "periodic_eval", ep_num, "belief"),
+                env_rng=make_rng(seed, train_policy_tag, mode, "periodic_eval", ep_num, "env_breakdown"),
+                rul_obs_rng=make_rng(seed, train_policy_tag, mode, "periodic_eval", ep_num, "env_obs"),
+                belief_rng=make_rng(seed, train_policy_tag, mode, "periodic_eval", ep_num, "belief"),
             )
             eval_metrics["episode"] = ep_num
-            ckpt_mgr.append_metrics(eval_metrics, derive_seed(seed, "periodic_eval", ep_num))
-            env_state = {
-                "slack_scale": env.slack_scale,
-                "last_slack_pressure": env.last_slack_pressure,
-            }
-            ckpt_mgr.maybe_save_best(
-                sched_agent, maint_agent, env.observer, env_state, eval_metrics,
-                step_info={"episode": ep_num, "phase": "eval"},
-            )
-            if cfg.SAVE_EVERY > 0 and ep_num % cfg.SAVE_EVERY == 0:
-                ckpt_mgr.save_latest(
-                    sched_agent, maint_agent, env.observer, env_state, eval_metrics,
-                    step_info={"episode": ep_num, "phase": "eval"},
-                )
-                saved_latest = True
-        if cfg.SAVE_EVERY > 0 and ep_num % cfg.SAVE_EVERY == 0 and not saved_latest:
-            train_metrics = {
-                "episode": ep_num,
-                "tard": float(tard),
-                "maint": float(maint),
-                "total": float(tard + maint),
-            }
+            ckpt_mgr.append_metrics(eval_metrics, seed)
             env_state = {
                 "slack_scale": env.slack_scale,
                 "last_slack_pressure": env.last_slack_pressure,
             }
             ckpt_mgr.save_latest(
-                sched_agent, maint_agent, env.observer, env_state, train_metrics,
-                step_info={"episode": ep_num, "phase": "train"},
+                sched_agent, maint_agent, env.observer, env_state, eval_metrics,
+                step_info={"episode": ep_num, "phase": "periodic_eval", "train_policy_tag": train_policy_tag},
             )
-        if cfg.EARLY_STOP_ENABLED and len(ep_tard) >= 2 * cfg.EARLY_STOP_WINDOW:
-            w = cfg.EARLY_STOP_WINDOW
-            total = np.array(ep_tard, dtype=np.float32) + np.array(ep_maint, dtype=np.float32)
-            prev = float(np.mean(total[-2 * w:-w]))
-            curr = float(np.mean(total[-w:]))
-            rel = abs(curr - prev) / max(abs(prev), cfg.EARLY_STOP_EPS)
-            if rel <= cfg.EARLY_STOP_REL_TOL:
-                stable_count += 1
-            else:
-                stable_count = 0
-            if stable_count >= cfg.EARLY_STOP_PATIENCE:
-                stop_ep = ep_num
-                print(f"[seed {seed}][{build_maint_mode_tag(mode)}] early stop at ep {stop_ep}: rel_change={rel:.4f}, window={w}")
-                break
+            saved_latest = True
+            ckpt_mgr.maybe_save_best(
+                sched_agent, maint_agent, env.observer, env_state, eval_metrics,
+                step_info={"episode": ep_num, "phase": "periodic_eval", "train_policy_tag": train_policy_tag},
+            )
+
+        if not saved_latest and ep_num % cfg.SAVE_EVERY == 0:
+            env_state = {
+                "slack_scale": env.slack_scale,
+                "last_slack_pressure": env.last_slack_pressure,
+            }
+            metrics = {"episode": ep_num, "tard": float(tard), "maint": float(maint), "total": float(tard + maint)}
+            ckpt_mgr.save_latest(
+                sched_agent, maint_agent, env.observer, env_state, metrics,
+                step_info={"episode": ep_num, "phase": "train", "train_policy_tag": train_policy_tag},
+            )
+
+        if bool(getattr(cfg, "EARLY_STOP_ENABLED", False)) and len(ep_tard) >= int(getattr(cfg, "EARLY_STOP_WINDOW", 10)):
+            w = int(getattr(cfg, "EARLY_STOP_WINDOW", 10))
+            recent = np.array(ep_tard[-w:], dtype=np.float64) + np.array(ep_maint[-w:], dtype=np.float64)
+            left = recent[: max(1, w // 2)]
+            right = recent[max(1, w // 2):]
+            if left.size > 0 and right.size > 0:
+                left_mean = float(np.mean(left))
+                right_mean = float(np.mean(right))
+                denom = max(abs(left_mean), float(getattr(cfg, "EARLY_STOP_EPS", 1e-6)))
+                rel = abs(right_mean - left_mean) / denom
+                if rel <= float(getattr(cfg, "EARLY_STOP_REL_TOL", 0.01)):
+                    stable_count += 1
+                else:
+                    stable_count = 0
+                if stable_count >= int(getattr(cfg, "EARLY_STOP_PATIENCE", 5)):
+                    stop_ep = ep_num
+                    print(f"[seed {seed}][{train_policy_tag}][{build_maint_mode_tag(mode)}] early stop at ep {stop_ep}: rel_change={rel:.4f}, window={w}")
+                    break
 
     cfg.BASE_DEGRADATION_RATE = base_degrad
-    final_results: Dict[str, Dict[str, Any]] = {}
     maint_mode_tag = build_maint_mode_tag(cfg.MAINT_MODE)
     final_scenario = scenario_bank.final_eval_scenario
-    for enforce_region in (True, False):
-        eval_cfg = copy.deepcopy(cfg)
-        eval_cfg.BASE_DEGRADATION_RATE = float(final_scenario.degradation_rate)
-        eval_cfg.ENFORCE_REGION_POLICY = enforce_region
-        policy_tag = build_policy_tag(eval_cfg, enforce_region)
-        policy_label = build_policy_context_label(eval_cfg, enforce_region, cfg.MAINT_MODE)
-        eval_pomcp = (
-            POMCPPlanner(num_actions=3, gamma=cfg.GAMMA, c_ucb=cfg.POMCP_UCB_C, rng=make_rng(seed, cfg.MAINT_MODE, "final_eval", policy_tag, "pomcp"))
+    eval_cfg = copy.deepcopy(cfg)
+    eval_cfg.BASE_DEGRADATION_RATE = float(final_scenario.degradation_rate)
+    eval_cfg.ENFORCE_REGION_POLICY = bool(train_enforce_region)
+    policy_label = build_policy_context_label(eval_cfg, train_enforce_region, cfg.MAINT_MODE)
+    eval_pomcp = (
+        POMCPPlanner(
+            num_actions=3,
+            gamma=cfg.GAMMA,
+            c_ucb=cfg.POMCP_UCB_C,
+            rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", "official", "pomcp"),
+        )
+        if cfg.MAINT_MODE == "POMCP" else None
+    )
+    eval_metrics, eval_env, overdue_stats = evaluate_once(
+        eval_cfg,
+        make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", "official", "root"),
+        degr,
+        rul,
+        sched_agent,
+        maint_agent,
+        cfg.MAINT_MODE,
+        eval_pomcp,
+        final_scenario.machine_curve_ids,
+        generate_outputs=True,
+        outdir=outdir,
+        plot_prefix=f"{ts}_{maint_mode_tag}_{train_policy_tag}",
+        decision_log_name=f"decision_log_{ts}_{maint_mode_tag}_{train_policy_tag}.csv",
+        freeze_steps=True,
+        policy_label=policy_label,
+        threshold_enforced=train_enforce_region,
+        scenario=final_scenario,
+        env_rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", "official", "env_breakdown"),
+        rul_obs_rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", "official", "env_obs"),
+        belief_rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", "official", "belief"),
+    )
+    official_result = _make_eval_result(
+        eval_metrics,
+        eval_env,
+        overdue_stats,
+        policy_label,
+        train_enforce_region,
+        train_policy_tag,
+        train_policy_tag,
+        compare_type="full_system",
+        scheduler_anchor="none",
+    )
+    summary_row = {
+        "timestamp": ts,
+        "seed": int(seed),
+        "policy_tag": train_policy_tag,
+        "train_policy_tag": train_policy_tag,
+        "eval_policy_tag": train_policy_tag,
+        "policy_label": policy_label,
+        "maint_mode_tag": maint_mode_tag,
+        "maint_mode": str(cfg.MAINT_MODE),
+        "compare_type": "full_system",
+        "scheduler_anchor": "none",
+        "enforce_region_policy": int(train_enforce_region),
+        "hx": float(eval_cfg.Hx),
+        "hy": float(eval_cfg.Hy),
+        "jobs_target": int(final_scenario.jobs_target),
+        "tard": float(eval_metrics["tard"]),
+        "maint": float(eval_metrics["maint"]),
+        "total": float(eval_metrics["total"]),
+        "overdue_ratio_ops": float(overdue_stats["ratio_ops"]),
+        "overdue_ratio_time": float(overdue_stats["ratio_time"]),
+        "overdue_ops": float(overdue_stats["overdue_ops"]),
+        "total_ops": float(overdue_stats["total_ops"]),
+    }
+    write_summary_files(outdir, f"summary_{ts}_{maint_mode_tag}_{train_policy_tag}", summary_row)
+
+    diagnostic_results: Dict[str, Dict[str, Any]] = {}
+    if bool(getattr(base_cfg, "ENABLE_OOD_DIAGNOSTIC_EVAL", False)):
+        diag_enforce = not bool(train_enforce_region)
+        diag_policy_tag = build_policy_tag(cfg, diag_enforce)
+        diag_cfg = copy.deepcopy(cfg)
+        diag_cfg.BASE_DEGRADATION_RATE = float(final_scenario.degradation_rate)
+        diag_cfg.ENFORCE_REGION_POLICY = diag_enforce
+        diag_label = f"{build_policy_context_label(diag_cfg, diag_enforce, cfg.MAINT_MODE)} | OOD diagnostic"
+        diag_pomcp = (
+            POMCPPlanner(
+                num_actions=3,
+                gamma=cfg.GAMMA,
+                c_ucb=cfg.POMCP_UCB_C,
+                rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", diag_policy_tag, "pomcp"),
+            )
             if cfg.MAINT_MODE == "POMCP" else None
         )
-        eval_metrics, eval_env, overdue_stats = evaluate_once(
-            eval_cfg,
-            make_rng(seed, cfg.MAINT_MODE, "final_eval", policy_tag, "root"),
+        diag_metrics, diag_env, diag_overdue = evaluate_once(
+            diag_cfg,
+            make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", diag_policy_tag, "root"),
             degr,
             rul,
             sched_agent,
             maint_agent,
             cfg.MAINT_MODE,
-            eval_pomcp,
+            diag_pomcp,
             final_scenario.machine_curve_ids,
             generate_outputs=True,
             outdir=outdir,
-            plot_prefix=f"{ts}_{maint_mode_tag}_{policy_tag}",
-            decision_log_name=f"decision_log_{ts}_{maint_mode_tag}_{policy_tag}.csv",
+            plot_prefix=f"{ts}_{maint_mode_tag}_{diag_policy_tag}_diagnostic",
+            decision_log_name=f"decision_log_{ts}_{maint_mode_tag}_{diag_policy_tag}_diagnostic.csv",
             freeze_steps=True,
-            policy_label=policy_label,
-            threshold_enforced=enforce_region,
+            policy_label=diag_label,
+            threshold_enforced=diag_enforce,
             scenario=final_scenario,
-            env_rng=make_rng(seed, "final_eval", policy_tag, "env_breakdown"),
-            rul_obs_rng=make_rng(seed, "final_eval", policy_tag, "env_obs"),
-            belief_rng=make_rng(seed, cfg.MAINT_MODE, "final_eval", policy_tag, "belief"),
+            env_rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", diag_policy_tag, "env_breakdown"),
+            rul_obs_rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", diag_policy_tag, "env_obs"),
+            belief_rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", diag_policy_tag, "belief"),
         )
-        final_results[policy_tag] = {
-            "metrics": eval_metrics,
-            "env": eval_env,
-            "overdue": overdue_stats,
-            "policy_label": policy_label,
-            "enforce_region": enforce_region,
-            "decision_log": list(getattr(eval_env, "last_decision_log", [])),
+        diagnostic_results[diag_policy_tag] = _make_eval_result(
+            diag_metrics,
+            diag_env,
+            diag_overdue,
+            diag_label,
+            diag_enforce,
+            train_policy_tag,
+            diag_policy_tag,
+            compare_type="ood_diagnostic",
+            scheduler_anchor="none",
+        )
+        diag_summary = {
+            **summary_row,
+            "policy_tag": diag_policy_tag,
+            "eval_policy_tag": diag_policy_tag,
+            "policy_label": diag_label,
+            "compare_type": "ood_diagnostic",
+            "enforce_region_policy": int(diag_enforce),
+            "tard": float(diag_metrics["tard"]),
+            "maint": float(diag_metrics["maint"]),
+            "total": float(diag_metrics["total"]),
+            "overdue_ratio_ops": float(diag_overdue["ratio_ops"]),
+            "overdue_ratio_time": float(diag_overdue["ratio_time"]),
+            "overdue_ops": float(diag_overdue["overdue_ops"]),
+            "total_ops": float(diag_overdue["total_ops"]),
         }
-        summary_row = {
-            "timestamp": ts,
-            "seed": int(seed),
-            "policy_tag": policy_tag,
-            "policy_label": policy_label,
-            "maint_mode_tag": maint_mode_tag,
-            "enforce_region_policy": int(enforce_region),
-            "hx": float(eval_cfg.Hx),
-            "hy": float(eval_cfg.Hy),
-            "jobs_target": int(final_scenario.jobs_target),
-            "maint_mode": str(cfg.MAINT_MODE),
-            "tard": float(eval_metrics["tard"]),
-            "maint": float(eval_metrics["maint"]),
-            "total": float(eval_metrics["total"]),
-            "overdue_ratio_ops": float(overdue_stats["ratio_ops"]),
-            "overdue_ratio_time": float(overdue_stats["ratio_time"]),
-            "overdue_ops": float(overdue_stats["overdue_ops"]),
-            "total_ops": float(overdue_stats["total_ops"]),
-        }
-        write_summary_files(outdir, f"summary_{ts}_{maint_mode_tag}_{policy_tag}", summary_row)
+        write_summary_files(outdir, f"summary_{ts}_{maint_mode_tag}_{diag_policy_tag}_diagnostic", diag_summary)
 
     plot_training_curves(ep_tard, ep_maint, str(outdir / f"training_curves_{ts}_{maint_mode_tag}.png"),
                          smooth_window=cfg.CURVE_SMOOTH_WINDOW, stop_ep=stop_ep)
     plot_maint_action_rates(ep_dn_rate, ep_im_rate, ep_cm_rate, str(outdir / f"maint_action_rates_{ts}_{maint_mode_tag}.png"),
                             avg_im_counts=ep_avg_im)
 
-    constrained_tag = build_policy_tag(cfg, True)
-    constrained = final_results[constrained_tag]
-    final_metrics = dict(constrained["metrics"])
+    final_metrics = dict(official_result["metrics"])
     final_metrics["episode"] = stop_ep or cfg.TRAIN_EPISODES
     ckpt_mgr.append_metrics(final_metrics, seed)
     env_state = {
-        "slack_scale": constrained["env"].slack_scale,
-        "last_slack_pressure": constrained["env"].last_slack_pressure,
+        "slack_scale": official_result["env"].slack_scale,
+        "last_slack_pressure": official_result["env"].last_slack_pressure,
     }
     ckpt_mgr.save_latest(
-        sched_agent, maint_agent, constrained["env"].observer, env_state, final_metrics,
-        step_info={"episode": final_metrics["episode"], "phase": "final_eval"},
+        sched_agent, maint_agent, official_result["env"].observer, env_state, final_metrics,
+        step_info={"episode": final_metrics["episode"], "phase": "final_eval", "train_policy_tag": train_policy_tag},
     )
     ckpt_mgr.maybe_save_best(
-        sched_agent, maint_agent, constrained["env"].observer, env_state, final_metrics,
-        step_info={"episode": final_metrics["episode"], "phase": "final_eval"},
+        sched_agent, maint_agent, official_result["env"].observer, env_state, final_metrics,
+        step_info={"episode": final_metrics["episode"], "phase": "final_eval", "train_policy_tag": train_policy_tag},
     )
     ckpt_mgr.ensure_best_exists()
 
@@ -1668,18 +1843,22 @@ def train_one_mode(
         "seed": int(seed),
         "maint_mode": cfg.MAINT_MODE,
         "maint_mode_tag": maint_mode_tag,
+        "train_policy_tag": train_policy_tag,
+        "train_enforce_region": bool(train_enforce_region),
         "outdir": outdir,
         "ckpt_dir": ckpt_dir,
-        "final_results": final_results,
+        "official_result": official_result,
+        "diagnostic_results": diagnostic_results,
         "stop_ep": stop_ep or cfg.TRAIN_EPISODES,
         "last_env": last_env,
+        "sched_agent": sched_agent,
+        "maint_agent": maint_agent,
     }
 
 
 def main():
     cfg = SimConfig()
     validate_region_thresholds(cfg)
-    cfg.ENFORCE_REGION_POLICY = True
     if torch.backends.mps.is_available():
         device = torch.device("mps")
     elif torch.cuda.is_available():
@@ -1698,79 +1877,205 @@ def main():
 
     experiment_seeds = [int(s) for s in getattr(cfg, "EXPERIMENT_SEEDS", (cfg.SEED,))]
     maint_modes = [str(m).upper() for m in getattr(cfg, "TRAIN_MAINT_MODES", ("DQN", "POMCP"))]
+    route_specs = [resolve_train_policy_route(route_name, cfg) for route_name in getattr(cfg, "TRAIN_POLICY_ROUTES", ("region_on", "region_off"))]
     all_result_rows: List[Dict[str, Any]] = []
     all_compare_rows: List[Dict[str, Any]] = []
 
     for seed in experiment_seeds:
         print(f"paired experiment seed={seed}")
         scenario_bank = build_scenario_bank(seed, cfg, degr, machine_curve_ids=base_machine_curve_ids)
-        seed_results: Dict[str, Dict[str, Any]] = {}
         seed_root = output_root / f"seed_{seed:04d}"
         seed_root.mkdir(parents=True, exist_ok=True)
-        for mode in maint_modes:
-            mode_tag = build_maint_mode_tag(mode)
-            mode_outdir = seed_root / mode_tag
-            mode_ckpt_dir = ckpt_root / f"seed_{seed:04d}" / mode_tag
-            mode_outdir.mkdir(parents=True, exist_ok=True)
-            mode_ckpt_dir.mkdir(parents=True, exist_ok=True)
-            run_result = train_one_mode(
-                cfg,
-                mode,
-                seed,
-                device,
-                degr,
-                rul,
-                scenario_bank,
-                mode_outdir,
-                mode_ckpt_dir,
-                ts,
-            )
-            seed_results[mode] = run_result
-            for policy_tag, final_result in run_result["final_results"].items():
-                all_result_rows.append(_build_run_record(seed, mode, policy_tag, final_result))
+        route_results: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        route_maint_only_results: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
-        if "DQN" in seed_results and "POMCP" in seed_results:
-            compare_dir = seed_root / "compare"
+        for route_name, train_enforce_region, train_policy_tag, train_policy_label in route_specs:
+            route_root = seed_root / f"train_{train_policy_tag}"
+            route_root.mkdir(parents=True, exist_ok=True)
+            route_results[train_policy_tag] = {}
+
+            for mode in maint_modes:
+                mode_tag = build_maint_mode_tag(mode)
+                mode_outdir = route_root / mode_tag
+                mode_ckpt_dir = ckpt_root / f"seed_{seed:04d}" / f"train_{train_policy_tag}" / mode_tag
+                mode_outdir.mkdir(parents=True, exist_ok=True)
+                mode_ckpt_dir.mkdir(parents=True, exist_ok=True)
+                run_result = train_one_mode(
+                    cfg,
+                    mode,
+                    seed,
+                    device,
+                    degr,
+                    rul,
+                    scenario_bank,
+                    mode_outdir,
+                    mode_ckpt_dir,
+                    ts,
+                    train_enforce_region=train_enforce_region,
+                    train_policy_tag=train_policy_tag,
+                )
+                route_results[train_policy_tag][mode] = run_result
+                all_result_rows.append(
+                    _build_run_record(
+                        seed,
+                        mode,
+                        train_policy_tag,
+                        train_policy_tag,
+                        run_result["official_result"],
+                        compare_type="full_system",
+                        scheduler_anchor="none",
+                    )
+                )
+
+            compare_dir = route_root / "compare"
             compare_dir.mkdir(parents=True, exist_ok=True)
-            for enforce_region in (True, False):
-                policy_tag = build_policy_tag(cfg, enforce_region)
-                if policy_tag not in seed_results["DQN"]["final_results"] or policy_tag not in seed_results["POMCP"]["final_results"]:
-                    continue
-                compare_summary, compare_rows = compare_mode_results(
-                    seed_results["DQN"]["final_results"][policy_tag],
-                    seed_results["POMCP"]["final_results"][policy_tag],
+            if "DQN" in route_results[train_policy_tag] and "POMCP" in route_results[train_policy_tag]:
+                full_compare_summary, full_compare_rows = compare_mode_results(
+                    route_results[train_policy_tag]["DQN"]["official_result"],
+                    route_results[train_policy_tag]["POMCP"]["official_result"],
                     "DQN",
                     "POMCP",
+                    compare_type="full_system",
+                    train_policy_tag=train_policy_tag,
+                    eval_policy_tag=train_policy_tag,
+                    scheduler_anchor="none",
                 )
-                compare_summary["seed"] = int(seed)
-                compare_summary["policy_tag"] = policy_tag
-                compare_summary["policy_label"] = build_policy_label(cfg, enforce_region)
-                compare_summary["delta_tard"] = float(compare_summary["delta_compare_minus_primary"]["tard"])
-                compare_summary["delta_maint"] = float(compare_summary["delta_compare_minus_primary"]["maint"])
-                compare_summary["delta_total"] = float(compare_summary["delta_compare_minus_primary"]["total"])
-                compare_summary["delta_overdue_ratio"] = float(compare_summary["delta_compare_minus_primary"]["overdue_ratio"])
-                compare_summary["delta_dispatch_count"] = int(compare_summary["delta_schedule_summary"]["dispatch_count"])
-                compare_summary["delta_makespan"] = float(compare_summary["delta_schedule_summary"]["makespan"])
-                all_compare_rows.append(dict(compare_summary))
+                full_compare_summary = _finalize_compare_summary(
+                    full_compare_summary,
+                    seed=int(seed),
+                    policy_tag=train_policy_tag,
+                    policy_label=train_policy_label,
+                )
+                all_compare_rows.append(dict(full_compare_summary))
                 write_mode_comparison_outputs(
                     compare_dir,
-                    f"maint_compare_{ts}_{policy_tag}",
-                    compare_summary,
-                    compare_rows,
-                    policy_label=f"{build_policy_label(cfg, enforce_region)} | Maintenance: DQN vs POMCP",
-                )
-                print(
-                    f"[seed {seed}][{policy_tag}] delta(POMCP-DQN): "
-                    f"tard={compare_summary['delta_tard']:.3f}, "
-                    f"maint={compare_summary['delta_maint']:.3f}, "
-                    f"total={compare_summary['delta_total']:.3f}, "
-                    f"overdue_ratio={compare_summary['delta_overdue_ratio']:.3f}, "
-                    f"dispatch={compare_summary['delta_dispatch_count']}, "
-                    f"makespan={compare_summary['delta_makespan']:.3f}"
+                    f"compare_full_system_dqn_vs_pomcp_{train_policy_tag}",
+                    full_compare_summary,
+                    full_compare_rows,
+                    policy_label=f"{train_policy_label} | Compare: full_system | Maintenance: DQN vs POMCP",
                 )
 
-    paired_results_csv = output_root / "paired_final_eval_rows.csv"
-    paired_results_json = output_root / "paired_final_eval_rows.json"
+                maint_only_results = evaluate_maint_only_results(
+                    cfg,
+                    seed,
+                    degr,
+                    rul,
+                    scenario_bank,
+                    train_policy_tag,
+                    train_enforce_region,
+                    route_results[train_policy_tag]["DQN"]["sched_agent"],
+                    route_results[train_policy_tag]["DQN"]["maint_agent"],
+                )
+                route_maint_only_results[train_policy_tag] = maint_only_results
+                for eval_mode, result in maint_only_results.items():
+                    all_result_rows.append(
+                        _build_run_record(
+                            seed,
+                            eval_mode,
+                            train_policy_tag,
+                            train_policy_tag,
+                            result,
+                            compare_type="maint_only",
+                            scheduler_anchor="DQN",
+                        )
+                    )
+                if "DQN" in maint_only_results and "POMCP" in maint_only_results:
+                    maint_only_summary, maint_only_rows = compare_mode_results(
+                        maint_only_results["DQN"],
+                        maint_only_results["POMCP"],
+                        "DQN",
+                        "POMCP",
+                        compare_type="maint_only",
+                        train_policy_tag=train_policy_tag,
+                        eval_policy_tag=train_policy_tag,
+                        scheduler_anchor="DQN",
+                    )
+                    maint_only_summary = _finalize_compare_summary(
+                        maint_only_summary,
+                        seed=int(seed),
+                        policy_tag=train_policy_tag,
+                        policy_label=train_policy_label,
+                    )
+                    all_compare_rows.append(dict(maint_only_summary))
+                    write_mode_comparison_outputs(
+                        compare_dir,
+                        f"compare_maint_only_anchor_dqn_{train_policy_tag}",
+                        maint_only_summary,
+                        maint_only_rows,
+                        policy_label=f"{train_policy_label} | Compare: maint_only | Scheduler anchor: DQN | Maintenance: DQN vs POMCP",
+                    )
+
+        if len(route_specs) >= 2:
+            constrained_tag = build_policy_tag(cfg, True)
+            unrestricted_tag = build_policy_tag(cfg, False)
+            route_compare_dir = seed_root / "route_compare"
+            route_compare_dir.mkdir(parents=True, exist_ok=True)
+
+            for mode in maint_modes:
+                constrained_run = route_results.get(constrained_tag, {}).get(mode)
+                unrestricted_run = route_results.get(unrestricted_tag, {}).get(mode)
+                if constrained_run is not None and unrestricted_run is not None:
+                    route_summary, route_rows = compare_mode_results(
+                        constrained_run["official_result"],
+                        unrestricted_run["official_result"],
+                        "CONSTRAINED",
+                        "UNRESTRICTED",
+                        compare_type="full_system_route_compare",
+                        train_policy_tag=constrained_tag,
+                        eval_policy_tag=unrestricted_tag,
+                        scheduler_anchor="none",
+                    )
+                    route_summary = _finalize_compare_summary(
+                        route_summary,
+                        seed=int(seed),
+                        policy_tag=f"{constrained_tag}__to__{unrestricted_tag}",
+                        policy_label="Route delta: unrestricted - constrained",
+                        maint_mode=str(mode),
+                        maint_mode_tag=build_maint_mode_tag(mode),
+                        route_delta_direction="unrestricted_minus_constrained",
+                    )
+                    all_compare_rows.append(dict(route_summary))
+                    write_mode_comparison_outputs(
+                        route_compare_dir,
+                        f"route_compare_full_system_{build_maint_mode_tag(mode)}",
+                        route_summary,
+                        route_rows,
+                        policy_label=f"Route compare | Full system | Maintenance: {mode}",
+                    )
+
+                constrained_anchor = route_maint_only_results.get(constrained_tag, {}).get(mode)
+                unrestricted_anchor = route_maint_only_results.get(unrestricted_tag, {}).get(mode)
+                if constrained_anchor is not None and unrestricted_anchor is not None:
+                    route_summary, route_rows = compare_mode_results(
+                        constrained_anchor,
+                        unrestricted_anchor,
+                        "CONSTRAINED",
+                        "UNRESTRICTED",
+                        compare_type="maint_only_route_compare",
+                        train_policy_tag=constrained_tag,
+                        eval_policy_tag=unrestricted_tag,
+                        scheduler_anchor="DQN",
+                    )
+                    route_summary = _finalize_compare_summary(
+                        route_summary,
+                        seed=int(seed),
+                        policy_tag=f"{constrained_tag}__to__{unrestricted_tag}",
+                        policy_label="Route delta: unrestricted - constrained",
+                        maint_mode=str(mode),
+                        maint_mode_tag=build_maint_mode_tag(mode),
+                        route_delta_direction="unrestricted_minus_constrained",
+                    )
+                    all_compare_rows.append(dict(route_summary))
+                    write_mode_comparison_outputs(
+                        route_compare_dir,
+                        f"route_compare_maint_only_anchor_dqn_{build_maint_mode_tag(mode)}",
+                        route_summary,
+                        route_rows,
+                        policy_label=f"Route compare | Maint-only anchor DQN | Maintenance: {mode}",
+                    )
+
+    paired_results_csv = output_root / "paired_eval_rows.csv"
+    paired_results_json = output_root / "paired_eval_rows.json"
     with paired_results_json.open("w", encoding="utf-8") as f:
         json.dump(all_result_rows, f, ensure_ascii=True, indent=2)
     if all_result_rows:
@@ -1780,8 +2085,16 @@ def main():
             writer.writeheader()
             writer.writerows(all_result_rows)
 
-    for policy_tag in {row["policy_tag"] for row in all_result_rows}:
-        write_aggregate_compare_outputs(output_root, policy_tag, all_result_rows, all_compare_rows)
+    compare_rows_csv = output_root / "paired_compare_rows.csv"
+    compare_rows_json = output_root / "paired_compare_rows.json"
+    with compare_rows_json.open("w", encoding="utf-8") as f:
+        json.dump(all_compare_rows, f, ensure_ascii=True, indent=2)
+    if all_compare_rows:
+        fieldnames = sorted({key for row in all_compare_rows for key in row.keys()})
+        with compare_rows_csv.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(all_compare_rows)
 
     print(f"paired training finished; outputs saved to {output_root}")
 

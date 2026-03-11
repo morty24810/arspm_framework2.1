@@ -490,6 +490,34 @@ class EventDrivenShopEnv:
         return self._region_b_elapsed(mid, h=h)
 
     # ------------------- maintenance routing -------------------
+    def rul_from_operating_index(self, mid: int, idx_float: float) -> float:
+        life = max(int(self.machine_lifespan.get(mid, 1)), 1)
+        idx_float = max(0.0, min(float(idx_float), float(life - 1)))
+        lo = int(math.floor(idx_float))
+        hi = int(math.ceil(idx_float))
+        frac = float(idx_float - lo)
+        if self.rul_cache is not None:
+            h_lo = float(self.rul_cache.get_h(mid, lo))
+            h_hi = float(self.rul_cache.get_h(mid, hi))
+        else:
+            curve = self.machine_curve[mid]
+            lifespan = self.degr.lifespan(curve)
+            xw_lo = self.degr.window(curve, end_idx=lo, W=self.cfg.RUL_WINDOW)
+            xw_hi = self.degr.window(curve, end_idx=hi, W=self.cfg.RUL_WINDOW)
+            h_lo = float(self.rul.predict(curve, xw_lo, t_idx=lo, lifespan=lifespan))
+            h_hi = float(self.rul.predict(curve, xw_hi, t_idx=hi, lifespan=lifespan))
+        return float(max(0.0, min(1.0, h_lo + frac * (h_hi - h_lo))))
+
+    def operating_index_from_rul(self, mid: int, h: float) -> float:
+        target = max(0.0, min(1.0, float(h)))
+        if self.rul_cache is not None:
+            curve_vals = self.rul_cache.cache.get(mid)
+            if curve_vals is not None and len(curve_vals) > 0:
+                diffs = np.abs(curve_vals.astype(np.float64) - target)
+                return float(int(np.argmin(diffs)))
+        life = max(int(self.machine_lifespan.get(mid, 1)), 1)
+        return float(max(0.0, min(float(life - 1), (1.0 - target) * max(life - 1, 0))))
+
     def _query_rul(self, mid: int) -> float:
         idx = self.machine_operating_idx[mid]
         if self.rul_cache is not None:
@@ -625,14 +653,12 @@ class EventDrivenShopEnv:
         m.im_since_cm += 1
         m.total_im_count += 1
 
-        curve = self.machine_curve[mid]
-        lifespan = self.degr.lifespan(curve)
         # legacy behavior (commented): fixed-target repair.
         # target_rul = max(0.0, min(1.0, float(self.cfg.IM_TARGET_RUL)))
         # new behavior: geometric maintenance baseline, L_k = 0.8 * L_{k-1}.
         target_rul = max(0.0, min(1.0, 0.8 * float(m.maint_rul_baseline)))
         m.maint_rul_baseline = target_rul
-        self.machine_operating_idx[mid] = int((1.0 - target_rul) * (lifespan - 1))
+        self.machine_operating_idx[mid] = int(self.operating_index_from_rul(mid, target_rul))
         self.machine_operating_frac[mid] = 0.0
         m.crossed_Hx_time = None
         kind = "IM"
@@ -671,15 +697,20 @@ class EventDrivenShopEnv:
             h = baseline_rul
 
         h_before_decay = h
-        degr = self.cfg.POMCP_H_DECAY * (1.0 + self.cfg.DEGRAD_ALPHA * stress)
-        h = max(0.0, h - degr)
         if action == 0:
+            idx_before = self.operating_index_from_rul(mid, h_before_decay)
+            expected_pt = max(self._mean_proc_time(mid), 1e-6)
+            effective_rate = self.cfg.BASE_DEGRADATION_RATE * (1.0 + self.cfg.DEGRAD_ALPHA * stress)
+            delta_idx = effective_rate * expected_pt / max(self.cfg.PT_REF, 1e-6)
+            h = self.rul_from_operating_index(mid, idx_before + delta_idx)
             if h > self.cfg.Hx:
                 region_b_elapsed = 0.0
             elif h_before_decay > self.cfg.Hx:
                 region_b_elapsed = 0.0
             else:
-                region_b_elapsed += float(self.cfg.OBS_PROC_DEFAULT)
+                region_b_elapsed += float(expected_pt)
+        else:
+            h = max(0.0, min(1.0, h))
 
         p_fail = self.failure_prob(h)
         obs = h + rng.normalvariate(0.0, self.cfg.POMCP_OBS_NOISE)

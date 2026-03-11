@@ -1,0 +1,102 @@
+{
+  "summary": {
+    "primary_mode": "DQN",
+    "compare_mode": "POMCP",
+    "compare_type": "maint_only",
+    "train_policy_tag": "region_off_unrestricted",
+    "eval_policy_tag": "region_off_unrestricted",
+    "scheduler_anchor": "DQN",
+    "primary_action_counts": {
+      "DN": 0,
+      "IM": 0,
+      "CM": 0
+    },
+    "compare_action_counts": {
+      "DN": 0,
+      "IM": 0,
+      "CM": 0
+    },
+    "decision_union_count": 0,
+    "decision_aligned_count": 0,
+    "divergence_count": 0,
+    "divergence_rate": 0.0,
+    "missing_on_primary": 0,
+    "missing_on_compare": 0,
+    "missing_on_pomcp": 0,
+    "missing_on_dqn": 0,
+    "primary_metrics": {
+      "tard": 167.36133168341658,
+      "maint": 0.0,
+      "total": 167.36133168341658,
+      "overdue_ratio": 0.035842293906810034
+    },
+    "compare_metrics": {
+      "tard": 462.1349972362027,
+      "maint": 2225.44282749515,
+      "total": 2687.577824731353,
+      "overdue_ratio": 0.08602150537634409
+    },
+    "delta_compare_minus_primary": {
+      "tard": 294.77366555278616,
+      "maint": 2225.44282749515,
+      "total": 2520.216493047936,
+      "overdue_ratio": 0.05017921146953406
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0
+      },
+      "rule_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      },
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0
+      },
+      "rule_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      },
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "makespan": 0.0
+    },
+    "seed": 42,
+    "policy_tag": "region_off_unrestricted",
+    "policy_label": "Policy: Unrestricted (no Hx/Hy enforcement)",
+    "delta_tard": 294.77366555278616,
+    "delta_maint": 2225.44282749515,
+    "delta_total": 2520.216493047936,
+    "delta_overdue_ratio": 0.05017921146953406,
+    "delta_dispatch_count": 0,
+    "delta_makespan": 0.0
+  },
+  "rows": []
+}

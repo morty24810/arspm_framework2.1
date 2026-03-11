@@ -1,0 +1,23 @@
+{
+  "timestamp": "20260310_102446",
+  "seed": 42,
+  "policy_tag": "region_on_hx0p3_hy0p1",
+  "train_policy_tag": "region_on_hx0p3_hy0p1",
+  "eval_policy_tag": "region_on_hx0p3_hy0p1",
+  "policy_label": "Policy: Region constrained (Hx=0.3, Hy=0.1) | Maintenance: POMCP",
+  "maint_mode_tag": "maint_pomcp",
+  "maint_mode": "POMCP",
+  "compare_type": "full_system",
+  "scheduler_anchor": "none",
+  "enforce_region_policy": 1,
+  "hx": 0.3,
+  "hy": 0.1,
+  "jobs_target": 80,
+  "tard": 264.1457813789889,
+  "maint": 754.4023743741027,
+  "total": 1018.5481557530916,
+  "overdue_ratio_ops": 0.05734767025089606,
+  "overdue_ratio_time": 0.06942144106945403,
+  "overdue_ops": 16.0,
+  "total_ops": 279.0
+}
