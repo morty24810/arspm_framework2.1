@@ -2,117 +2,153 @@
 
 ## 1. 本輪目標
 
-本輪迭代對應 `POMCP_DQN_result_root_cause_analysis.md` 中的三個主要方向：
+本輪迭代把重點從「route-aware compare 公平性」往前推到真正的故障耦合：
 
-- 修正 `DQN` 的 train/eval route 不一致問題，避免 constrained-only 訓練直接作為 unrestricted 官方結果
-- 對齊 maintenance reward 與 final eval metric 的成本尺度
-- 對 `POMCP` 的 generative model 做最小對齊，讓 rollout 退化與 Region-B elapsed 更接近真實 env
-
-另外，本輪新增一套 `maint_only compare`，用固定 `DQN` scheduler 來隔離 maintenance policy 差異。
+- 讓 breakdown 在官方實驗裡真正發生，而不是只停留在抽象風險
+- 把 breakdown 帶來的延誤 / 重派 / 物理成本轉進 maintenance reward
+- 保留雙 agent 架構，但補上最低限度的 scheduling-side failure awareness
+- 修掉 `maint_only compare` 沒有 decision log 的問題
 
 ## 2. 已完成改動
 
-### 2.1 Route-aware 訓練 / 評估
+### 2.1 真實 Breakdown 已啟用
 
-- 在 `config.py` 新增：
-  - `TRAIN_POLICY_ROUTES = ("region_on", "region_off")`
-  - `ENABLE_OOD_DIAGNOSTIC_EVAL = False`
-- `run_experiment.py` 現在會依序跑：
-  - `seed`
-  - `train_policy_route`
-  - `maint_mode`
-- `train_one_mode(...)` 新增：
-  - `train_enforce_region`
-  - `train_policy_tag`
-- official periodic eval / final eval 改成 same-route only
-- dual-route OOD eval 改成可選診斷模式，預設不啟用
+- `config.py`
+  - `BREAKDOWN_ENABLE = True`
+  - 新增 `HARD_BREAKDOWN_RUL = 0.05`
+  - 新增 `BREAKDOWN_REQUEUE_MODE = "restart_op"`
+  - 新增 `SCHED_SAFE_DISPATCH = True`
+- `src/env.py`
+  - 新增 `peek_rul_true(mid)`，把 breakdown physics 從 noisy observation 分離出來
+  - `dispatch()` 現在先預估本次加工的真實退化，再決定：
+    - 是否觸發 hard breakdown
+    - 是否觸發 stochastic breakdown
+  - 一旦 breakdown：
+    - 機台立刻進入 `MAINT`
+    - recovery duration = `MT_CM + FAIL_EXTRA_DUR`
+    - 工序中斷並退回等待重派
+    - machine baseline / true RUL recovery 後重置為 `1.0`
 
-### 2.2 Compare 流程擴充
+### 2.2 Breakdown 成本與狀態追蹤補齊
 
-- 保留 `full_system compare`
-- 新增 `maint_only compare`
-  - anchor 固定為同 route 下的 `DQN` scheduler
-  - 比較：
-    - `DQN scheduler + DQN maintenance`
-    - `同一 DQN scheduler + POMCP maintenance`
-- 新增 route difference 輸出：
-  - `route_compare_full_system_<maint_mode_tag>`
-  - `route_compare_maint_only_anchor_dqn_<maint_mode_tag>`
-- compare summary 現在帶：
-  - `compare_type`
-  - `train_policy_tag`
-  - `eval_policy_tag`
-  - `scheduler_anchor`
+- `src/env.py` 新增 breakdown accounting：
+  - `breakdown_count`
+  - `hard_breakdown_count`
+  - `stochastic_breakdown_count`
+  - `breakdown_cost_total`
+  - `requeued_op_count`
+  - `interrupted_proc_time`
+- `compute_costs()` 中 `BREAKDOWN` 不再等同普通 `CM`
+  - 現在使用：
+    - `FAIL_COST_MULT * recovery_dur`
+    - `SCRAP_PART_COST`
+    - `FAIL_PENALTY`
+- `timeline_ops` 改成可記錄 segment status：
+  - `DONE`
+  - `INTERRUPTED`
 
-### 2.3 Reward 對齊
+### 2.3 Maintenance reward 改成吃 expected breakdown loss
 
-- `maintenance_reward(...)` 已改為與 `compute_costs()` 同量級的 duration-based maintenance cost
-- 新 reward 現在使用：
-  - `downtime_cost = dur * local_urgency`
-  - `maint_cost = IM_COST * dur` 或 `CM_COST * dur`
-  - `dn_risk_cost = W_RISK * risk_t` only for `DN`
-  - `window_violation` penalty
-- `MAT_COST_*` 保留給 logging / accounting，但不再是 maintenance RL 主 reward
-- `POMCP` rollout reward 與 `DQN` 現在共用同一公式
+- `run_experiment.py`
+  - `maintenance_reward(...)` 現在語義是：
+    - `DN -> expected_breakdown_loss + violation`
+    - `IM/CM -> downtime_cost + maintenance_cost + violation`
+  - 不再用 `W_RISK * risk_t` 作為主 reward
+- 新增 `compute_breakdown_reward_terms(...)`
+  - 用 env 的 breakdown 預估資訊算：
+    - `p_fail_exec`
+    - `expected_breakdown_loss`
+    - `expected_redispatch_pt`
+    - `breakdown_recovery_dur`
+- `DQN` 訓練與 `POMCP` rollout reward 現在共用這套公式
 
-### 2.4 POMCP generative model 最小對齊
+### 2.4 Scheduling 端補上最低限度耦合
 
-- 在 `src/env.py` 新增：
-  - `rul_from_operating_index(...)`
-  - `operating_index_from_rul(...)`
-- `generative_step(DN)` 不再使用固定 `POMCP_H_DECAY`
-- 現在 rollout 退化改為：
-  - `expected_pt = _mean_proc_time(mid)`
-  - `effective_rate = BASE_DEGRADATION_RATE * (1 + DEGRAD_ALPHA * stress)`
-  - `delta_idx = effective_rate * expected_pt / PT_REF`
-  - 再透過 RUL / operating-index 映射回 `h`
-- `region_b_elapsed` 在 rollout 中改為累加 `expected_pt`
-- `IM` / `CM` 的 baseline 語義在真實 env 與 generative model 保持一致
+- scheduler state 從 `12 -> 14`
+- 新增兩個特徵：
+  - `idle_fail_risk_mean`
+  - `idle_fail_risk_max`
+- `dispatch()` 新增 safe-dispatch filter：
+  - 若同一工序存在安全 idle machine，則只在安全 machine 內套用原本 rule
+  - 只有全部候選 machine 都不安全時，才允許派到高風險 machine
+
+### 2.5 POMCP 生成模型對齊 breakdown
+
+- `src/env.py::generative_step(...)`
+  - `DN` 現在會模擬：
+    - hard breakdown
+    - stochastic breakdown
+    - forced recovery transition
+  - breakdown 分支會回到 recovery 後狀態：
+    - `baseline_rul = 1.0`
+    - `h = 1.0`
+    - `kind = "BREAKDOWN"`
+    - `dur = breakdown_recovery_duration`
+
+### 2.6 Compare / 輸出修正
+
+- `evaluate_once(...)` 新增 `collect_decision_log`
+  - `maint_only compare` 現在會真的帶回 decision log
+- `decision_log` / summary / compare 補上 breakdown 欄位：
+  - `breakdown_count`
+  - `breakdown_cost`
+  - `requeued_op_count`
+  - `interrupted_proc_time`
+  - `hard_breakdown_count`
+  - `stochastic_breakdown_count`
+  - `breakdown_kind`
+- `src/viz.py`
+  - Gantt 現在會把 interrupted 工序段畫出來
+  - RUL 曲線會標出 `BREAKDOWN` 時刻
+  - compare 圖會展示 breakdown / requeue 摘要
 
 ## 3. 受影響文件與關鍵接口
 
-主要代碼改動集中在：
+主要改動集中在：
 
 - `config.py`
-- `run_experiment.py`
 - `src/env.py`
+- `run_experiment.py`
 - `src/compare.py`
+- `src/viz.py`
 
 關鍵接口變化：
 
-- `train_one_mode(...)`
-  - 新增 `train_enforce_region`
-  - 新增 `train_policy_tag`
-- compare summary schema
-  - 新增 `compare_type`
-  - 新增 `train_policy_tag`
-  - 新增 `eval_policy_tag`
-  - 新增 `scheduler_anchor`
+- `evaluate_once(...)`
+  - 新增 `collect_decision_log`
+- scheduler state
+  - `THDQNAgent.state_dim: 12 -> 14`
 - env helper
-  - 新增 `rul_from_operating_index(...)`
-  - 新增 `operating_index_from_rul(...)`
+  - 新增 `peek_rul_true(...)`
+  - 新增 `processing_delta_idx(...)`
+  - 新增 `expected_breakdown_loss(...)`
+  - 新增 `is_safe_dispatch(...)`
 
 ## 4. 行為變化摘要
 
-### 官方結果語義改變
+### 4.1 `DN` 不再天然便宜
 
-- 以前：單一訓練 run 會同時輸出 constrained / unrestricted final eval
-- 現在：官方結果只輸出 same-route eval
-  - `region_on` train -> `region_on` official eval
-  - `region_off` train -> `region_off` official eval
+- 以前：
+  - `BREAKDOWN_ENABLE=False`
+  - unrestricted 下 `DN` 容易退化成幾乎零維護成本策略
+- 現在：
+  - `DN` 會顯式吃到預期 breakdown loss
+  - 真實 env 也會發生 mid-process breakdown
 
-### Compare 語義變更
+### 4.2 breakdown 會改變排程而不是只改 maintenance 成本
 
-- `full_system compare`
-  - 仍然比較完整策略組合
-- `maint_only compare`
-  - 用同一個 `DQN` scheduler，只替換 maintenance policy
-  - 可以直接看 maintenance 層的策略差異
+- 故障中的機台不可分派
+- 被中斷的工序會回到待重派狀態
+- tardiness 現在會透過真實重派與停機時間累積，而不只是 maintenance proxy
 
-### POMCP rollout 語義變更
+### 4.3 `maint_only compare` 不再是空結果
 
-- 以前：DN rollout 只按固定 `POMCP_H_DECAY` 減 `h`
-- 現在：DN rollout 會參考 `BASE_DEGRADATION_RATE`、`PT_REF`、`_mean_proc_time(mid)` 與 stress
+- 以前：
+  - `generate_outputs=False` 時 `decision_log=None`
+  - compare 只能得到全零 action counts
+- 現在：
+  - `collect_decision_log=True` 時可保留 decision log
+  - `maint_only compare` 能產生真實行為差異
 
 ## 5. 驗證結果
 
@@ -124,69 +160,82 @@
 python -m py_compile config.py run_experiment.py infer_demo.py checkpointing.py src/env.py src/compare.py src/viz.py
 ```
 
-### 5.2 Route-aware / compare smoke test
+### 5.2 Breakdown / safe-dispatch smoke test
 
-在 sandbox 內跑 Python 會遇到 OpenMP `SHM2` 問題，因此改用 sandbox 外做極小 smoke test。
+在 sandbox 外做了小型 Python smoke test，驗證：
 
-驗證內容：
+- 不安全機台存在時，safe-dispatch 會選擇安全機台
+- `true RUL <= 0.05` 時會立即 hard breakdown
+- breakdown 後：
+  - machine 進入 `MAINT`
+  - `busy_until = t_fail + MT_CM + FAIL_EXTRA_DUR`
+  - job op 不完成
+  - `interrupted_count` 增加
+  - `timeline_ops` 記錄 `INTERRUPTED`
 
-- `region_on + DQN`
-- `region_on + POMCP`
-- `region_off + DQN`
-- `region_off + POMCP`
-- `maint_only compare`
-- `full_system compare`
+驗證輸出摘要：
+
+- `safe_m0=False, safe_m1=True` 時，dispatch 選到了 `mid=1`
+- 強制 hard breakdown 時：
+  - `breakdown_count=1`
+  - `hard_breakdown=True`
+  - `requeued=True`
+  - `machine0_status=MAINT`
+  - `timeline_last=(..., 'INTERRUPTED')`
+
+### 5.3 Decision-log collection smoke test
+
+在 sandbox 外跑了一次極小 `evaluate_once(...)`：
+
+- `generate_outputs=False`
+- `collect_decision_log=True`
 
 結果：
 
-- 四個 route/mode 組合都能完成 1-episode 訓練 + official eval
-- `evaluate_maint_only_results(...)` 可正常產生 `DQN` / `POMCP` 兩臂結果
-- `compare_mode_results(...)` 可正常產生 `full_system` compare summary
+- `decision_log_len = 98`
+- `sched_events = 49`
+- `maint_events = 49`
 
-煙霧測試輸出摘要：
-
-- `region_on_hx0p3_hy0p1`
-  - `DQN official total = 0.0`
-  - `POMCP official total = 0.0`
-- `region_off_unrestricted`
-  - `DQN official total = 401.935...`
-  - `POMCP official total = 550.0`
-
-這個 smoke 只用來驗證流程與輸出結構，不用來判斷策略優劣。
+說明 `maint_only compare` 所需的 decision log 已能正常收集。
 
 ## 6. 已知限制
 
-- 本輪官方配置仍是單 seed：`EXPERIMENT_SEEDS = (42,)`
-- `maint_only compare` 目前只支持 `DQN` scheduler anchor
-- `route_compare_maint_only_anchor_dqn_*` 比較的是兩條 route 各自的 `DQN` anchor scheduler，不是同一個 scheduler 跨 route 共用
-- `POMCP` 目前仍不是高保真 queue-aware rollout，只是從固定 `h` 衰減提升到與真實 env 更接近的 mean-pt / index-space 衰減
-- `infer_demo.py` 尚未擴成 route-aware 主入口；目前主交付集中在 `run_experiment.py`
+- 目前 `compute_breakdown_reward_terms(...)` 用的是當前 env / slack 驅動的近似執行風險，不是完整 queue-aware expected loss
+- hard breakdown 使用固定閾值 `0.05`，尚未做靈敏度實驗
+- breakdown 後工序採整道重做，暫未支持 partial resume
+- safe-dispatch 只在「已選定工序的 machine 選擇」上生效，尚未把 safety 反向傳回工序選擇層
+- `infer_demo.py` 沒有擴成新的 breakdown-focused分析入口；主交付仍在 `run_experiment.py`
 
 ## 7. TODO List
 
 ### P0
 
-- 用正式 episode 數重新跑 route-aware 實驗，確認：
-  - `DQN region_off` 不再是 constrained-only OOD 結果
-  - `full_system compare` 與 `maint_only compare` 輸出都穩定
-- 核查新的 `DQN unrestricted` 是否仍出現高 RUL 下大量 `CM`
+- 用正式 episode 數重跑：
+  - `region_on + DQN`
+  - `region_on + POMCP`
+  - `region_off + DQN`
+  - `region_off + POMCP`
+- 核查 unrestricted 下：
+  - `DQN` 是否仍偏向過度 `DN`
+  - `POMCP` 是否仍偏向過度 `IM`
+- 直接查看新的 `maint_only compare`，確認雙方差異是否主要來自 maintenance 而不是 scheduler
 
 ### P1
 
-- 為 route-aware runner 補一份聚合報表：
-  - 依 `train_policy_tag`
-  - 依 `compare_type`
-  - 依 `maint_mode`
-- 把 `infer_demo.py` 同步到新的 route-aware compare schema
-- 檢查是否要把 `MAT_COST_*` 從 maintenance 決策 log 中標記為 legacy，避免後續分析混淆
+- 把 breakdown event 的更多細節寫進 compare row：
+  - `jid`
+  - `oid`
+  - `t_fail`
+  - `recovery_end`
+- 為 Gantt 加上更明確的 interrupted / breakdown 圖例
+- 對 hard-threshold `0.05` 做 sweep，檢查策略敏感度
+- 檢查 safe-dispatch 是否需要升級為「跨工序選擇也考慮 safety」
 
 ### P2
 
-- 把 `POMCP` rollout 從 mean-pt 近似升級為局部 queue-aware 模型
-- 研究是否要增加第二個 `scheduler anchor`：
-  - `POMCP scheduler anchor`
-  - 或雙 anchor compare
-- 擴展為多 seed 正式實驗，重新檢查：
-  - route-aware 公平性
-  - `DQN vs POMCP` 的穩定差異
-
+- 把 expected breakdown loss 從 mean-pt 近似升級為 queue-aware / job-aware 近似
+- 研究是否要讓 scheduling reward 也顯式吃到 breakdown penalty transfer，而不只透過 env 結果間接感知
+- 若未來還要更強耦合，再評估：
+  - centralized critic
+  - shared reward
+  - joint maintenance-scheduling planner

@@ -96,8 +96,11 @@ class SimConfig:
     IM_LONGTERM_W: float = 6.0         # legacy
     OPPORTUNITY_W: float = 3.0         # legacy
     RISK_TAU: float = 0.08
-    BREAKDOWN_ENABLE: bool = False
+    BREAKDOWN_ENABLE: bool = True
     BREAKDOWN_W: float = 1.0
+    HARD_BREAKDOWN_RUL: float = 0.05
+    BREAKDOWN_REQUEUE_MODE: str = "restart_op"
+    SCHED_SAFE_DISPATCH: bool = True
     URGENCY_REF: float = 0.0
     URGENCY_SCALE: float = 120.0
     URGENCY_CAP: float = 1.0

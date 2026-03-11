@@ -89,19 +89,40 @@ def compute_decision_log_makespan(decision_log: List[Dict[str, Any]]) -> float:
     return float(t_end)
 
 
-def summarize_scheduling_strategy(decision_log: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _env_makespan(env: Any) -> float:
+    if env is None:
+        return 0.0
+    t_end = 0.0
+    for _, t0, t1, _, _, *_ in getattr(env, "timeline_ops", []):
+        t_end = max(t_end, float(t1))
+    for _, t0, t1, _ in getattr(env, "timeline_maint", []):
+        t_end = max(t_end, float(t1))
+    return float(t_end)
+
+
+def summarize_scheduling_strategy(decision_log: List[Dict[str, Any]], env: Any = None) -> Dict[str, Any]:
     sched_rows = extract_scheduling_rows(decision_log)
     goal_counts = summarize_action_counts(sched_rows, key="goal", values=[0, 1, 2, 3])
     rule_counts = summarize_action_counts(sched_rows, key="rule", values=[0, 1, 2, 3, 4, 5])
     dispatched_count = sum(1 for row in sched_rows if bool(row.get("dispatched")))
     breakdown_count = sum(1 for row in sched_rows if bool(row.get("breakdown_flag")))
+    hard_breakdown_count = max((_safe_int(row.get("hard_breakdown_count")) or 0) for row in sched_rows) if sched_rows else 0
+    stochastic_breakdown_count = max((_safe_int(row.get("stochastic_breakdown_count")) or 0) for row in sched_rows) if sched_rows else 0
+    requeued_op_count = max((_safe_int(row.get("requeued_op_count")) or 0) for row in sched_rows) if sched_rows else 0
+    interrupted_proc_time = max((_safe_float(row.get("interrupted_proc_time")) or 0.0) for row in sched_rows) if sched_rows else 0.0
+    breakdown_cost = sum((_safe_float(row.get("breakdown_cost")) or 0.0) for row in sched_rows if bool(row.get("breakdown_flag")))
     return {
         "goal_counts": goal_counts,
         "rule_counts": rule_counts,
         "dispatch_count": int(dispatched_count),
         "scheduling_events": int(len(sched_rows)),
         "breakdown_count": int(breakdown_count),
-        "makespan": compute_decision_log_makespan(decision_log),
+        "hard_breakdown_count": int(hard_breakdown_count),
+        "stochastic_breakdown_count": int(stochastic_breakdown_count),
+        "requeued_op_count": int(requeued_op_count),
+        "interrupted_proc_time": float(interrupted_proc_time),
+        "breakdown_cost": float(breakdown_cost),
+        "makespan": _env_makespan(env) if env is not None else compute_decision_log_makespan(decision_log),
     }
 
 
@@ -170,8 +191,8 @@ def compare_mode_results(
             "compare_duration": _safe_float(compare.get("duration")) if compare else None,
         })
 
-    primary_schedule_summary = summarize_scheduling_strategy(primary_result.get("decision_log", []))
-    compare_schedule_summary = summarize_scheduling_strategy(compare_result.get("decision_log", []))
+    primary_schedule_summary = summarize_scheduling_strategy(primary_result.get("decision_log", []), env=primary_result.get("env"))
+    compare_schedule_summary = summarize_scheduling_strategy(compare_result.get("decision_log", []), env=compare_result.get("env"))
     primary_metrics = primary_result["metrics"]
     compare_metrics = compare_result["metrics"]
     primary_overdue = primary_result["overdue"]
@@ -199,18 +220,30 @@ def compare_mode_results(
             "maint": float(primary_metrics["maint"]),
             "total": float(primary_metrics["total"]),
             "overdue_ratio": float(primary_overdue["ratio_ops"]),
+            "breakdown_count": float(getattr(primary_result.get("env"), "breakdown_count", 0)),
+            "breakdown_cost": float(getattr(primary_result.get("env"), "breakdown_cost_total", 0.0)),
+            "requeued_op_count": float(getattr(primary_result.get("env"), "requeued_op_count", 0)),
+            "interrupted_proc_time": float(getattr(primary_result.get("env"), "interrupted_proc_time", 0.0)),
         },
         "compare_metrics": {
             "tard": float(compare_metrics["tard"]),
             "maint": float(compare_metrics["maint"]),
             "total": float(compare_metrics["total"]),
             "overdue_ratio": float(compare_overdue["ratio_ops"]),
+            "breakdown_count": float(getattr(compare_result.get("env"), "breakdown_count", 0)),
+            "breakdown_cost": float(getattr(compare_result.get("env"), "breakdown_cost_total", 0.0)),
+            "requeued_op_count": float(getattr(compare_result.get("env"), "requeued_op_count", 0)),
+            "interrupted_proc_time": float(getattr(compare_result.get("env"), "interrupted_proc_time", 0.0)),
         },
         "delta_compare_minus_primary": {
             "tard": float(compare_metrics["tard"] - primary_metrics["tard"]),
             "maint": float(compare_metrics["maint"] - primary_metrics["maint"]),
             "total": float(compare_metrics["total"] - primary_metrics["total"]),
             "overdue_ratio": float(compare_overdue["ratio_ops"] - primary_overdue["ratio_ops"]),
+            "breakdown_count": float(getattr(compare_result.get("env"), "breakdown_count", 0) - getattr(primary_result.get("env"), "breakdown_count", 0)),
+            "breakdown_cost": float(getattr(compare_result.get("env"), "breakdown_cost_total", 0.0) - getattr(primary_result.get("env"), "breakdown_cost_total", 0.0)),
+            "requeued_op_count": float(getattr(compare_result.get("env"), "requeued_op_count", 0) - getattr(primary_result.get("env"), "requeued_op_count", 0)),
+            "interrupted_proc_time": float(getattr(compare_result.get("env"), "interrupted_proc_time", 0.0) - getattr(primary_result.get("env"), "interrupted_proc_time", 0.0)),
         },
         "primary_schedule_summary": primary_schedule_summary,
         "compare_schedule_summary": compare_schedule_summary,
@@ -218,6 +251,11 @@ def compare_mode_results(
             "dispatch_count": int(compare_schedule_summary["dispatch_count"] - primary_schedule_summary["dispatch_count"]),
             "scheduling_events": int(compare_schedule_summary["scheduling_events"] - primary_schedule_summary["scheduling_events"]),
             "breakdown_count": int(compare_schedule_summary["breakdown_count"] - primary_schedule_summary["breakdown_count"]),
+            "hard_breakdown_count": int(compare_schedule_summary["hard_breakdown_count"] - primary_schedule_summary["hard_breakdown_count"]),
+            "stochastic_breakdown_count": int(compare_schedule_summary["stochastic_breakdown_count"] - primary_schedule_summary["stochastic_breakdown_count"]),
+            "requeued_op_count": int(compare_schedule_summary["requeued_op_count"] - primary_schedule_summary["requeued_op_count"]),
+            "interrupted_proc_time": float(compare_schedule_summary["interrupted_proc_time"] - primary_schedule_summary["interrupted_proc_time"]),
+            "breakdown_cost": float(compare_schedule_summary["breakdown_cost"] - primary_schedule_summary["breakdown_cost"]),
             "makespan": float(compare_schedule_summary["makespan"] - primary_schedule_summary["makespan"]),
         },
     }

@@ -1,0 +1,1054 @@
+[
+  {
+    "primary_mode": "DQN",
+    "compare_mode": "POMCP",
+    "compare_type": "full_system",
+    "train_policy_tag": "region_on_hx0p3_hy0p1",
+    "eval_policy_tag": "region_on_hx0p3_hy0p1",
+    "scheduler_anchor": "none",
+    "primary_action_counts": {
+      "DN": 266,
+      "IM": 11,
+      "CM": 0
+    },
+    "compare_action_counts": {
+      "DN": 276,
+      "IM": 1,
+      "CM": 2
+    },
+    "decision_union_count": 290,
+    "decision_aligned_count": 266,
+    "divergence_count": 36,
+    "divergence_rate": 0.12413793103448276,
+    "missing_on_primary": 13,
+    "missing_on_compare": 11,
+    "missing_on_pomcp": 11,
+    "missing_on_dqn": 13,
+    "primary_metrics": {
+      "tard": 786.6962834388889,
+      "maint": 5279.352387617604,
+      "total": 6066.048671056493,
+      "overdue_ratio": 0.06093189964157706,
+      "breakdown_count": 4.0,
+      "breakdown_cost": 5168.0,
+      "requeued_op_count": 4.0,
+      "interrupted_proc_time": 26.659841581334355
+    },
+    "compare_metrics": {
+      "tard": 381.031421036874,
+      "maint": 9259.662129835531,
+      "total": 9640.693550872405,
+      "overdue_ratio": 0.06451612903225806,
+      "breakdown_count": 7.0,
+      "breakdown_cost": 9044.0,
+      "requeued_op_count": 7.0,
+      "interrupted_proc_time": 73.05279212579734
+    },
+    "delta_compare_minus_primary": {
+      "tard": -405.66486240201493,
+      "maint": 3980.309742217927,
+      "total": 3574.6448798159126,
+      "overdue_ratio": 0.0035842293906810027,
+      "breakdown_count": 3.0,
+      "breakdown_cost": 3876.0,
+      "requeued_op_count": 3.0,
+      "interrupted_proc_time": 46.392950544462984
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 72,
+        "1": 48,
+        "2": 5,
+        "3": 158
+      },
+      "rule_counts": {
+        "0": 50,
+        "1": 60,
+        "2": 49,
+        "3": 52,
+        "4": 52,
+        "5": 20
+      },
+      "dispatch_count": 283,
+      "scheduling_events": 283,
+      "breakdown_count": 4,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": 4,
+      "requeued_op_count": 4,
+      "interrupted_proc_time": 26.659841581334355,
+      "breakdown_cost": 5168.0,
+      "makespan": 3770.458054793587
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 251,
+        "1": 12,
+        "2": 6,
+        "3": 17
+      },
+      "rule_counts": {
+        "0": 19,
+        "1": 74,
+        "2": 99,
+        "3": 56,
+        "4": 15,
+        "5": 23
+      },
+      "dispatch_count": 286,
+      "scheduling_events": 286,
+      "breakdown_count": 7,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": 7,
+      "requeued_op_count": 7,
+      "interrupted_proc_time": 73.05279212579734,
+      "breakdown_cost": 9044.0,
+      "makespan": 3846.0066931267693
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": 3,
+      "scheduling_events": 3,
+      "breakdown_count": 3,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": 3,
+      "requeued_op_count": 3,
+      "interrupted_proc_time": 46.392950544462984,
+      "breakdown_cost": 3876.0,
+      "makespan": 75.54863833318223
+    },
+    "seed": 42,
+    "policy_tag": "region_on_hx0p3_hy0p1",
+    "policy_label": "Policy: Region constrained (Hx=0.3, Hy=0.1)",
+    "delta_tard": -405.66486240201493,
+    "delta_maint": 3980.309742217927,
+    "delta_total": 3574.6448798159126,
+    "delta_overdue_ratio": 0.0035842293906810027,
+    "delta_breakdown_count": 3.0,
+    "delta_breakdown_cost": 3876.0,
+    "delta_requeued_op_count": 3.0,
+    "delta_interrupted_proc_time": 46.392950544462984,
+    "delta_dispatch_count": 3,
+    "delta_makespan": 75.54863833318223
+  },
+  {
+    "primary_mode": "DQN",
+    "compare_mode": "POMCP",
+    "compare_type": "maint_only",
+    "train_policy_tag": "region_on_hx0p3_hy0p1",
+    "eval_policy_tag": "region_on_hx0p3_hy0p1",
+    "scheduler_anchor": "DQN",
+    "primary_action_counts": {
+      "DN": 257,
+      "IM": 20,
+      "CM": 1
+    },
+    "compare_action_counts": {
+      "DN": 276,
+      "IM": 2,
+      "CM": 1
+    },
+    "decision_union_count": 287,
+    "decision_aligned_count": 270,
+    "divergence_count": 38,
+    "divergence_rate": 0.13240418118466898,
+    "missing_on_primary": 9,
+    "missing_on_compare": 8,
+    "missing_on_pomcp": 8,
+    "missing_on_dqn": 9,
+    "primary_metrics": {
+      "tard": 167.0856937720276,
+      "maint": 1598.301506789373,
+      "total": 1765.3872005614005,
+      "overdue_ratio": 0.043010752688172046,
+      "breakdown_count": 1.0,
+      "breakdown_cost": 1292.0,
+      "requeued_op_count": 1.0,
+      "interrupted_proc_time": 24.56523685631529
+    },
+    "compare_metrics": {
+      "tard": 703.72021072083,
+      "maint": 9218.354710844513,
+      "total": 9922.074921565343,
+      "overdue_ratio": 0.08602150537634409,
+      "breakdown_count": 7.0,
+      "breakdown_cost": 9044.0,
+      "requeued_op_count": 7.0,
+      "interrupted_proc_time": 102.95814000524442
+    },
+    "delta_compare_minus_primary": {
+      "tard": 536.6345169488023,
+      "maint": 7620.05320405514,
+      "total": 8156.687721003943,
+      "overdue_ratio": 0.043010752688172046,
+      "breakdown_count": 6.0,
+      "breakdown_cost": 7752.0,
+      "requeued_op_count": 6.0,
+      "interrupted_proc_time": 78.39290314892912
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 110,
+        "1": 47,
+        "2": 14,
+        "3": 109
+      },
+      "rule_counts": {
+        "0": 50,
+        "1": 60,
+        "2": 35,
+        "3": 61,
+        "4": 52,
+        "5": 22
+      },
+      "dispatch_count": 280,
+      "scheduling_events": 280,
+      "breakdown_count": 1,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": 1,
+      "requeued_op_count": 1,
+      "interrupted_proc_time": 24.56523685631529,
+      "breakdown_cost": 1292.0,
+      "makespan": 3812.400689247225
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 122,
+        "1": 44,
+        "2": 13,
+        "3": 107
+      },
+      "rule_counts": {
+        "0": 47,
+        "1": 62,
+        "2": 45,
+        "3": 53,
+        "4": 48,
+        "5": 31
+      },
+      "dispatch_count": 286,
+      "scheduling_events": 286,
+      "breakdown_count": 7,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": 7,
+      "requeued_op_count": 7,
+      "interrupted_proc_time": 102.95814000524442,
+      "breakdown_cost": 9044.0,
+      "makespan": 3808.0547630260817
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": 6,
+      "scheduling_events": 6,
+      "breakdown_count": 6,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": 6,
+      "requeued_op_count": 6,
+      "interrupted_proc_time": 78.39290314892912,
+      "breakdown_cost": 7752.0,
+      "makespan": -4.345926221143145
+    },
+    "seed": 42,
+    "policy_tag": "region_on_hx0p3_hy0p1",
+    "policy_label": "Policy: Region constrained (Hx=0.3, Hy=0.1)",
+    "delta_tard": 536.6345169488023,
+    "delta_maint": 7620.05320405514,
+    "delta_total": 8156.687721003943,
+    "delta_overdue_ratio": 0.043010752688172046,
+    "delta_breakdown_count": 6.0,
+    "delta_breakdown_cost": 7752.0,
+    "delta_requeued_op_count": 6.0,
+    "delta_interrupted_proc_time": 78.39290314892912,
+    "delta_dispatch_count": 6,
+    "delta_makespan": -4.345926221143145
+  },
+  {
+    "primary_mode": "DQN",
+    "compare_mode": "POMCP",
+    "compare_type": "full_system",
+    "train_policy_tag": "region_off_unrestricted",
+    "eval_policy_tag": "region_off_unrestricted",
+    "scheduler_anchor": "none",
+    "primary_action_counts": {
+      "DN": 245,
+      "IM": 24,
+      "CM": 9
+    },
+    "compare_action_counts": {
+      "DN": 195,
+      "IM": 67,
+      "CM": 12
+    },
+    "decision_union_count": 286,
+    "decision_aligned_count": 266,
+    "divergence_count": 109,
+    "divergence_rate": 0.3811188811188811,
+    "missing_on_primary": 8,
+    "missing_on_compare": 12,
+    "missing_on_pomcp": 12,
+    "missing_on_dqn": 8,
+    "primary_metrics": {
+      "tard": 212.40691106459886,
+      "maint": 2432.0,
+      "total": 2644.4069110645987,
+      "overdue_ratio": 0.043010752688172046,
+      "breakdown_count": 1.0,
+      "breakdown_cost": 1292.0,
+      "requeued_op_count": 1.0,
+      "interrupted_proc_time": 1.9945972420152536
+    },
+    "compare_metrics": {
+      "tard": 876.1608916600846,
+      "maint": 7189.16848892617,
+      "total": 8065.329380586254,
+      "overdue_ratio": 0.08243727598566308,
+      "breakdown_count": 4.0,
+      "breakdown_cost": 5168.0,
+      "requeued_op_count": 4.0,
+      "interrupted_proc_time": 67.86994678959911
+    },
+    "delta_compare_minus_primary": {
+      "tard": 663.7539805954858,
+      "maint": 4757.16848892617,
+      "total": 5420.922469521655,
+      "overdue_ratio": 0.03942652329749104,
+      "breakdown_count": 3.0,
+      "breakdown_cost": 3876.0,
+      "requeued_op_count": 3.0,
+      "interrupted_proc_time": 65.87534954758385
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 189,
+        "1": 47,
+        "2": 16,
+        "3": 28
+      },
+      "rule_counts": {
+        "0": 58,
+        "1": 63,
+        "2": 12,
+        "3": 19,
+        "4": 111,
+        "5": 17
+      },
+      "dispatch_count": 280,
+      "scheduling_events": 280,
+      "breakdown_count": 1,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": 1,
+      "requeued_op_count": 1,
+      "interrupted_proc_time": 1.9945972420152536,
+      "breakdown_cost": 1292.0,
+      "makespan": 3780.458054793587
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 194,
+        "1": 8,
+        "2": 28,
+        "3": 53
+      },
+      "rule_counts": {
+        "0": 16,
+        "1": 54,
+        "2": 16,
+        "3": 47,
+        "4": 17,
+        "5": 133
+      },
+      "dispatch_count": 283,
+      "scheduling_events": 283,
+      "breakdown_count": 4,
+      "hard_breakdown_count": 1,
+      "stochastic_breakdown_count": 3,
+      "requeued_op_count": 4,
+      "interrupted_proc_time": 67.86994678959911,
+      "breakdown_cost": 5168.0,
+      "makespan": 3938.9051558014776
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": 3,
+      "scheduling_events": 3,
+      "breakdown_count": 3,
+      "hard_breakdown_count": 1,
+      "stochastic_breakdown_count": 2,
+      "requeued_op_count": 3,
+      "interrupted_proc_time": 65.87534954758385,
+      "breakdown_cost": 3876.0,
+      "makespan": 158.44710100789052
+    },
+    "seed": 42,
+    "policy_tag": "region_off_unrestricted",
+    "policy_label": "Policy: Unrestricted (no Hx/Hy enforcement)",
+    "delta_tard": 663.7539805954858,
+    "delta_maint": 4757.16848892617,
+    "delta_total": 5420.922469521655,
+    "delta_overdue_ratio": 0.03942652329749104,
+    "delta_breakdown_count": 3.0,
+    "delta_breakdown_cost": 3876.0,
+    "delta_requeued_op_count": 3.0,
+    "delta_interrupted_proc_time": 65.87534954758385,
+    "delta_dispatch_count": 3,
+    "delta_makespan": 158.44710100789052
+  },
+  {
+    "primary_mode": "DQN",
+    "compare_mode": "POMCP",
+    "compare_type": "maint_only",
+    "train_policy_tag": "region_off_unrestricted",
+    "eval_policy_tag": "region_off_unrestricted",
+    "scheduler_anchor": "DQN",
+    "primary_action_counts": {
+      "DN": 234,
+      "IM": 31,
+      "CM": 11
+    },
+    "compare_action_counts": {
+      "DN": 184,
+      "IM": 77,
+      "CM": 13
+    },
+    "decision_union_count": 289,
+    "decision_aligned_count": 261,
+    "divergence_count": 131,
+    "divergence_rate": 0.4532871972318339,
+    "missing_on_primary": 13,
+    "missing_on_compare": 15,
+    "missing_on_pomcp": 15,
+    "missing_on_dqn": 13,
+    "primary_metrics": {
+      "tard": 269.9236319594271,
+      "maint": 1410.0,
+      "total": 1679.923631959427,
+      "overdue_ratio": 0.06810035842293907,
+      "breakdown_count": 0.0,
+      "breakdown_cost": 0.0,
+      "requeued_op_count": 0.0,
+      "interrupted_proc_time": 0.0
+    },
+    "compare_metrics": {
+      "tard": 958.9729288832336,
+      "maint": 11131.426678447096,
+      "total": 12090.39960733033,
+      "overdue_ratio": 0.07885304659498207,
+      "breakdown_count": 7.0,
+      "breakdown_cost": 9044.0,
+      "requeued_op_count": 7.0,
+      "interrupted_proc_time": 65.18614985433422
+    },
+    "delta_compare_minus_primary": {
+      "tard": 689.0492969238065,
+      "maint": 9721.426678447096,
+      "total": 10410.475975370902,
+      "overdue_ratio": 0.010752688172043001,
+      "breakdown_count": 7.0,
+      "breakdown_cost": 9044.0,
+      "requeued_op_count": 7.0,
+      "interrupted_proc_time": 65.18614985433422
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 178,
+        "1": 41,
+        "2": 26,
+        "3": 34
+      },
+      "rule_counts": {
+        "0": 62,
+        "1": 49,
+        "2": 19,
+        "3": 22,
+        "4": 111,
+        "5": 16
+      },
+      "dispatch_count": 279,
+      "scheduling_events": 279,
+      "breakdown_count": 0,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": 0,
+      "requeued_op_count": 0,
+      "interrupted_proc_time": 0.0,
+      "breakdown_cost": 0.0,
+      "makespan": 3823.683851184473
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 231,
+        "1": 18,
+        "2": 10,
+        "3": 27
+      },
+      "rule_counts": {
+        "0": 53,
+        "1": 61,
+        "2": 19,
+        "3": 9,
+        "4": 136,
+        "5": 8
+      },
+      "dispatch_count": 286,
+      "scheduling_events": 286,
+      "breakdown_count": 7,
+      "hard_breakdown_count": 1,
+      "stochastic_breakdown_count": 6,
+      "requeued_op_count": 7,
+      "interrupted_proc_time": 65.18614985433422,
+      "breakdown_cost": 9044.0,
+      "makespan": 4035.948435371143
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": 7,
+      "scheduling_events": 7,
+      "breakdown_count": 7,
+      "hard_breakdown_count": 1,
+      "stochastic_breakdown_count": 6,
+      "requeued_op_count": 7,
+      "interrupted_proc_time": 65.18614985433422,
+      "breakdown_cost": 9044.0,
+      "makespan": 212.26458418667016
+    },
+    "seed": 42,
+    "policy_tag": "region_off_unrestricted",
+    "policy_label": "Policy: Unrestricted (no Hx/Hy enforcement)",
+    "delta_tard": 689.0492969238065,
+    "delta_maint": 9721.426678447096,
+    "delta_total": 10410.475975370902,
+    "delta_overdue_ratio": 0.010752688172043001,
+    "delta_breakdown_count": 7.0,
+    "delta_breakdown_cost": 9044.0,
+    "delta_requeued_op_count": 7.0,
+    "delta_interrupted_proc_time": 65.18614985433422,
+    "delta_dispatch_count": 7,
+    "delta_makespan": 212.26458418667016
+  },
+  {
+    "primary_mode": "CONSTRAINED",
+    "compare_mode": "UNRESTRICTED",
+    "compare_type": "full_system_route_compare",
+    "train_policy_tag": "region_on_hx0p3_hy0p1",
+    "eval_policy_tag": "region_off_unrestricted",
+    "scheduler_anchor": "none",
+    "primary_action_counts": {
+      "DN": 266,
+      "IM": 11,
+      "CM": 0
+    },
+    "compare_action_counts": {
+      "DN": 245,
+      "IM": 24,
+      "CM": 9
+    },
+    "decision_union_count": 292,
+    "decision_aligned_count": 263,
+    "divergence_count": 65,
+    "divergence_rate": 0.2226027397260274,
+    "missing_on_primary": 15,
+    "missing_on_compare": 14,
+    "missing_on_pomcp": 0,
+    "missing_on_dqn": 0,
+    "primary_metrics": {
+      "tard": 786.6962834388889,
+      "maint": 5279.352387617604,
+      "total": 6066.048671056493,
+      "overdue_ratio": 0.06093189964157706,
+      "breakdown_count": 4.0,
+      "breakdown_cost": 5168.0,
+      "requeued_op_count": 4.0,
+      "interrupted_proc_time": 26.659841581334355
+    },
+    "compare_metrics": {
+      "tard": 212.40691106459886,
+      "maint": 2432.0,
+      "total": 2644.4069110645987,
+      "overdue_ratio": 0.043010752688172046,
+      "breakdown_count": 1.0,
+      "breakdown_cost": 1292.0,
+      "requeued_op_count": 1.0,
+      "interrupted_proc_time": 1.9945972420152536
+    },
+    "delta_compare_minus_primary": {
+      "tard": -574.2893723742901,
+      "maint": -2847.352387617604,
+      "total": -3421.641759991894,
+      "overdue_ratio": -0.017921146953405014,
+      "breakdown_count": -3.0,
+      "breakdown_cost": -3876.0,
+      "requeued_op_count": -3.0,
+      "interrupted_proc_time": -24.665244339319102
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 72,
+        "1": 48,
+        "2": 5,
+        "3": 158
+      },
+      "rule_counts": {
+        "0": 50,
+        "1": 60,
+        "2": 49,
+        "3": 52,
+        "4": 52,
+        "5": 20
+      },
+      "dispatch_count": 283,
+      "scheduling_events": 283,
+      "breakdown_count": 4,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": 4,
+      "requeued_op_count": 4,
+      "interrupted_proc_time": 26.659841581334355,
+      "breakdown_cost": 5168.0,
+      "makespan": 3770.458054793587
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 189,
+        "1": 47,
+        "2": 16,
+        "3": 28
+      },
+      "rule_counts": {
+        "0": 58,
+        "1": 63,
+        "2": 12,
+        "3": 19,
+        "4": 111,
+        "5": 17
+      },
+      "dispatch_count": 280,
+      "scheduling_events": 280,
+      "breakdown_count": 1,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": 1,
+      "requeued_op_count": 1,
+      "interrupted_proc_time": 1.9945972420152536,
+      "breakdown_cost": 1292.0,
+      "makespan": 3780.458054793587
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": -3,
+      "scheduling_events": -3,
+      "breakdown_count": -3,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": -3,
+      "requeued_op_count": -3,
+      "interrupted_proc_time": -24.665244339319102,
+      "breakdown_cost": -3876.0,
+      "makespan": 10.0
+    },
+    "seed": 42,
+    "policy_tag": "region_on_hx0p3_hy0p1__to__region_off_unrestricted",
+    "policy_label": "Route delta: unrestricted - constrained",
+    "maint_mode": "DQN",
+    "maint_mode_tag": "maint_dqn",
+    "route_delta_direction": "unrestricted_minus_constrained",
+    "delta_tard": -574.2893723742901,
+    "delta_maint": -2847.352387617604,
+    "delta_total": -3421.641759991894,
+    "delta_overdue_ratio": -0.017921146953405014,
+    "delta_breakdown_count": -3.0,
+    "delta_breakdown_cost": -3876.0,
+    "delta_requeued_op_count": -3.0,
+    "delta_interrupted_proc_time": -24.665244339319102,
+    "delta_dispatch_count": -3,
+    "delta_makespan": 10.0
+  },
+  {
+    "primary_mode": "CONSTRAINED",
+    "compare_mode": "UNRESTRICTED",
+    "compare_type": "maint_only_route_compare",
+    "train_policy_tag": "region_on_hx0p3_hy0p1",
+    "eval_policy_tag": "region_off_unrestricted",
+    "scheduler_anchor": "DQN",
+    "primary_action_counts": {
+      "DN": 257,
+      "IM": 20,
+      "CM": 1
+    },
+    "compare_action_counts": {
+      "DN": 234,
+      "IM": 31,
+      "CM": 11
+    },
+    "decision_union_count": 290,
+    "decision_aligned_count": 264,
+    "divergence_count": 82,
+    "divergence_rate": 0.2827586206896552,
+    "missing_on_primary": 12,
+    "missing_on_compare": 14,
+    "missing_on_pomcp": 0,
+    "missing_on_dqn": 0,
+    "primary_metrics": {
+      "tard": 167.0856937720276,
+      "maint": 1598.301506789373,
+      "total": 1765.3872005614005,
+      "overdue_ratio": 0.043010752688172046,
+      "breakdown_count": 1.0,
+      "breakdown_cost": 1292.0,
+      "requeued_op_count": 1.0,
+      "interrupted_proc_time": 24.56523685631529
+    },
+    "compare_metrics": {
+      "tard": 269.9236319594271,
+      "maint": 1410.0,
+      "total": 1679.923631959427,
+      "overdue_ratio": 0.06810035842293907,
+      "breakdown_count": 0.0,
+      "breakdown_cost": 0.0,
+      "requeued_op_count": 0.0,
+      "interrupted_proc_time": 0.0
+    },
+    "delta_compare_minus_primary": {
+      "tard": 102.83793818739949,
+      "maint": -188.30150678937298,
+      "total": -85.46356860197352,
+      "overdue_ratio": 0.025089605734767026,
+      "breakdown_count": -1.0,
+      "breakdown_cost": -1292.0,
+      "requeued_op_count": -1.0,
+      "interrupted_proc_time": -24.56523685631529
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 110,
+        "1": 47,
+        "2": 14,
+        "3": 109
+      },
+      "rule_counts": {
+        "0": 50,
+        "1": 60,
+        "2": 35,
+        "3": 61,
+        "4": 52,
+        "5": 22
+      },
+      "dispatch_count": 280,
+      "scheduling_events": 280,
+      "breakdown_count": 1,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": 1,
+      "requeued_op_count": 1,
+      "interrupted_proc_time": 24.56523685631529,
+      "breakdown_cost": 1292.0,
+      "makespan": 3812.400689247225
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 178,
+        "1": 41,
+        "2": 26,
+        "3": 34
+      },
+      "rule_counts": {
+        "0": 62,
+        "1": 49,
+        "2": 19,
+        "3": 22,
+        "4": 111,
+        "5": 16
+      },
+      "dispatch_count": 279,
+      "scheduling_events": 279,
+      "breakdown_count": 0,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": 0,
+      "requeued_op_count": 0,
+      "interrupted_proc_time": 0.0,
+      "breakdown_cost": 0.0,
+      "makespan": 3823.683851184473
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": -1,
+      "scheduling_events": -1,
+      "breakdown_count": -1,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": -1,
+      "requeued_op_count": -1,
+      "interrupted_proc_time": -24.56523685631529,
+      "breakdown_cost": -1292.0,
+      "makespan": 11.283161937248224
+    },
+    "seed": 42,
+    "policy_tag": "region_on_hx0p3_hy0p1__to__region_off_unrestricted",
+    "policy_label": "Route delta: unrestricted - constrained",
+    "maint_mode": "DQN",
+    "maint_mode_tag": "maint_dqn",
+    "route_delta_direction": "unrestricted_minus_constrained",
+    "delta_tard": 102.83793818739949,
+    "delta_maint": -188.30150678937298,
+    "delta_total": -85.46356860197352,
+    "delta_overdue_ratio": 0.025089605734767026,
+    "delta_breakdown_count": -1.0,
+    "delta_breakdown_cost": -1292.0,
+    "delta_requeued_op_count": -1.0,
+    "delta_interrupted_proc_time": -24.56523685631529,
+    "delta_dispatch_count": -1,
+    "delta_makespan": 11.283161937248224
+  },
+  {
+    "primary_mode": "CONSTRAINED",
+    "compare_mode": "UNRESTRICTED",
+    "compare_type": "full_system_route_compare",
+    "train_policy_tag": "region_on_hx0p3_hy0p1",
+    "eval_policy_tag": "region_off_unrestricted",
+    "scheduler_anchor": "none",
+    "primary_action_counts": {
+      "DN": 276,
+      "IM": 1,
+      "CM": 2
+    },
+    "compare_action_counts": {
+      "DN": 195,
+      "IM": 67,
+      "CM": 12
+    },
+    "decision_union_count": 299,
+    "decision_aligned_count": 254,
+    "divergence_count": 117,
+    "divergence_rate": 0.391304347826087,
+    "missing_on_primary": 20,
+    "missing_on_compare": 25,
+    "missing_on_pomcp": 0,
+    "missing_on_dqn": 0,
+    "primary_metrics": {
+      "tard": 381.031421036874,
+      "maint": 9259.662129835531,
+      "total": 9640.693550872405,
+      "overdue_ratio": 0.06451612903225806,
+      "breakdown_count": 7.0,
+      "breakdown_cost": 9044.0,
+      "requeued_op_count": 7.0,
+      "interrupted_proc_time": 73.05279212579734
+    },
+    "compare_metrics": {
+      "tard": 876.1608916600846,
+      "maint": 7189.16848892617,
+      "total": 8065.329380586254,
+      "overdue_ratio": 0.08243727598566308,
+      "breakdown_count": 4.0,
+      "breakdown_cost": 5168.0,
+      "requeued_op_count": 4.0,
+      "interrupted_proc_time": 67.86994678959911
+    },
+    "delta_compare_minus_primary": {
+      "tard": 495.12947062321064,
+      "maint": -2070.4936409093616,
+      "total": -1575.3641702861514,
+      "overdue_ratio": 0.01792114695340502,
+      "breakdown_count": -3.0,
+      "breakdown_cost": -3876.0,
+      "requeued_op_count": -3.0,
+      "interrupted_proc_time": -5.182845336198227
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 251,
+        "1": 12,
+        "2": 6,
+        "3": 17
+      },
+      "rule_counts": {
+        "0": 19,
+        "1": 74,
+        "2": 99,
+        "3": 56,
+        "4": 15,
+        "5": 23
+      },
+      "dispatch_count": 286,
+      "scheduling_events": 286,
+      "breakdown_count": 7,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": 7,
+      "requeued_op_count": 7,
+      "interrupted_proc_time": 73.05279212579734,
+      "breakdown_cost": 9044.0,
+      "makespan": 3846.0066931267693
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 194,
+        "1": 8,
+        "2": 28,
+        "3": 53
+      },
+      "rule_counts": {
+        "0": 16,
+        "1": 54,
+        "2": 16,
+        "3": 47,
+        "4": 17,
+        "5": 133
+      },
+      "dispatch_count": 283,
+      "scheduling_events": 283,
+      "breakdown_count": 4,
+      "hard_breakdown_count": 1,
+      "stochastic_breakdown_count": 3,
+      "requeued_op_count": 4,
+      "interrupted_proc_time": 67.86994678959911,
+      "breakdown_cost": 5168.0,
+      "makespan": 3938.9051558014776
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": -3,
+      "scheduling_events": -3,
+      "breakdown_count": -3,
+      "hard_breakdown_count": 1,
+      "stochastic_breakdown_count": -4,
+      "requeued_op_count": -3,
+      "interrupted_proc_time": -5.182845336198227,
+      "breakdown_cost": -3876.0,
+      "makespan": 92.8984626747083
+    },
+    "seed": 42,
+    "policy_tag": "region_on_hx0p3_hy0p1__to__region_off_unrestricted",
+    "policy_label": "Route delta: unrestricted - constrained",
+    "maint_mode": "POMCP",
+    "maint_mode_tag": "maint_pomcp",
+    "route_delta_direction": "unrestricted_minus_constrained",
+    "delta_tard": 495.12947062321064,
+    "delta_maint": -2070.4936409093616,
+    "delta_total": -1575.3641702861514,
+    "delta_overdue_ratio": 0.01792114695340502,
+    "delta_breakdown_count": -3.0,
+    "delta_breakdown_cost": -3876.0,
+    "delta_requeued_op_count": -3.0,
+    "delta_interrupted_proc_time": -5.182845336198227,
+    "delta_dispatch_count": -3,
+    "delta_makespan": 92.8984626747083
+  },
+  {
+    "primary_mode": "CONSTRAINED",
+    "compare_mode": "UNRESTRICTED",
+    "compare_type": "maint_only_route_compare",
+    "train_policy_tag": "region_on_hx0p3_hy0p1",
+    "eval_policy_tag": "region_off_unrestricted",
+    "scheduler_anchor": "DQN",
+    "primary_action_counts": {
+      "DN": 276,
+      "IM": 2,
+      "CM": 1
+    },
+    "compare_action_counts": {
+      "DN": 184,
+      "IM": 77,
+      "CM": 13
+    },
+    "decision_union_count": 291,
+    "decision_aligned_count": 262,
+    "divergence_count": 117,
+    "divergence_rate": 0.4020618556701031,
+    "missing_on_primary": 12,
+    "missing_on_compare": 17,
+    "missing_on_pomcp": 0,
+    "missing_on_dqn": 0,
+    "primary_metrics": {
+      "tard": 703.72021072083,
+      "maint": 9218.354710844513,
+      "total": 9922.074921565343,
+      "overdue_ratio": 0.08602150537634409,
+      "breakdown_count": 7.0,
+      "breakdown_cost": 9044.0,
+      "requeued_op_count": 7.0,
+      "interrupted_proc_time": 102.95814000524442
+    },
+    "compare_metrics": {
+      "tard": 958.9729288832336,
+      "maint": 11131.426678447096,
+      "total": 12090.39960733033,
+      "overdue_ratio": 0.07885304659498207,
+      "breakdown_count": 7.0,
+      "breakdown_cost": 9044.0,
+      "requeued_op_count": 7.0,
+      "interrupted_proc_time": 65.18614985433422
+    },
+    "delta_compare_minus_primary": {
+      "tard": 255.25271816240365,
+      "maint": 1913.0719676025838,
+      "total": 2168.3246857649865,
+      "overdue_ratio": -0.007168458781362019,
+      "breakdown_count": 0.0,
+      "breakdown_cost": 0.0,
+      "requeued_op_count": 0.0,
+      "interrupted_proc_time": -37.7719901509102
+    },
+    "primary_schedule_summary": {
+      "goal_counts": {
+        "0": 122,
+        "1": 44,
+        "2": 13,
+        "3": 107
+      },
+      "rule_counts": {
+        "0": 47,
+        "1": 62,
+        "2": 45,
+        "3": 53,
+        "4": 48,
+        "5": 31
+      },
+      "dispatch_count": 286,
+      "scheduling_events": 286,
+      "breakdown_count": 7,
+      "hard_breakdown_count": 0,
+      "stochastic_breakdown_count": 7,
+      "requeued_op_count": 7,
+      "interrupted_proc_time": 102.95814000524442,
+      "breakdown_cost": 9044.0,
+      "makespan": 3808.0547630260817
+    },
+    "compare_schedule_summary": {
+      "goal_counts": {
+        "0": 231,
+        "1": 18,
+        "2": 10,
+        "3": 27
+      },
+      "rule_counts": {
+        "0": 53,
+        "1": 61,
+        "2": 19,
+        "3": 9,
+        "4": 136,
+        "5": 8
+      },
+      "dispatch_count": 286,
+      "scheduling_events": 286,
+      "breakdown_count": 7,
+      "hard_breakdown_count": 1,
+      "stochastic_breakdown_count": 6,
+      "requeued_op_count": 7,
+      "interrupted_proc_time": 65.18614985433422,
+      "breakdown_cost": 9044.0,
+      "makespan": 4035.948435371143
+    },
+    "delta_schedule_summary": {
+      "dispatch_count": 0,
+      "scheduling_events": 0,
+      "breakdown_count": 0,
+      "hard_breakdown_count": 1,
+      "stochastic_breakdown_count": -1,
+      "requeued_op_count": 0,
+      "interrupted_proc_time": -37.7719901509102,
+      "breakdown_cost": 0.0,
+      "makespan": 227.89367234506153
+    },
+    "seed": 42,
+    "policy_tag": "region_on_hx0p3_hy0p1__to__region_off_unrestricted",
+    "policy_label": "Route delta: unrestricted - constrained",
+    "maint_mode": "POMCP",
+    "maint_mode_tag": "maint_pomcp",
+    "route_delta_direction": "unrestricted_minus_constrained",
+    "delta_tard": 255.25271816240365,
+    "delta_maint": 1913.0719676025838,
+    "delta_total": 2168.3246857649865,
+    "delta_overdue_ratio": -0.007168458781362019,
+    "delta_breakdown_count": 0.0,
+    "delta_breakdown_cost": 0.0,
+    "delta_requeued_op_count": 0.0,
+    "delta_interrupted_proc_time": -37.7719901509102,
+    "delta_dispatch_count": 0,
+    "delta_makespan": 227.89367234506153
+  }
+]

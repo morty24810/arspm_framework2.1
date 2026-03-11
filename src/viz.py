@@ -32,7 +32,7 @@ def plot_gantt(timeline_ops, timeline_maint, jobs, out_path: str,
         return
     fig, ax = plt.subplots(figsize=(12, 1 + 0.6*len(mids)))
 
-    job_ids = sorted({jid for _, _, _, jid, _ in timeline_ops})
+    job_ids = sorted({jid for _, _, _, jid, _, *_ in timeline_ops})
     cmap = plt.get_cmap("tab20")
     job_color = {jid: cmap(i % cmap.N) for i, jid in enumerate(job_ids)}
     tardy_jobs = set()
@@ -45,7 +45,7 @@ def plot_gantt(timeline_ops, timeline_maint, jobs, out_path: str,
     yticklabel = []
 
     t_max = 0.0
-    for _, t0, t1, _, _ in timeline_ops:
+    for _, t0, t1, _, _, *_ in timeline_ops:
         t_max = max(t_max, t1)
     for _, t0, t1, _ in timeline_maint:
         t_max = max(t_max, t1)
@@ -80,6 +80,7 @@ def plot_gantt(timeline_ops, timeline_maint, jobs, out_path: str,
         "BREAKDOWN": "#EF9A9A",
     }
     maint_kinds = set(k for _, _, _, k in timeline_maint)
+    has_interrupted_ops = any((seg[5] if len(seg) > 5 else "DONE") == "INTERRUPTED" for seg in timeline_ops)
 
     for i, mid in enumerate(mids):
         y = i * 10
@@ -87,13 +88,16 @@ def plot_gantt(timeline_ops, timeline_maint, jobs, out_path: str,
         yticklabel.append(f"M{mid}")
 
         # operations
-        for m, t0, t1, jid, oid in timeline_ops:
+        for m, t0, t1, jid, oid, *rest in timeline_ops:
             if m != mid: 
                 continue
+            status = rest[0] if rest else "DONE"
             face = job_color.get(jid, (0.6, 0.6, 0.6, 1.0))
             edge = "red" if jid in tardy_jobs else "black"
             lw = 1.4 if jid in tardy_jobs else 0.8
-            ax.broken_barh([(t0, t1-t0)], (y, 8), facecolors=face, edgecolors=edge, linewidth=lw)
+            hatch = "xx" if status == "INTERRUPTED" else None
+            alpha = 0.55 if status == "INTERRUPTED" else 1.0
+            ax.broken_barh([(t0, t1-t0)], (y, 8), facecolors=face, edgecolors=edge, linewidth=lw, hatch=hatch, alpha=alpha)
 
         # maintenance blocks
         for m, t0, t1, kind in timeline_maint:
@@ -128,6 +132,8 @@ def plot_gantt(timeline_ops, timeline_maint, jobs, out_path: str,
             Patch(facecolor=maint_colors.get(kind, "#BDBDBD"), edgecolor="black", hatch='//', label=kind)
             for kind in sorted(maint_kinds)
         ]
+        if has_interrupted_ops:
+            maint_legend.append(Patch(facecolor="#9E9E9E", edgecolor="black", hatch="xx", alpha=0.55, label="INTERRUPTED_OP"))
         ax.legend(handles=maint_legend, loc="upper left", ncol=3, frameon=False)
     fig.tight_layout()
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
@@ -149,10 +155,12 @@ def plot_rul_curves(rul_log: Dict[int, List[Tuple[float,float]]], maint: List[Tu
 
     # mark maintenance
     for mid, t0, t1, kind in maint:
-        alert = kind in ("FAIL_CM", "SCRAP")
+        alert = kind in ("FAIL_CM", "SCRAP", "BREAKDOWN")
         color = "red" if alert else "gray"
         alpha = 0.3 if alert else 0.2
         ax.axvspan(t0, t1, alpha=alpha, color=color)
+        if kind == "BREAKDOWN":
+            ax.axvline(t0, color="#d62728", linestyle=":", linewidth=1.0, alpha=0.8)
 
     ax.set_ylim(-0.05, 1.05)
     ax.set_xlabel("Time")
@@ -351,6 +359,10 @@ def plot_maint_mode_comparison(summary: Dict[str, object], compare_rows: List[Di
         lines.append(
             f"Scheduling: {modes[0]} dispatch={int(p_sched.get('dispatch_count', 0))}, makespan={float(p_sched.get('makespan', 0.0)):.1f}"
             f" | {modes[1]} dispatch={int(c_sched.get('dispatch_count', 0))}, makespan={float(c_sched.get('makespan', 0.0)):.1f}"
+        )
+        lines.append(
+            f"Breakdown: {modes[0]} count={int(p_sched.get('breakdown_count', 0))}, hard={int(p_sched.get('hard_breakdown_count', 0))}, requeue={int(p_sched.get('requeued_op_count', 0))}"
+            f" | {modes[1]} count={int(c_sched.get('breakdown_count', 0))}, hard={int(c_sched.get('hard_breakdown_count', 0))}, requeue={int(c_sched.get('requeued_op_count', 0))}"
         )
         lines.append(
             f"Rules: {modes[0]}={p_sched.get('rule_counts', {})} | {modes[1]}={c_sched.get('rule_counts', {})}"

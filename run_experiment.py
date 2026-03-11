@@ -125,17 +125,18 @@ def compute_window(risk_t: float, local_urgency: float, t_now: float, cfg: SimCo
         t_l = t_e
     return t_e, t_l
 
-def maintenance_reward(action: int, dur: float, local_urgency: float, risk_t: float,
-                       window_violation: bool, cfg: SimConfig) -> float:
+def maintenance_reward(action: int, dur: float, local_urgency: float,
+                       expected_breakdown_loss: float, window_violation: bool,
+                       cfg: SimConfig) -> float:
     downtime_cost = float(dur) * float(local_urgency)
     maint_cost = 0.0
     if action == 1:
         maint_cost = float(cfg.IM_COST) * float(dur)
     elif action == 2:
         maint_cost = float(cfg.CM_COST) * float(dur)
-    risk_cost = float(cfg.W_RISK) * float(risk_t) if int(action) == 0 else 0.0
+    dn_breakdown_cost = float(expected_breakdown_loss) if int(action) == 0 else 0.0
     violation = cfg.W_WINDOW_VIOLATION if window_violation else 0.0
-    return -(downtime_cost + maint_cost + risk_cost + violation)
+    return -(downtime_cost + maint_cost + dn_breakdown_cost + violation)
 
 def scheduling_reward(goal: int, tard, maint, prev_tard, prev_maint):
     # incremental rewards, 4 goals
@@ -150,11 +151,12 @@ def scheduling_reward(goal: int, tard, maint, prev_tard, prev_maint):
     return -(0.3*dtard + dmaint)  # balanced (maint-heavy)
 
 def summarize_overdue_ops(timeline_ops, jobs):
-    total_ops = len(timeline_ops)
-    total_proc_time = sum(t1 - t0 for _, t0, t1, _, _ in timeline_ops)
+    completed_ops = [seg for seg in timeline_ops if len(seg) < 6 or seg[5] == "DONE"]
+    total_ops = len(completed_ops)
+    total_proc_time = sum(t1 - t0 for _, t0, t1, _, _, *_ in completed_ops)
     overdue_ops = []
     overdue_proc_time = 0.0
-    for mid, t0, t1, jid, oid in timeline_ops:
+    for mid, t0, t1, jid, oid, *_ in completed_ops:
         job = jobs.get(jid)
         if job is None:
             continue
@@ -482,11 +484,12 @@ def build_degradation_and_rul(cfg: SimConfig, machine_curve_ids: list[int]):
     return features, degr, rul
 
 def compute_overdue_stats(timeline_ops, jobs) -> Dict[str, float]:
-    total_ops = len(timeline_ops)
-    total_proc_time = sum(t1 - t0 for _, t0, t1, _, _ in timeline_ops)
+    completed_ops = [seg for seg in timeline_ops if len(seg) < 6 or seg[5] == "DONE"]
+    total_ops = len(completed_ops)
+    total_proc_time = sum(t1 - t0 for _, t0, t1, _, _, *_ in completed_ops)
     overdue_count = 0
     overdue_proc_time = 0.0
-    for _, t0, t1, jid, oid in timeline_ops:
+    for _, t0, t1, jid, oid, *_ in completed_ops:
         job = jobs.get(jid)
         if job is None:
             continue
@@ -500,6 +503,25 @@ def compute_overdue_stats(timeline_ops, jobs) -> Dict[str, float]:
         "total_ops": float(total_ops),
         "ratio_ops": float(ratio_ops),
         "ratio_time": float(ratio_time),
+    }
+
+
+def compute_breakdown_reward_terms(env: EventDrivenShopEnv, mid: int, local_urgency: float,
+                                   slack_pressure: float, h_true: Optional[float] = None) -> Dict[str, float]:
+    details = env.expected_breakdown_loss(
+        mid,
+        local_urgency,
+        stress=float(slack_pressure),
+        h_true=h_true,
+    )
+    return {
+        "p_fail_exec": float(details["p_fail_exec"]),
+        "expected_breakdown_loss": float(details["expected_breakdown_loss"]),
+        "expected_breakdown_cost": float(details["breakdown_penalty_cost"]),
+        "expected_redispatch_pt": float(details["expected_redispatch_pt"]),
+        "breakdown_recovery_dur": float(details["recovery_dur"]),
+        "would_hard_breakdown": bool(details["hard_breakdown_flag"] >= 0.5),
+        "h_end_true": float(details["h_end_true"]),
     }
 
 def write_summary_files(outdir: Path, stem: str, summary: Dict[str, Any]):
@@ -520,6 +542,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                   episode_combos: Optional[list[tuple[float, float]]] = None,
                   episode_combo_seq: Optional[list[int]] = None,
                   generate_outputs: bool = True,
+                  collect_decision_log: bool = False,
                   outdir: Optional[Path] = None,
                   plot_prefix: str = "",
                   decision_log_name: str = "decision_log.csv",
@@ -568,7 +591,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
 
         prev_tard, prev_maint = 0.0, 0.0
         last_h = {m.mid: None for m in env.machines}
-        decision_log = [] if generate_outputs else None
+        decision_log = [] if (generate_outputs or collect_decision_log) else None
         p_fail_plot = [] if generate_outputs else None
         maint_scatter = [] if generate_outputs else None
         pending_maint = {}
@@ -613,6 +636,9 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         arrivals, lambda_hat, _, _, ddt_hat, rush = env.get_obs_estimates(avg_slack, slack_pressure)
                         risk_now = env.failure_prob(h_now)
                         action_now = enforce_action_by_region(rec["action"], h_now, cfg, enforce_region)
+                        dn_terms = compute_breakdown_reward_terms(
+                            env, mid, local_urgency, slack_pressure, h_true=env.peek_rul_true(mid)
+                        )
                         execute_now = env.time >= rec["t_e"] or (enforce_region and h_now < cfg.Hy)
                         if action_now == 0:
                             if p_fail_plot is not None:
@@ -639,14 +665,19 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "risk_trend": 0.0,
                                     "im_longterm_penalty": 0.0,
                                     "opportunity_cost": 0.0,
-                                    "p_fail": float(risk_now),
-                                    "expected_fail_cost": 0.0,
+                                    "p_fail": float(dn_terms["p_fail_exec"]),
+                                    "expected_fail_cost": float(dn_terms["expected_breakdown_loss"]),
                                     "downtime_cost": 0.0,
                                     "delta_t_since_last_maint": float(env.time - m.last_maint_end),
                                     "lambda_hat": float(lambda_hat),
                                     "ddt_hat": float(ddt_hat),
                                     "breakdown_flag": False,
                                     "breakdown_cost": 0.0,
+                                    "breakdown_count": int(env.breakdown_count),
+                                    "hard_breakdown_count": int(env.hard_breakdown_count),
+                                    "stochastic_breakdown_count": int(env.stochastic_breakdown_count),
+                                    "requeued_op_count": int(env.requeued_op_count),
+                                    "interrupted_proc_time": float(env.interrupted_proc_time),
                                     "t_e": float(rec["t_e"]),
                                     "t_l": float(rec["t_l"]),
                                     "window_violation": False,
@@ -685,14 +716,19 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "risk_trend": 0.0,
                                     "im_longterm_penalty": 0.0,
                                     "opportunity_cost": 0.0,
-                                    "p_fail": float(risk_now),
+                                    "p_fail": float(dn_terms["p_fail_exec"] if action_now == 0 else risk_now),
                                     "expected_fail_cost": 0.0,
-                                    "downtime_cost": 0.0,
+                                    "downtime_cost": float(dur * local_urgency),
                                     "delta_t_since_last_maint": float(env.time - m.last_maint_end),
                                     "lambda_hat": float(lambda_hat),
                                     "ddt_hat": float(ddt_hat),
                                     "breakdown_flag": False,
                                     "breakdown_cost": 0.0,
+                                    "breakdown_count": int(env.breakdown_count),
+                                    "hard_breakdown_count": int(env.hard_breakdown_count),
+                                    "stochastic_breakdown_count": int(env.stochastic_breakdown_count),
+                                    "requeued_op_count": int(env.requeued_op_count),
+                                    "interrupted_proc_time": float(env.interrupted_proc_time),
                                     "t_e": float(rec["t_e"]),
                                     "t_l": float(rec["t_l"]),
                                     "window_violation": bool(window_violation),
@@ -744,6 +780,9 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         pf_dn = max(0.0, min(1.0, pf_dn))
                         pf_im = max(0.0, min(1.0, pf_im))
                         pf_cm = max(0.0, min(1.0, pf_cm))
+                        dn_terms = compute_breakdown_reward_terms(
+                            env, mid, local_urgency, slack_pressure, h_true=env.peek_rul_true(mid)
+                        )
                         s = build_maintenance_state(h, dh, eta, slack_pressure, local_urgency, avg_slack,
                                                     lambda_hat, ddt_hat, risk_t, win_e, win_l,
                                                     rul_mu, rul_sigma, env.time, m.last_maint_end,
@@ -777,14 +816,19 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "risk_trend": 0.0,
                                     "im_longterm_penalty": 0.0,
                                     "opportunity_cost": 0.0,
-                                    "p_fail": float(risk_t),
-                                    "expected_fail_cost": 0.0,
+                                    "p_fail": float(dn_terms["p_fail_exec"]),
+                                    "expected_fail_cost": float(dn_terms["expected_breakdown_loss"]),
                                     "downtime_cost": 0.0,
                                     "delta_t_since_last_maint": float(env.time - m.last_maint_end),
                                     "lambda_hat": float(lambda_hat),
                                     "ddt_hat": float(ddt_hat),
                                     "breakdown_flag": False,
                                     "breakdown_cost": 0.0,
+                                    "breakdown_count": int(env.breakdown_count),
+                                    "hard_breakdown_count": int(env.hard_breakdown_count),
+                                    "stochastic_breakdown_count": int(env.stochastic_breakdown_count),
+                                    "requeued_op_count": int(env.requeued_op_count),
+                                    "interrupted_proc_time": float(env.interrupted_proc_time),
                                     "t_e": float(t_e),
                                     "t_l": float(t_l),
                                     "window_violation": False,
@@ -832,14 +876,19 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                         "risk_trend": 0.0,
                                         "im_longterm_penalty": 0.0,
                                         "opportunity_cost": 0.0,
-                                        "p_fail": float(risk_t),
+                                        "p_fail": float(dn_terms["p_fail_exec"] if action_now == 0 else risk_t),
                                         "expected_fail_cost": 0.0,
-                                        "downtime_cost": 0.0,
+                                        "downtime_cost": float(dur * local_urgency),
                                         "delta_t_since_last_maint": float(env.time - m.last_maint_end),
                                         "lambda_hat": float(lambda_hat),
                                         "ddt_hat": float(ddt_hat),
                                         "breakdown_flag": False,
                                         "breakdown_cost": 0.0,
+                                        "breakdown_count": int(env.breakdown_count),
+                                        "hard_breakdown_count": int(env.hard_breakdown_count),
+                                        "stochastic_breakdown_count": int(env.stochastic_breakdown_count),
+                                        "requeued_op_count": int(env.requeued_op_count),
+                                        "interrupted_proc_time": float(env.interrupted_proc_time),
                                         "t_e": float(rec["t_e"]),
                                         "t_l": float(rec["t_l"]),
                                         "window_violation": bool(window_violation),
@@ -860,15 +909,26 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                     op_info = None
                     overdue = None
                     job_due = None
-                    breakdown = env.last_breakdown
+                    dispatch_info = getattr(env, "last_dispatch_info", None) or {}
+                    breakdown = dispatch_info.get("breakdown") or env.last_breakdown
                     breakdown_flag = bool(breakdown)
                     breakdown_cost = float(breakdown["cost"]) if breakdown else 0.0
-                    if dispatched and env.timeline_ops:
-                        mid, t0, t1, jid, oid = env.timeline_ops[-1]
+                    breakdown_kind = None
+                    if breakdown:
+                        breakdown_kind = "HARD" if bool(breakdown.get("hard_breakdown", False)) else "STOCHASTIC"
+                    if dispatched and dispatch_info:
+                        jid = int(dispatch_info["jid"])
                         job = env.jobs.get(jid)
                         job_due = float(job.due) if job is not None else None
-                        overdue = (t1 > job_due) if job_due is not None else None
-                        op_info = {"mid": mid, "t0": t0, "t1": t1, "jid": jid, "oid": oid}
+                        overdue = (float(dispatch_info["t1"]) > job_due) if (job_due is not None and dispatch_info.get("status") == "DONE") else None
+                        op_info = {
+                            "mid": int(dispatch_info["mid"]),
+                            "t0": float(dispatch_info["t0"]),
+                            "t1": float(dispatch_info["t1"]),
+                            "jid": jid,
+                            "oid": int(dispatch_info["oid"]),
+                            "status": dispatch_info.get("status"),
+                        }
 
                     append_decision_log({
                         "time": env.time,
@@ -884,7 +944,13 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         "ddt_hat": float(ddt_hat),
                         "local_urgency": None,
                         "breakdown_flag": breakdown_flag,
+                        "breakdown_kind": breakdown_kind,
                         "breakdown_cost": breakdown_cost,
+                        "breakdown_count": int(env.breakdown_count),
+                        "hard_breakdown_count": int(env.hard_breakdown_count),
+                        "stochastic_breakdown_count": int(env.stochastic_breakdown_count),
+                        "requeued_op_count": int(env.requeued_op_count),
+                        "interrupted_proc_time": float(env.interrupted_proc_time),
                         "t_e": None,
                         "t_l": None,
                         "window_violation": None,
@@ -906,7 +972,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
             suffix = f"_{plot_prefix}" if plot_prefix else ""
             policy_text = policy_label or build_policy_context_label(cfg, enforce_region, maint_mode)
             t_end = 0.0
-            for _, t0, t1, _, _ in env.timeline_ops:
+            for _, t0, t1, _, _, *_ in env.timeline_ops:
                 t_end = max(t_end, t1)
             for _, t0, t1, _ in env.timeline_maint:
                 t_end = max(t_end, t1)
@@ -942,7 +1008,8 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         "p_fail", "expected_fail_cost", "downtime_cost", "delta_t_since_last_maint",
                         "lambda_hat", "ddt_hat",
                         "goal", "rule", "dispatched", "op", "job_due", "overdue",
-                        "local_urgency", "breakdown_flag", "breakdown_cost",
+                        "local_urgency", "breakdown_flag", "breakdown_kind", "breakdown_cost", "breakdown_count", "hard_breakdown_count",
+                        "stochastic_breakdown_count", "requeued_op_count", "interrupted_proc_time",
                         "t_e", "t_l", "window_violation", "risk_t", "mat_cost", "scrap_part_cost"
                     ])
                     for row in decision_log:
@@ -959,7 +1026,9 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                             row.get("goal"), row.get("rule"), row.get("dispatched"),
                             json.dumps(row.get("op"), separators=(",", ":"), ensure_ascii=True) if row.get("op") is not None else "",
                             row.get("job_due"), row.get("overdue"),
-                            row.get("local_urgency"), row.get("breakdown_flag"), row.get("breakdown_cost"),
+                            row.get("local_urgency"), row.get("breakdown_flag"), row.get("breakdown_kind"), row.get("breakdown_cost"),
+                            row.get("breakdown_count"), row.get("hard_breakdown_count"),
+                            row.get("stochastic_breakdown_count"), row.get("requeued_op_count"), row.get("interrupted_proc_time"),
                             row.get("t_e"), row.get("t_l"), row.get("window_violation"),
                             row.get("risk_t"), row.get("mat_cost"), row.get("scrap_part_cost"),
                         ])
@@ -1053,8 +1122,11 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
             h_state = float(state_p.get("h_true", 1.0))
             a = enforce_action_by_region(int(action), h_state, cfg, enforce_region)
             next_state, obs, info = env.generative_step(mid, state_p, a, slack_pressure, rng)
-            risk_t = env.failure_prob(h_state)
-            reward = maintenance_reward(a, info.get("dur", 0.0), local_urgency, risk_t, False, cfg)
+            breakdown_terms = compute_breakdown_reward_terms(
+                env, mid, local_urgency, slack_pressure, h_true=h_state
+            )
+            expected_breakdown_loss = breakdown_terms["expected_breakdown_loss"] if a == 0 else 0.0
+            reward = maintenance_reward(a, info.get("dur", 0.0), local_urgency, expected_breakdown_loss, False, cfg)
             return next_state, obs, reward
 
         action = int(pomcp.plan(belief, model, cfg.POMCP_NUM_SIMS, cfg.POMCP_HORIZON))
@@ -1065,7 +1137,7 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
     return int(enforce_action_by_region(fallback_action, h_obs, cfg, enforce_region))
 
 def _make_scheduler_agent(cfg: SimConfig, seed: int, device) -> THDQNAgent:
-    return THDQNAgent(state_dim=12, cfg=cfg, rng=make_rng(seed, "sched_agent"), device=device)
+    return THDQNAgent(state_dim=14, cfg=cfg, rng=make_rng(seed, "sched_agent"), device=device)
 
 
 def _make_maint_agent(cfg: SimConfig, seed: int, device) -> MaintenanceAgentDDQN:
@@ -1077,7 +1149,8 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
                       scheduler_anchor: str = "none") -> Dict[str, Any]:
     decision_log = list(final_result.get("decision_log", []))
     maint_counts = summarize_action_counts(extract_maintenance_rows(decision_log), key="kind", values=["DN", "IM", "CM"])
-    schedule_summary = summarize_scheduling_strategy(decision_log)
+    schedule_summary = summarize_scheduling_strategy(decision_log, env=final_result.get("env"))
+    env = final_result.get("env")
     return {
         "seed": int(seed),
         "maint_mode": str(mode),
@@ -1097,6 +1170,11 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "scheduling_events": int(schedule_summary["scheduling_events"]),
         "breakdown_count": int(schedule_summary["breakdown_count"]),
         "makespan": float(schedule_summary["makespan"]),
+        "breakdown_cost": float(getattr(env, "breakdown_cost_total", 0.0)),
+        "requeued_op_count": int(getattr(env, "requeued_op_count", 0)),
+        "interrupted_proc_time": float(getattr(env, "interrupted_proc_time", 0.0)),
+        "hard_breakdown_count": int(getattr(env, "hard_breakdown_count", 0)),
+        "stochastic_breakdown_count": int(getattr(env, "stochastic_breakdown_count", 0)),
         "maint_dn": int(maint_counts.get("DN", 0)),
         "maint_im": int(maint_counts.get("IM", 0)),
         "maint_cm": int(maint_counts.get("CM", 0)),
@@ -1118,7 +1196,12 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
     compare_policy_rows = [row for row in compare_rows if row["policy_tag"] == policy_tag]
     payload: Dict[str, Any] = {"policy_tag": policy_tag, "modes": {}, "delta_pomcp_minus_dqn": {}}
     csv_rows: List[Dict[str, Any]] = []
-    metrics = ["tard", "maint", "total", "overdue_ratio_ops", "dispatch_count", "makespan"]
+    metrics = [
+        "tard", "maint", "total", "overdue_ratio_ops",
+        "dispatch_count", "makespan",
+        "breakdown_count", "breakdown_cost",
+        "requeued_op_count", "interrupted_proc_time",
+    ]
     for mode in ("DQN", "POMCP"):
         mode_rows = [row for row in policy_rows if row["maint_mode"] == mode]
         summary = {"mode": mode}
@@ -1136,6 +1219,10 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
         "overdue_ratio_ops": "delta_overdue_ratio",
         "dispatch_count": "delta_dispatch_count",
         "makespan": "delta_makespan",
+        "breakdown_count": "delta_breakdown_count",
+        "breakdown_cost": "delta_breakdown_cost",
+        "requeued_op_count": "delta_requeued_op_count",
+        "interrupted_proc_time": "delta_interrupted_proc_time",
     }
     for out_metric, source_key in delta_map.items():
         stats = _calc_mean_std([float(row[source_key]) for row in compare_policy_rows])
@@ -1182,6 +1269,10 @@ def _finalize_compare_summary(summary: Dict[str, Any], **extra: Any) -> Dict[str
     finalized["delta_maint"] = float(delta_metrics.get("maint", 0.0))
     finalized["delta_total"] = float(delta_metrics.get("total", 0.0))
     finalized["delta_overdue_ratio"] = float(delta_metrics.get("overdue_ratio", 0.0))
+    finalized["delta_breakdown_count"] = float(delta_metrics.get("breakdown_count", 0.0))
+    finalized["delta_breakdown_cost"] = float(delta_metrics.get("breakdown_cost", 0.0))
+    finalized["delta_requeued_op_count"] = float(delta_metrics.get("requeued_op_count", 0.0))
+    finalized["delta_interrupted_proc_time"] = float(delta_metrics.get("interrupted_proc_time", 0.0))
     finalized["delta_dispatch_count"] = int(delta_schedule.get("dispatch_count", 0))
     finalized["delta_makespan"] = float(delta_schedule.get("makespan", 0.0))
     return finalized
@@ -1226,6 +1317,7 @@ def evaluate_maint_only_results(base_cfg: SimConfig, seed: int, degr: Degradatio
             eval_pomcp,
             final_scenario.machine_curve_ids,
             generate_outputs=False,
+            collect_decision_log=True,
             freeze_steps=True,
             policy_label=policy_label,
             threshold_enforced=train_enforce_region,
@@ -1342,11 +1434,15 @@ def train_one_mode(
                         )
                         if execute_now:
                             window_violation = (env.time > rec["t_l"]) if action_now != 0 else False
+                            breakdown_terms = compute_breakdown_reward_terms(
+                                env, mid, local_urgency, slack_pressure, h_true=env.peek_rul_true(mid)
+                            )
                             if action_now == 0:
                                 dur, kind, post_rul = 0.0, "DN", None
                             else:
                                 dur, kind, post_rul = env.apply_maintenance(mid, action_now, h=h_now)
-                            r = maintenance_reward(action_now, dur, local_urgency, risk_now, window_violation, cfg)
+                            expected_breakdown_loss = breakdown_terms["expected_breakdown_loss"] if action_now == 0 else 0.0
+                            r = maintenance_reward(action_now, dur, local_urgency, expected_breakdown_loss, window_violation, cfg)
                             slack_samples.append(avg_slack)
                             pressure_samples.append(slack_pressure)
                             maint_counts[action_now] = maint_counts.get(action_now, 0) + 1
@@ -1463,7 +1559,10 @@ def train_one_mode(
                         if 0 <= hbin < len(h_action_counts):
                             h_action_counts[hbin][a] += 1
                         if a == 0:
-                            r = maintenance_reward(a, 0.0, local_urgency, risk_t, False, cfg)
+                            breakdown_terms = compute_breakdown_reward_terms(
+                                env, mid, local_urgency, slack_pressure, h_true=env.peek_rul_true(mid)
+                            )
+                            r = maintenance_reward(a, 0.0, local_urgency, breakdown_terms["expected_breakdown_loss"], False, cfg)
                             sp = build_maintenance_state(h, 0.0, eta, slack_pressure, local_urgency, avg_slack,
                                                         lambda_hat, ddt_hat, risk_t, win_e, win_l,
                                                         rul_mu, rul_sigma, env.time, m.last_maint_end,
@@ -1487,8 +1586,12 @@ def train_one_mode(
                                 h_now = h
                                 window_violation = env.time > rec["t_l"]
                                 action_now = enforce_action_by_region(rec["action"], h_now, cfg, enforce_region_train)
+                                breakdown_terms = compute_breakdown_reward_terms(
+                                    env, mid, local_urgency, slack_pressure, h_true=env.peek_rul_true(mid)
+                                )
                                 dur, kind, post_rul = env.apply_maintenance(mid, action_now, h=h_now)
-                                r = maintenance_reward(action_now, dur, local_urgency, risk_t, window_violation, cfg)
+                                expected_breakdown_loss = breakdown_terms["expected_breakdown_loss"] if action_now == 0 else 0.0
+                                r = maintenance_reward(action_now, dur, local_urgency, expected_breakdown_loss, window_violation, cfg)
                                 slack_samples.append(avg_slack)
                                 pressure_samples.append(slack_pressure)
                                 maint_counts[action_now] = maint_counts.get(action_now, 0) + 1
@@ -1747,6 +1850,12 @@ def train_one_mode(
         "overdue_ratio_time": float(overdue_stats["ratio_time"]),
         "overdue_ops": float(overdue_stats["overdue_ops"]),
         "total_ops": float(overdue_stats["total_ops"]),
+        "breakdown_count": int(eval_env.breakdown_count),
+        "breakdown_cost": float(eval_env.breakdown_cost_total),
+        "requeued_op_count": int(eval_env.requeued_op_count),
+        "interrupted_proc_time": float(eval_env.interrupted_proc_time),
+        "hard_breakdown_count": int(eval_env.hard_breakdown_count),
+        "stochastic_breakdown_count": int(eval_env.stochastic_breakdown_count),
     }
     write_summary_files(outdir, f"summary_{ts}_{maint_mode_tag}_{train_policy_tag}", summary_row)
 
@@ -1814,6 +1923,12 @@ def train_one_mode(
             "overdue_ratio_time": float(diag_overdue["ratio_time"]),
             "overdue_ops": float(diag_overdue["overdue_ops"]),
             "total_ops": float(diag_overdue["total_ops"]),
+            "breakdown_count": int(diag_env.breakdown_count),
+            "breakdown_cost": float(diag_env.breakdown_cost_total),
+            "requeued_op_count": int(diag_env.requeued_op_count),
+            "interrupted_proc_time": float(diag_env.interrupted_proc_time),
+            "hard_breakdown_count": int(diag_env.hard_breakdown_count),
+            "stochastic_breakdown_count": int(diag_env.stochastic_breakdown_count),
         }
         write_summary_files(outdir, f"summary_{ts}_{maint_mode_tag}_{diag_policy_tag}_diagnostic", diag_summary)
 
