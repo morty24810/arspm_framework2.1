@@ -94,14 +94,18 @@ repo 雖然已經比 C. Ding 多了額外特徵，例如：
 - `Differential_pressure`
 - `Flow_rate`
 - `Time`
+- `Sampling = 10`（由新轉出的 CSV 證據與 `Time` 步長 `0.1` 對齊驗證）
 - `Dust_feed`
 - `Dust`
+- A2 / A3 / A4 的 particle-size raw CSV（`SizeUm`, `Channel`, `Passing`）
 - `RUL`（只在 `Test` 中提供）
 
 這些量能支持的事情：
 
 - `資料直接支持`：研究未維修退化曲線
 - `資料直接支持`：比較不同 dust/feed/flow 條件下的堵塞快慢
+- `資料直接支持`：把 A2/A3/A4 的粒徑分布進一步量化成 `D10/D50/D90` 或完整 cumulative passing curve
+- `資料直接支持`：在固定 `10 Hz`、`Δt = 0.1` 的離散時間設定下估計退化速度或壓差斜率
 - `資料直接支持`：構造某種 latent degradation state 的候選形式，並檢查它能否解釋壓差與壽命
 
 ### 3.2 Dataset 未直接提供的關鍵量
@@ -114,7 +118,6 @@ repo 雖然已經比 C. Ding 多了額外特徵，例如：
 - 真實維修前後殘留粉塵量
 - 真實 IM 強度與維修效果
 - 維修後壓差恢復曲線
-- 明確可解碼的 `Sampling` Hz 數值
 
 這些量的地位要分清楚：
 
@@ -335,6 +338,29 @@ repo 雖然已經比 C. Ding 多了額外特徵，例如：
 - `資料直接支持`：建立未維修退化的資料驅動物理隱狀態
 - `需要模型假設`：把 `IM/CM` 表示成可解釋、可校準的狀態轉移
 - `需要額外資料才可識別`：未來再用維修介入資料驗證維修 operator 的真實性
+
+### 8.1 補充：MATLAB Engine 驗證現況
+
+本輪另外嘗試用本機 `/Applications/MATLAB_R2024b.app` 的官方 Python engine 直接讀取 `Data.mat` 與三個 particle-size `.mat`，結果如下：
+
+- `資料直接支持`：本機 MATLAB R2024b 存在，engine 套件可在 Python 端成功 `import matlab` 與 `import matlab.engine`。
+- `資料直接支持`：雖然 `start_matlab()` 仍會回傳 `EngineError: Transport stopped`，但這已不再阻礙本輪分析，因為新的 raw CSV 已提供更直接的粒徑與 sampling 證據。
+- `需要模型假設`：MATLAB Engine 失敗目前只影響是否要回頭驗證 MAT 內部 object 表示，不影響 dataset 的主要物理條件化資訊。
+
+補充替代讀取結果：
+
+- `資料直接支持`：`scipy` 與 `pymatreader` 已能一致確認 `Data.mat` 內含兩個 MATLAB MCOS table：`Test_Data` 與 `Train_Data`。
+- `資料直接支持`：`Data.mat` 的 raw workspace 可辨識出 `Measured_Data`、`Sampling`、`Dust`、`Dust_feed`、`Data_No`、`Differential_pressure`、`Flow_rate`、`Time`、`RUL` 等欄位標籤。
+- `資料直接支持`：三個 particle-size MAT 的 raw workspace 可辨識出 `SizeUm`、`Size um`、`Channel`、`Passing`、`Description`、`VariableUnits`、`VariableDescriptions` 等標籤。
+- `資料直接支持`：使用者新轉出的 particle-size raw CSV 已可直接提供完整 `SizeUm / Channel / Passing` 數值表，並可計算 `D10/D50/D90`。
+- `資料直接支持`：`Train` / `Test` sampling 已可固定為 `10 Hz`，且與 `Time = 0.1` 的離散步長一致。
+- `需要額外資料才可識別`：雖然現在已有粒徑分布與 sampling，但這仍無法直接給出真實維修效果或 IM 清除比例。
+
+這個結果不改變本 memo 的核心邊界：
+
+- `資料直接支持`：未維修退化機理仍可由 CSV 與 PDF 做第一階段建模。
+- `資料直接支持`：粒徑分布現在至少可用 `D10/D50/D90` 或完整 passing curve 作為條件輸入。
+- `需要額外資料才可識別`：真正缺少的已不是 sampling 或粒徑，而是維修介入前後的配對觀測與維修強度標記。
 
 ## 9. 最後結論
 
