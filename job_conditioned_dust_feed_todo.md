@@ -22,6 +22,9 @@
 - `每個 family 一個 degradation model`
 - `Train + Test` 全部軌跡用於 simulator calibration
 - 同 family 的兩台 machine 第一版不加入 machine-specific 退化差異
+- 第一輪演算法固定採 `family-specific GRU-based sequence regressor`
+- 第一輪主要預測目標固定為 `normalized health`
+- `RUL` 在第一輪是由健康狀態推導出的衍生量，而不是直接回歸目標
 
 這條路線的正式結論是：
 
@@ -100,6 +103,40 @@
 - machine-level 的 `dust family` 可以保留為固定材料/工況條件
 - 後續若要把 `Hx / Hy` 改寫成 latent state 或 risk-based 邊界，會比較自然
 
+### 2.4 第一輪算法選擇
+
+第一輪仍然採用：
+
+- `時間序列 / 序列模型`
+
+原因不是單純沿用舊做法，而是目前資料天然就是固定 sampling、固定步長的退化序列：
+
+- `Sampling = 10`
+- `Δt = 0.1`
+- 觀測量主要是隨時間演化的 `Differential_pressure`、`Flow_rate`、`dust_feed`
+
+第一輪明確不採用：
+
+- `直接 raw RUL 回歸`
+
+第一輪正式採用：
+
+- `family-specific sequence model`
+- `normalized health` 作為主要回歸目標
+- `RUL` 作為由健康狀態與 family-specific degradation dynamics 推導出的衍生量
+
+第一輪 baseline 架構固定為：
+
+- `A2 / A3 / A4` 各自訓練一個 `GRU-based sequence regressor`
+- 每個模型只處理對應 family 的序列
+- 第一輪不做跨 family 統一模型
+- 第一輪不把 attention-based temporal model 當主線 baseline
+
+第一輪的正式邊界是：
+
+- 先穩定建立 `operation-conditioned` 的健康狀態估計器
+- 不在第一輪直接做全模型家族 benchmark
+
 ## 3. 為什麼這不會破壞隨機性
 
 ### 3.1 三種隨機性要分開看
@@ -148,6 +185,11 @@
 - 所有 machine 共享同一個 normalized failure budget
 - machine 間差異主要體現在 operation exposure history，而不是先體現在各自不同的總命長
 - 同 family 的兩台 machine 第一版不估計 machine-specific initial health variation，預設起點一致
+- 每個 family 使用獨立的 sequence model
+- 每個模型輸入固定長度的歷史視窗
+- 視窗特徵至少包含 `Differential_pressure`、壓差變化趨勢、`Flow_rate`、`dust_feed`
+- 因為第一輪已採 family-specific 模型，所以 `dust family` 不必作為模型輸入欄位
+- 視窗長度、hidden size、batch size 等超參數本輪不鎖死，只作為後續 tuning 項
 - 第一階段只研究退化與排程的耦合，不處理 `IM / CM`
 - `Flow_rate` 先作為退化模型的條件量，不作為 operation family 的切換變數
 - processing time、due date、arrival process 可以保留現有隨機生成邏輯，但要放在 family 相容約束之後
@@ -210,6 +252,14 @@
 - 同一 dust type 下，不同 `dust_feed` 也會顯著拉開總壽命
 - 因此資料支持的是「共同健康尺度 + 不同消耗速度」，不是「共同資料時間長度」
 
+### 7.6 為什麼第一輪先做序列健康模型
+
+- `Sampling = 10`、`Δt = 0.1` 代表資料天然適合固定步長序列建模
+- `Differential_pressure` 與其變化趨勢本身就是時間序列訊號，而不是靜態欄位
+- `Flow_rate` 與 `dust_feed` 足以構成第一輪 sequence regressor 的最小條件輸入集合
+- 目前研究目標是先穩定估計 `normalized health`，而不是直接做 raw `RUL` label 回歸
+- 因此第一輪優先採 `family-specific sequence model`，而不是先跳到非時序 tabular 回歸
+
 ## 8. 一般化 Family 架構原則
 
 - family 枚舉必須用一般形式書寫：`family = {A2, A3, A4}`
@@ -238,6 +288,15 @@
 - [ ] 寫清楚同一 job 的不同 operations 可以跨 family
 - [ ] 明確區分「machine 本質條件」與「operation 外部負載」
 - [ ] 明確說明第一階段不研究 `IM / CM`
+
+### A2. 第一輪預測器設計
+
+- [ ] 明確定義第一輪採 `family-specific GRU-based sequence regressor`
+- [ ] 明確定義主要預測目標為 `normalized health`
+- [ ] 明確定義 `RUL` 為由健康狀態推導出的衍生量
+- [ ] 寫清楚第一輪最小輸入特徵集合
+- [ ] 寫清楚第一輪不做跨 family 統一模型
+- [ ] 寫清楚第一輪不做直接 raw `RUL` 回歸
 
 ### B. Machine Pool 與部分重疊規則
 
@@ -279,6 +338,10 @@
 
 ### F. 第二階段延伸
 
+- [ ] 在序列模型家族內比較 `GRU / LSTM / TCN`
+- [ ] 在 baseline 穩定後再加入 `attention-based temporal model`
+- [ ] 第二階段比較重點固定為 health-state quality、RUL 導出穩定性、以及後續 maint state 接口相容性
+- [ ] 第二階段不先把比較範圍擴到非序列模型
 - [ ] 研究 `每個 family 一個模型` 是否要升級成 `統一模型 + family 條件輸入`
 - [ ] 視需要加入 machine-specific manufacturing tolerance
 - [ ] 視需要研究 `dust_feed` 插值
@@ -300,6 +363,11 @@
 - [ ] 文檔明確寫出 `Train + Test` 第一版都用於 calibration
 - [ ] 文檔明確寫出 `A2` 的 feed 覆蓋不對稱
 - [ ] 文檔明確寫出易堵塞 family 只要求平均上更快，而不是所有 operation 的硬性單調排序
+- [ ] 文檔明確回答第一輪仍採 `時間序列 / 序列模型`
+- [ ] 文檔明確寫出第一輪 baseline 是 `family-specific GRU-based sequence regressor`
+- [ ] 文檔明確寫出 `normalized health` 是第一輪主要回歸目標
+- [ ] 文檔明確排除直接 raw `RUL` 回歸
+- [ ] 文檔明確把 `GRU / LSTM / TCN` 與 `attention-based temporal model` 寫成第二階段比較待辦
 - [ ] 文檔明確寫出 `IM / CM` 不在本輪範圍
 - [ ] 文檔明確指出現有 repo 的舊假設是無條件隨機 feasible machines + 固定 curve replay
 
@@ -311,5 +379,10 @@
 - 第一階段 `dust_feed` 只用 dataset 中真實出現過的離散值
 - 第一階段預設所有 machine 起始 normalized health 相同，差異由 operation-conditioned degradation 累積形成
 - family-specific 退化模型的用途是 simulator / state model calibration，不是維持原始 benchmark split
+- 第一輪預測器固定採 `family-specific GRU-based sequence regressor`
+- 第一輪主要輸出固定為 `normalized health`
+- `RUL` 在第一輪固定視為衍生量，不作為唯一回歸目標
+- 視窗長度與其他超參數留待後續 tuning，不在本輪鎖定
+- 第二階段算法比較先限制在序列模型家族內，attention-based 模型作為預留擴展
 - 這份 TODO 只聚焦 `operation-conditioned degradation`
 - `IM / CM` 的物理恢復模型完全留到後面
