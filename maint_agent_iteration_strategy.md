@@ -97,9 +97,11 @@
 
 ### 3.3 Reward / Cost 主架構
 
-- 維持現有 time / material / risk / window violation 的成本骨架
-- 不在第一輪重寫 maintenance reward 的 credit assignment
+- 不在第一輪推翻整個 reward objective
+- 維持 time / maintenance / failure 這三類成本骨架
 - 不在第一輪把 reward 直接改成物理損耗最小化公式
+- 但第一輪會對齊 `IM / CM` 的時長與直接成本參數
+- 第一輪要求 training reward 與 final eval 使用同一套 maintenance cost semantics
 
 ### 3.4 Online Decision Flow 主結構
 
@@ -107,11 +109,87 @@
 - 維持 machine 在 decision point 上做 maintenance decision 的流程
 - 維持 `region_on` 與 `region_off` 兩種實驗模式
 
-## 4. 第一輪替換項
+## 4. 第一輪時長與成本合理化基準
+
+第一輪除了替換 state 來源，還需要先把 `IM / CM / breakdown` 的時長與成本量級合理化。否則新的 health state 進來後，決策仍然會被舊成本尺度扭曲。
+
+### 4.1 CM Duration
+
+- 第一輪定義：
+  - `CM duration = 1.2 * 全系統平均 operation time`
+- 第一輪採用 `全系統固定平均`
+- 第一輪不採用：
+  - family 平均
+  - 線上滾動平均
+
+根據目前系統的 processing time 分布，operation time 的全局平均約為 `27.5`，因此第一輪的 `CM` 時長基準可先寫成：
+
+- `CM ≈ 33.0`
+
+這個 `33.0` 是當前研究基準值，不是不可變常數。後續若 operation library 成形，可再用 template-level 平均重算。
+
+### 4.2 IM Duration
+
+- 第一輪定義：
+  - `IM duration = min(CM, 12 + 0.08 * region_b_elapsed)`
+
+這個公式保留了「越晚修越久」的語義，同時加上：
+
+- `cap = CM`
+
+目的是避免 `IM` 比 `CM` 還慢，導致動作語義失真。
+
+### 4.3 Breakdown Mode
+
+- 第一輪關閉 `stochastic breakdown`
+- 第一輪只保留 `hard breakdown`
+
+原因是：
+
+- stochastic breakdown 會把策略差異與額外抽樣噪聲混在一起
+- 第一輪的主要任務是讓 `DN / IM / CM` 的時長與成本更容易整定
+- 在 deterministic hard-breakdown 下，`DQN` 與 `POMCP` 的比較更容易解釋
+
+### 4.4 Cost Structure
+
+第一輪的 direct maintenance cost 採：
+
+- `固定成本 + 時間成本`
+
+具體建議基準為：
+
+- `IM direct cost = 3 + 0.15 * dur`
+- `CM direct cost = 12 + 0.30 * dur`
+
+這代表：
+
+- `IM` 是清理
+  - 固定成本較低
+  - 時間成本較低
+- `CM` 是更換
+  - 固定成本較高
+  - 時間成本較高
+
+在常見時長下，`CM` 的直接成本大致會落在 `IM` 的 `3~4` 倍，這可作為第一輪的合理起點。
+
+### 4.5 Cost Alignment
+
+第一輪要求：
+
+- training reward 與 final eval 使用同一套 maintenance cost semantics
+
+這表示：
+
+- 不再允許訓練時低估 `CM / IM`
+- 也不再允許評估時又換成另一套量級
+
+第一輪的重點不是做更複雜的 reward，而是先把 cost semantics 對齊。
+
+## 5. 第一輪替換項
 
 第一輪真正要替換的是 maint agent 所觀察到的健康訊號。
 
-### 4.1 舊的核心來源
+### 5.1 舊的核心來源
 
 目前 maint state 的核心仍是：
 
@@ -125,7 +203,7 @@
 - `operation 提供 load`
 - `family-specific degradation model`
 
-### 4.2 新的核心來源
+### 5.2 新的核心來源
 
 第一輪應把 maint state 的核心改為：
 
@@ -140,7 +218,7 @@
 - 壓差趨勢
 - recent operation exposure history
 
-### 4.3 RUL 的新角色
+### 5.3 RUL 的新角色
 
 在新的 maint state 裡：
 
@@ -149,11 +227,13 @@
 - `RUL` 不再是 state 的唯一核心
 - state 的核心應轉為 `normalized health / degradation severity`
 
-## 5. 第一輪 State 設計原則
+第一輪雖然主要是改 state，但 `IM / CM` 的時長與成本基準也必須同步合理化。否則新的 health state 進來後，仍會被舊的成本尺度扭曲。
+
+## 6. 第一輪 State 設計原則
 
 第一輪的 state 設計應明確分成三類。
 
-### 5.1 保留的舊資訊
+### 6.1 保留的舊資訊
 
 以下資訊在第一輪仍然有價值：
 
@@ -163,7 +243,7 @@
 - slack / queue 壓力相關特徵
 - 現有 risk proxy
 
-### 5.2 新增或替換的資訊
+### 6.2 新增或替換的資訊
 
 以下資訊應成為新的 maint state 核心：
 
@@ -186,7 +266,7 @@
 - `d(Differential_pressure)/dt`
 - `state uncertainty`
 
-### 5.3 應該刪弱的舊資訊
+### 6.3 應該刪弱的舊資訊
 
 第一輪不必把 `Hx/Hy` 從系統中拿掉，但應降低以下資訊在 state 定義中的中心地位：
 
@@ -194,9 +274,9 @@
 - 對 raw replay lifespan 的過度依賴
 - 對單一 black-box `RUL` 預測值的過度依賴
 
-## 6. DQN 與 POMCP 的迭代差異
+## 7. DQN 與 POMCP 的迭代差異
 
-### 6.1 DQN
+### 7.1 DQN
 
 第一輪對 `DQN` 的主要影響是：
 
@@ -206,7 +286,7 @@
 
 也就是說，第一輪不必重寫 `DQN` 的學習機制，主要是更換它看到的輸入語義。
 
-### 6.2 POMCP
+### 7.2 POMCP
 
 第一輪對 `POMCP` 的主要影響是：
 
@@ -220,7 +300,7 @@
 - 觀測與 belief 所依賴的健康訊號更新
 - transition physics 暫時沿用舊骨架作過渡
 
-### 6.3 第一輪的正式比較立場
+### 7.3 第一輪的正式比較立場
 
 第一輪不做以下事情：
 
@@ -232,11 +312,11 @@
 - `DQN` 與 `POMCP` 都先保留
 - 先比較新的 state 進來之後，它們對硬先驗的依賴程度是否下降
 
-## 7. `Hx/Hy on/off` 對照設計
+## 8. `Hx/Hy on/off` 對照設計
 
 第一輪維持 `Hx/Hy` 為正式對照軸。
 
-### 7.1 為什麼不能直接拿掉
+### 8.1 為什麼不能直接拿掉
 
 目前 `Hx/Hy` 雖然是人為先驗，但它同時也是：
 
@@ -246,7 +326,7 @@
 
 因此第一輪不應直接刪除 `Hx/Hy`。
 
-### 7.2 第一輪正式實驗矩陣
+### 8.2 第一輪正式實驗矩陣
 
 第一輪固定保留以下四組：
 
@@ -260,7 +340,17 @@
 - `on` 代表 `Hx/Hy` enforced
 - `off` 代表 `Hx/Hy` 僅作參考，不作硬限制
 
-### 7.3 第一輪比較重點
+第一輪四組對照都在：
+
+- deterministic hard-breakdown
+
+條件下比較。關閉 stochastic breakdown 的目的是讓：
+
+- `DQN_on / DQN_off / POMCP_on / POMCP_off`
+
+之間的差異更可解釋。
+
+### 8.3 第一輪比較重點
 
 第一輪要看的不是哪一組數值最好，而是：
 
@@ -268,11 +358,11 @@
 - `region_off` 下是否仍能做出有結構的 maintenance decision
 - `DQN` 與 `POMCP` 是否都能從新的 state 中獲得穩定訊號
 
-## 8. 第二輪以後才處理的內容
+## 9. 第二輪以後才處理的內容
 
 以下內容不進入第一輪。
 
-### 8.1 `Hx/Hy` 軟邊界化
+### 9.1 `Hx/Hy` 軟邊界化
 
 第二輪之後再考慮把：
 
@@ -284,14 +374,28 @@
 - cost boundary
 - posterior-state-driven soft boundary
 
-### 8.2 `IM` Transition Operator
+### 9.2 `IM` Transition Operator
 
 第二輪之後再處理：
 
 - 把 `IM = 0.8 * previous baseline` 改成 latent-state transition operator
 - 讓 `IM` 效果變成可校準的 state reduction，而不是固定比例
 
-### 8.3 更物理的 Reward 重寫
+第一輪只先對齊：
+
+- `IM` 的時長尺度
+- `IM` 的直接成本尺度
+
+不在第一輪宣稱 `IM` 已具備更真實的物理恢復機理。
+
+### 9.3 Breakdown Penalty 的更物理語義
+
+第二輪之後再處理：
+
+- breakdown penalty 與 scrap / requeue / recovery 的更物理解釋
+- breakdown economics 與維修 economics 的更細拆分
+
+### 9.4 更物理的 Reward 重寫
 
 第二輪之後再考慮：
 
@@ -299,7 +403,13 @@
 - 把 reward 明確連到 predicted post-maintenance gain
 - 把 reward 明確連到 failure risk 與壓差成長
 
-## 9. 驗收清單
+第一輪只做：
+
+- 時長尺度合理化
+- 成本尺度合理化
+- deterministic failure mode 合理化
+
+## 10. 驗收清單
 
 - [ ] 文檔明確寫出 maint stack 的三層：`decision policy / decision state / control prior`
 - [ ] 文檔明確寫出 `DQN` 與 `POMCP` 都是 decision layer，不是 maintenance physics layer
@@ -307,19 +417,31 @@
 - [ ] 文檔明確寫出目前 `Hx/Hy`、`IM=0.8` 與 replay-based health 都屬於控制先驗
 - [ ] 文檔明確寫出第一輪要改的是 state / health definition
 - [ ] 文檔明確寫出第一輪不改 `DN / IM / CM` action semantics
-- [ ] 文檔明確寫出第一輪不改 reward 主體與 decision flow 主體
+- [ ] 文檔明確寫出第一輪不推翻 reward objective，但會對齊 cost semantics
+- [ ] 文檔明確寫出 `CM = 1.2 * 全系統平均 operation time`
+- [ ] 文檔明確寫出第一輪 `CM ≈ 33.0` 的基準來源
+- [ ] 文檔明確寫出 `IM = min(CM, 12 + 0.08 * region_b_elapsed)`
+- [ ] 文檔明確寫出第一輪關閉 stochastic breakdown，只保留 hard breakdown
+- [ ] 文檔明確寫出 `IM direct cost = 3 + 0.15 * dur`
+- [ ] 文檔明確寫出 `CM direct cost = 12 + 0.30 * dur`
+- [ ] 文檔明確寫出 reward 與 eval 的 maintenance cost semantics 要完全一致
 - [ ] 文檔明確寫出新 state 來自 `family-specific, operation-conditioned` degradation model
 - [ ] 文檔明確寫出 `RUL` 在第一輪是衍生量，不是唯一核心 state
 - [ ] 文檔明確寫出 `DQN_on / DQN_off / POMCP_on / POMCP_off` 四組對照
 - [ ] 文檔明確寫出第二輪才處理 `Hx/Hy` 軟邊界化
 - [ ] 文檔明確寫出第二輪才處理 `IM` transition operator
+- [ ] 文檔明確寫出第二輪才處理 breakdown penalty 的更物理語義
 - [ ] 文檔明確寫出第二輪才處理更物理的 reward 重寫
 
-## 10. 預設假設
+## 11. 預設假設
 
 - 文件語言使用繁體中文
 - 第一輪 maint agent 迭代的目的，是讓 decision layer 接上新的 degradation state，而不是立刻推翻整個 maintenance policy
 - `DQN` 與 `POMCP` 在第一輪地位相同，都是 baseline-compatible 的 decision wrapper
 - 第一輪保留 `Hx/Hy on` 與 `Hx/Hy off`
+- 第一輪 `CM` 先用固定基準值約 `33.0`
+- 第一輪 `IM` 公式以 `region_b_elapsed` 為唯一晚修懲罰來源
+- 第一輪 deterministic breakdown 只保留 hard threshold failure
+- 更細的 breakdown cost / scrap / requeue economics 留待下一步對齊
 - 第一輪不試圖宣稱新的 maintenance transition 已具物理真實性
 - maintenance physics 的真正改寫留到第二輪與後續外部資料校準
