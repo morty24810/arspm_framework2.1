@@ -52,6 +52,35 @@
 - job-conditioned load：`dust_feed` 固定且由 job 攜帶
 - 退化不是只看 machine ID，也不是只看固定 replay curve，而是看 machine 條件與 job 負載的交互
 
+### 2.3 RUL 問題重述
+
+第一階段的 RUL 問題不再沿用「某條 `Test` 序列的尾端 `RUL` 就是某台 machine 的固定命長」這種解讀，也不再把 machine 的退化理解成「固定 replay curve + 固定 lifespan」。
+
+第一階段正式採用：
+
+- `共同正規化壽命`
+
+第一階段明確不採用：
+
+- `共同絕對壽命常數`
+
+原因是 dataset 顯示不同序列的總壽命差異很大，因此若直接規定所有 machine 在資料時間軸上共用同一個固定總壽命，會是一個過強簡化，不適合作為第一階段的正式假設。
+
+第一階段的 RUL 定義應改寫為：
+
+- 所有 machine 共享同一個 normalized health / failure budget
+- machine 的起始健康度統一設為相同，例如 `h = 1`
+- failure end-state 統一為 `h = 0`
+- 真正需要學的是 `degradation rate function`
+- `RUL` 應被視為 `latent health state` 的函數或 supervision，而不是直接綁定某條真實序列的尾端長度
+
+這樣的好處是：
+
+- 不再需要 `machine = one replay curve + one lifespan`
+- job 可以透過 `dust_feed` 顯式影響退化速度
+- machine-level 的 `dust family` 可以保留為固定材料/工況條件
+- 後續若要把 `Hx / Hy` 改寫成 latent state 或 risk-based 邊界，會比較自然
+
 ## 3. 為什麼這不會破壞隨機性
 
 ### 3.1 三種隨機性要分開看
@@ -96,6 +125,9 @@
 - job 在單一 job 內固定 `dust_feed`
 - `dust_feed` 只使用 dataset 中真實觀測到的離散檔位
 - `dust type` 第一階段不隨 job 改變
+- 所有 machine 共享同一個 normalized failure budget
+- machine 間差異主要體現在 job exposure history，而不是先體現在各自不同的總命長
+- 第一階段不估計 machine-specific initial health variation，預設所有 machine 起點一致
 - 第一階段只研究退化與排程的耦合，不處理 `IM / CM`
 - `Flow_rate` 先作為退化模型的條件量，不作為 job family 的切換變數
 - processing time、due date、arrival process 可以保留現有隨機生成邏輯，但要放在 family 相容約束之後
@@ -133,6 +165,13 @@
 - `A4 Coarse`: `D10 = 4.467`, `D50 = 34.620`, `D90 = 104.761`
 - `A2 Fine` 未來若加入，可沿用同一套 family 描述方式
 
+### 5.5 為什麼不用共同絕對壽命
+
+- `Test` 50 條序列的 `Time + RUL` 平均約 `115.8`，但最短約 `26.2`、最長約 `335.2`，變異很大
+- A2 / A3 / A4 的平均總壽命層次明顯不同，代表 dust family 本身就和退化快慢高度相關
+- 同一 dust type 下，不同 `dust_feed` 也會顯著拉開總壽命
+- 因此資料支持的是「共同健康尺度 + 不同消耗速度」，不是「共同資料時間長度」
+
 ## 6. A2-ready 架構要求
 
 第一階段雖然不啟用 `A2`，但 TODO 從一開始就必須是 `A2-ready`。
@@ -147,6 +186,15 @@
 - 第二階段可以在不推翻規則層的前提下啟用 `A2`
 
 ## 7. 研究 TODO
+
+### A0. RUL 問題定義
+
+- [ ] 明確廢除 `machine = one replay curve + one lifespan` 的 RUL 解讀
+- [ ] 把第一階段 RUL 定義正式寫成 `共同正規化壽命尺度`
+- [ ] 定義 machine-level fixed condition：`dust family`
+- [ ] 定義 job-level external load：`dust_feed`
+- [ ] 定義 `RUL` 為由退化狀態推導出的衍生量
+- [ ] 寫清楚第一階段先不處理 machine-specific initial health dispersion
 
 ### A. 研究建模重述
 
@@ -180,7 +228,10 @@
 - [ ] 把 job-level `dust_feed` 視為外部負載輸入
 - [ ] 保留 machine-level `dust family` 作為材料/工況條件
 - [ ] 把 `Differential_pressure` 視為可觀測退化訊號
+- [ ] 把 `Differential_pressure` 的斜率也視為估計退化狀態的重要訊號
 - [ ] 把 `Flow_rate` 視為條件量，而不是先驗忽略項
+- [ ] 把 `Dust_feed`、`Flow_rate` 與壓差訊號視為估計 latent state 的輸入，而不是只作輔助欄位
+- [ ] 把 latent degradation state 優先理解成 normalized health / clogging severity，而不是直接代表剩餘時間長短
 - [ ] 把 latent degradation state 視為未來物理模型的核心，而不是只看 black-box RUL
 
 ### E. 驗證與比較
@@ -203,9 +254,12 @@
 
 - [ ] 文檔明確回答「這不會破壞隨機性」
 - [ ] 文檔明確採用 `結構化隨機`
+- [ ] 文檔明確採用 `共同正規化壽命`，而非 `共同絕對壽命`
 - [ ] 文檔明確寫出第一階段只做 `A3 + A4`
 - [ ] 文檔明確寫出 `dust_feed` 只取真實觀測檔位
 - [ ] 文檔明確寫出 machine 固定 family、job 固定 feed
+- [ ] 文檔明確寫出 `RUL` 是衍生量，而不是 machine 固定命長標籤
+- [ ] 文檔明確寫出第一階段學的是退化速率，而不是各 machine 的固定 lifespan
 - [ ] 文檔明確寫出 `IM / CM` 不在本輪範圍
 - [ ] 文檔明確指出現有 repo 的舊假設是無條件隨機 feasible machines + 固定 curve replay
 - [ ] 文檔明確保留 `A2-ready` 條件
@@ -216,5 +270,6 @@
 - 第一階段只激活 `A3` 與 `A4`
 - 規則層從一開始就必須 `A2-ready`
 - `dust_feed` 第一階段只用 dataset 中真實出現過的離散值
+- 第一階段預設所有 machine 起始 normalized health 相同，差異由 job-conditioned degradation 累積形成
 - 這份 TODO 只聚焦 `job-conditioned degradation`
 - `IM / CM` 的物理恢復模型完全留到後面
