@@ -276,31 +276,81 @@
 
 ## 7. DQN 與 POMCP 的迭代差異
 
-### 7.1 DQN
+### 7.1 DQN 的技術原理
 
-第一輪對 `DQN` 的主要影響是：
+`DQN` 在第一輪文檔中的正式定位是：
+
+- `model-free`
+- `value-based`
+- `learned policy`
+
+它的核心做法是：
+
+- 對固定維度 state 近似 `Q(s, a)`
+- 用 experience replay 穩定樣本使用
+- 用 target network 穩定 bootstrap 更新
+- 在 `DN / IM / CM` 之間選擇當前估計價值最高的動作
+
+這代表 `DQN` 的方法差異主要來自：
+
+- 它學的是一個 decision rule
+- 它不是在當下做前瞻搜尋
+
+第一輪對 `DQN` 的主要影響仍然是：
 
 - 改 state definition
 - 保留 action-value 形式
 - 保留 `DN / IM / CM` 的離散動作空間
 
-也就是說，第一輪不必重寫 `DQN` 的學習機制，主要是更換它看到的輸入語義。
+### 7.2 POMCP 的技術原理
 
-### 7.2 POMCP
+`POMCP` 在第一輪文檔中的正式定位是：
+
+- `belief-based`
+- `online planner`
+- `Monte Carlo tree search`
+
+它的核心做法是：
+
+- 針對部分可觀測狀態維持 particle belief
+- 從 belief 中抽樣粒子作為當前可能真實狀態
+- 透過 generative model 對 `DN / IM / CM` 做 rollout
+- 用 UCB 規則在搜尋樹中平衡 exploration 與 exploitation
+- 在有限 horizon 內回傳當前估計最好的動作
+
+這代表 `POMCP` 的方法差異主要來自：
+
+- 它在決策時做 online planning
+- 它不是直接學一個固定 Q-function
 
 第一輪對 `POMCP` 的主要影響是：
 
-- 先讓它吃新的 health state
-- 暫時不重寫 maintenance transition physics
+- belief 與 generative model 都要接上新的 health 語義
+- 但 maintenance transition physics 暫時不做物理化重寫
 - generative model 的真正物理化改寫放到第二輪以後
 
-這代表第一輪的 `POMCP` 仍然主要是：
+### 7.3 為什麼兩者可以公平比較
 
-- decision wrapper 保留
-- 觀測與 belief 所依賴的健康訊號更新
-- transition physics 暫時沿用舊骨架作過渡
+第一輪文檔中對「公平」的正式定義不是：
 
-### 7.3 第一輪的正式比較立場
+- 演算法必須一模一樣
+- 內部計算過程必須完全相同
+
+第一輪文檔中對「公平」的正式定義是：
+
+- 同一研究目標
+- 同一決策時機
+- 同一可行動作
+- 同一成本語義
+- 同一健康訊號來源
+- 同一評估 protocol
+
+也就是說：
+
+- `DQN` 與 `POMCP` 可以保留不同原理
+- 但不能各自優化不同目標，也不能各自用不同版本的決策資訊來源
+
+### 7.4 第一輪的正式比較立場
 
 第一輪不做以下事情：
 
@@ -311,12 +361,113 @@
 
 - `DQN` 與 `POMCP` 都先保留
 - 先比較新的 state 進來之後，它們對硬先驗的依賴程度是否下降
+- 若 `POMCP` 表現更好，原因只能歸因於 `belief + planning`
+- 不能歸因於另一套目標函數或另一套外部資訊來源
 
-## 8. `Hx/Hy on/off` 對照設計
+## 8. DQN / POMCP 公平比較原則
+
+### 8.1 共同目標
+
+第一輪文檔中，`DQN` 與 `POMCP` 的正式研究目標都定義為：
+
+- `最小化同一全系統成本`
+
+這表示：
+
+- 不能讓其中一個只優化 maintenance 局部 reward
+- 不能讓另一個優化 scheduling 或其他不同目標
+- 兩者都應以同一套 episode-level system objective 來解讀結果
+
+需要明確標註的一點是：
+
+- 若現有實作仍保留 maintenance reward 與 scheduling reward 分離，這是目前 code 與研究規格之間的待對齊缺口
+- 文檔應把它標成後續實作對齊事項，而不是當作已完成事實
+
+### 8.2 共同決策條件
+
+兩者必須共享以下條件：
+
+- 同一 maintenance decision point
+- 同一 `DN / IM / CM`
+- 同一 `Hx/Hy on` 與 `Hx/Hy off`
+- 同一 `IM / CM` 時長與成本基準
+- 同一 breakdown mode
+- 同一 evaluation scenario 與 seed protocol
+
+也就是說：
+
+- 不能因為比較器不同，就放寬其中一方的 action mask
+- 不能因為比較器不同，就換掉 failure / cost 的定義
+
+### 8.3 共同資訊來源
+
+兩者都必須建立在同一個：
+
+- `family-specific, operation-conditioned` health estimator
+
+兩者都只能使用同一套可觀測來源：
+
+- health estimate
+- health trend
+- family/load summary
+- `Flow_rate`
+- `Differential_pressure`
+- `d(Differential_pressure)/dt`
+- uncertainty
+
+兩者都不能使用：
+
+- oracle future job information
+- 真實未來退化軌跡
+- 真實未來 failure 真值
+
+### 8.4 允許不同的部分
+
+第一輪明確允許以下方法差異存在。
+
+`DQN`
+
+- 使用 action-agnostic state
+- 從共享 health/state 摘要直接學 policy/value
+- 不使用 action-conditioned risk summaries
+
+`POMCP`
+
+- 可在內部維持 particle belief
+- 可用 generative model 做 rollout
+- 可在內部使用 action-conditioned 風險摘要，例如 `pf_dn / pf_im / pf_cm`
+
+這些差異在第一輪被視為：
+
+- `planning machinery`
+
+它們不是：
+
+- 另一套研究目標
+- 另一套外部觀測來源
+- 作弊資訊
+
+## 9. 不作弊原則
+
+第一輪文檔必須明確列出以下不作弊規則：
+
+- 不允許 `DQN` 與 `POMCP` 使用不同的 reward / cost 權重
+- 不允許兩者使用不同的 maintenance cost semantics
+- 不允許兩者使用不同的 region policy / action masking
+- 不允許兩者建立在不同版本的 degradation model 上
+- 不允許其中一方使用 scheduling oracle
+- 不允許其中一方使用未來 job 真值
+- 不允許其中一方使用未來 failure 真值
+- 不允許比較時使用不同的 episode budget
+- 不允許比較時使用不同的 scenario set
+- 不允許比較時使用不同的 seed policy
+- 不允許比較時使用不同的 eval 指標
+
+## 10. `Hx/Hy on/off` 對照設計
 
 第一輪維持 `Hx/Hy` 為正式對照軸。
 
-### 8.1 為什麼不能直接拿掉
+### 10.1 為什麼不能直接拿掉
 
 目前 `Hx/Hy` 雖然是人為先驗，但它同時也是：
 
@@ -326,7 +477,7 @@
 
 因此第一輪不應直接刪除 `Hx/Hy`。
 
-### 8.2 第一輪正式實驗矩陣
+### 10.2 第一輪正式實驗矩陣
 
 第一輪固定保留以下四組：
 
@@ -350,7 +501,7 @@
 
 之間的差異更可解釋。
 
-### 8.3 第一輪比較重點
+### 10.3 第一輪比較重點
 
 第一輪要看的不是哪一組數值最好，而是：
 
@@ -358,11 +509,29 @@
 - `region_off` 下是否仍能做出有結構的 maintenance decision
 - `DQN` 與 `POMCP` 是否都能從新的 state 中獲得穩定訊號
 
-## 9. 第二輪以後才處理的內容
+### 10.4 對照結論的解讀規則
+
+第一輪四組實驗：
+
+- `DQN_on`
+- `DQN_off`
+- `POMCP_on`
+- `POMCP_off`
+
+必須共享相同的全系統成本指標。
+
+對照結論在文檔中的正式解讀規則是：
+
+- 若 `POMCP` 佔優，原因只能被歸因於 `planning + belief reasoning`
+- 不能被歸因於另一套目標函數
+- 不能被歸因於另一套外部資訊來源
+- 不能被歸因於另一套 cost / region / breakdown 設定
+
+## 11. 第二輪以後才處理的內容
 
 以下內容不進入第一輪。
 
-### 9.1 `Hx/Hy` 軟邊界化
+### 11.1 `Hx/Hy` 軟邊界化
 
 第二輪之後再考慮把：
 
@@ -374,7 +543,7 @@
 - cost boundary
 - posterior-state-driven soft boundary
 
-### 9.2 `IM` Transition Operator
+### 11.2 `IM` Transition Operator
 
 第二輪之後再處理：
 
@@ -388,14 +557,14 @@
 
 不在第一輪宣稱 `IM` 已具備更真實的物理恢復機理。
 
-### 9.3 Breakdown Penalty 的更物理語義
+### 11.3 Breakdown Penalty 的更物理語義
 
 第二輪之後再處理：
 
 - breakdown penalty 與 scrap / requeue / recovery 的更物理解釋
 - breakdown economics 與維修 economics 的更細拆分
 
-### 9.4 更物理的 Reward 重寫
+### 11.4 更物理的 Reward 重寫
 
 第二輪之後再考慮：
 
@@ -409,7 +578,7 @@
 - 成本尺度合理化
 - deterministic failure mode 合理化
 
-## 10. 驗收清單
+## 12. 驗收清單
 
 - [ ] 文檔明確寫出 maint stack 的三層：`decision policy / decision state / control prior`
 - [ ] 文檔明確寫出 `DQN` 與 `POMCP` 都是 decision layer，不是 maintenance physics layer
@@ -427,21 +596,32 @@
 - [ ] 文檔明確寫出 reward 與 eval 的 maintenance cost semantics 要完全一致
 - [ ] 文檔明確寫出新 state 來自 `family-specific, operation-conditioned` degradation model
 - [ ] 文檔明確寫出 `RUL` 在第一輪是衍生量，不是唯一核心 state
+- [ ] 文檔明確解釋 `DQN` 是 learned value policy，而不是 online planner
+- [ ] 文檔明確解釋 `POMCP` 的 belief / particle / rollout / UCB 基本原理
+- [ ] 文檔明確寫出兩者的共同目標是 `同一全系統成本`
+- [ ] 文檔明確寫出兩者共享同一 health/state 資訊源
+- [ ] 文檔明確寫出 `pf_dn / pf_im / pf_cm` 只保留給 `POMCP` 內部規劃
+- [ ] 文檔明確寫出公平比較不是「完全相同輸入」，而是「同目標、同來源、同約束」
+- [ ] 文檔明確列出不作弊規則
 - [ ] 文檔明確寫出 `DQN_on / DQN_off / POMCP_on / POMCP_off` 四組對照
 - [ ] 文檔明確寫出第二輪才處理 `Hx/Hy` 軟邊界化
 - [ ] 文檔明確寫出第二輪才處理 `IM` transition operator
 - [ ] 文檔明確寫出第二輪才處理 breakdown penalty 的更物理語義
 - [ ] 文檔明確寫出第二輪才處理更物理的 reward 重寫
 
-## 11. 預設假設
+## 13. 預設假設
 
 - 文件語言使用繁體中文
 - 第一輪 maint agent 迭代的目的，是讓 decision layer 接上新的 degradation state，而不是立刻推翻整個 maintenance policy
 - `DQN` 與 `POMCP` 在第一輪地位相同，都是 baseline-compatible 的 decision wrapper
+- 第一輪比較的核心問題是 `learned policy vs online planner`
 - 第一輪保留 `Hx/Hy on` 與 `Hx/Hy off`
 - 第一輪 `CM` 先用固定基準值約 `33.0`
 - 第一輪 `IM` 公式以 `region_b_elapsed` 為唯一晚修懲罰來源
 - 第一輪 deterministic breakdown 只保留 hard threshold failure
 - 更細的 breakdown cost / scrap / requeue economics 留待下一步對齊
 - 第一輪不試圖宣稱新的 maintenance transition 已具物理真實性
+- `POMCP` 的方法差異允許來自 planning，不允許來自不同目標
+- `DQN` 不使用 action-conditioned risk summaries
+- 若現有 code 仍保留 maintenance / scheduling 分離 reward，這是與「同一全系統成本」研究規格之間的待對齊缺口
 - maintenance physics 的真正改寫留到第二輪與後續外部資料校準
