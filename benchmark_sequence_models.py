@@ -6,7 +6,7 @@ from src.sequence_benchmark import SequenceBenchmarkConfig, run_benchmark
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Benchmark family-specific sequence models on pooled Train/Test CSV data.")
+    parser = argparse.ArgumentParser(description="Benchmark family-specific sequence models on remaining-life health targets.")
     parser.add_argument("--train-csv", default="Train_Data_CSV.csv")
     parser.add_argument("--test-csv", default="Test_Data_CSV.csv")
     parser.add_argument("--models", default="GRU,LSTM,TCN,ATTENTION")
@@ -16,6 +16,8 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--patience", type=int, default=10)
+    parser.add_argument("--pretrain-epochs", type=int, default=20)
+    parser.add_argument("--pretrain-patience", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--outdir", default="outputs/sequence_model_benchmark")
     parser.add_argument("--device", default="auto")
@@ -39,6 +41,8 @@ def main():
         batch_size=int(args.batch_size),
         epochs=int(args.epochs),
         patience=int(args.patience),
+        pretrain_epochs=int(args.pretrain_epochs),
+        pretrain_patience=int(args.pretrain_patience),
         seed=int(args.seed),
         outdir=str(args.outdir),
         device=str(args.device),

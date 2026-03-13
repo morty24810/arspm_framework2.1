@@ -10,9 +10,12 @@ from src.sequence_benchmark import (
     FeatureStandardizer,
     SequenceBenchmarkConfig,
     build_grouped_folds,
-    build_window_arrays,
-    compute_health,
+    build_supervised_arrays,
+    compute_dp_proxy_health,
+    compute_health_remaining,
+    family_train_sequence_ids,
     load_sequence_pool,
+    pretrain_ids_for_fold,
     run_benchmark,
 )
 
@@ -26,6 +29,8 @@ def make_small_cfg(tmp_path: Path) -> SequenceBenchmarkConfig:
         batch_size=16,
         epochs=1,
         patience=1,
+        pretrain_epochs=1,
+        pretrain_patience=1,
         seed=42,
         outdir=str(tmp_path),
         device="cpu",
@@ -42,43 +47,65 @@ def test_sequence_ids_unique_and_a2_feed_asymmetry():
     sequence_map, summary = load_sequence_pool(cfg)
     assert len(sequence_map) == 100
     assert summary["sequence_ids_unique"] == 1
+    assert summary["health_target_type"] == "remaining_life_fraction"
     assert summary["a2_feed_train_only"]
     assert summary["a2_feed_test_only"]
     families = {row["family"] for row in summary["rows"]}
     assert families == set(FAMILY_ORDER)
 
 
-def test_health_formula_monotonic():
+def test_test_sequences_have_constant_total_life_and_monotone_remaining_health():
+    cfg = SequenceBenchmarkConfig()
+    sequence_map, _summary = load_sequence_pool(cfg)
+    for sample in sequence_map.values():
+        if sample.source_split != "test":
+            continue
+        assert np.allclose(sample.total_life, sample.total_life[0])
+        assert np.all((0.0 <= sample.health_remaining_true) & (sample.health_remaining_true <= 1.0))
+        assert np.all(np.diff(sample.health_remaining_true) <= 1e-6)
+        assert not np.allclose(sample.dp_proxy_health, sample.health_remaining_true)
+
+
+def test_health_helpers_have_expected_behavior():
     dp = np.asarray([25.0, 100.0, 300.0, 600.0, 700.0], dtype=np.float32)
-    health = compute_health(dp, clean_dp=25.0, failure_dp=600.0)
-    assert np.all((0.0 <= health) & (health <= 1.0))
-    assert np.all(np.diff(health) <= 1e-6)
-    assert np.isclose(float(health[0]), 1.0)
-    assert np.isclose(float(health[3]), 0.0)
-    assert np.isclose(float(health[4]), 0.0)
+    proxy = compute_dp_proxy_health(dp, clean_dp=25.0, failure_dp=600.0)
+    assert np.all((0.0 <= proxy) & (proxy <= 1.0))
+    assert np.all(np.diff(proxy) <= 1e-6)
+
+    time_arr = np.asarray([0.0, 0.1, 0.2, 0.3], dtype=np.float32)
+    rul = np.asarray([10.0, 9.9, 9.8, 9.7], dtype=np.float32)
+    remaining = compute_health_remaining(time_arr, rul)
+    assert np.all((0.0 <= remaining) & (remaining <= 1.0))
+    assert np.all(np.diff(remaining) <= 1e-6)
+    assert np.isclose(float(remaining[0]), 1.0)
 
 
-def test_grouped_folds_do_not_leak_sequences(tmp_path: Path):
+def test_grouped_folds_use_test_sequences_only_and_pretraining_excludes_val_test(tmp_path: Path):
     cfg = make_small_cfg(tmp_path)
     sequence_map, _summary = load_sequence_pool(cfg)
-    folds, selected_ids = build_grouped_folds("A2", sequence_map, cfg)
-    selected_set = set(selected_ids)
+    folds, selected_test_ids = build_grouped_folds("A2", sequence_map, cfg)
+    train_ids = set(family_train_sequence_ids("A2", sequence_map, cfg))
     assert len(folds) == 2
+    assert all(sequence_map[sid].source_split == "test" for sid in selected_test_ids)
     for fold in folds:
-        train_ids = set(fold.train_ids)
+        train_fold_ids = set(fold.train_ids)
         val_ids = set(fold.val_ids)
         test_ids = set(fold.test_ids)
-        assert train_ids.isdisjoint(val_ids)
-        assert train_ids.isdisjoint(test_ids)
+        assert train_fold_ids.isdisjoint(val_ids)
+        assert train_fold_ids.isdisjoint(test_ids)
         assert val_ids.isdisjoint(test_ids)
-        assert train_ids | val_ids | test_ids == selected_set
+        assert all(sequence_map[sid].source_split == "test" for sid in train_fold_ids | val_ids | test_ids)
+        pretrain_ids = set(pretrain_ids_for_fold("A2", fold, sequence_map, cfg))
+        assert train_ids.issubset(pretrain_ids)
+        assert val_ids.isdisjoint(pretrain_ids)
+        assert test_ids.isdisjoint(pretrain_ids)
 
 
-def test_standardizer_uses_train_fold_statistics(tmp_path: Path):
+def test_standardizer_uses_pretrain_statistics(tmp_path: Path):
     cfg = make_small_cfg(tmp_path)
     sequence_map, _summary = load_sequence_pool(cfg)
-    folds, _selected_ids = build_grouped_folds("A2", sequence_map, cfg)
-    train_x, _train_y, _train_meta = build_window_arrays(folds[0].train_ids, sequence_map, cfg)
+    folds, _selected_test_ids = build_grouped_folds("A2", sequence_map, cfg)
+    train_x, _train_y, _train_meta = build_supervised_arrays(folds[0].train_ids, sequence_map, cfg)
     standardizer = FeatureStandardizer().fit(train_x)
     expected_mean = train_x.mean(axis=(0, 1), dtype=np.float64).astype(np.float32)
     expected_std = train_x.std(axis=(0, 1), dtype=np.float64).astype(np.float32)
@@ -87,7 +114,7 @@ def test_standardizer_uses_train_fold_statistics(tmp_path: Path):
     assert np.allclose(standardizer.std, expected_std)
 
 
-def test_smoke_run_generates_outputs_for_all_models(tmp_path: Path):
+def test_smoke_run_generates_v2_outputs_for_all_models(tmp_path: Path):
     cfg = make_small_cfg(tmp_path)
     result = run_benchmark(cfg)
     run_root = Path(result["out_root"])
@@ -98,7 +125,7 @@ def test_smoke_run_generates_outputs_for_all_models(tmp_path: Path):
     assert (run_root / "metrics_overall.json").exists()
     assert (run_root / "model_rankings.csv").exists()
     assert (run_root / "plots" / "metric_bars_overall.png").exists()
-    assert (run_root / "plots" / "scatter_health_pred.png").exists()
+    assert (run_root / "plots" / "scatter_health_remaining_pred.png").exists()
     assert (run_root / "plots" / "scatter_rul_pred.png").exists()
 
     fold_df = pd.read_csv(run_root / "metrics_by_fold.csv")
@@ -110,6 +137,23 @@ def test_smoke_run_generates_outputs_for_all_models(tmp_path: Path):
         prediction_csvs = sorted(artifact_dir.glob("fold_*_predictions.csv"))
         assert prediction_csvs
         prediction_df = pd.read_csv(prediction_csvs[0])
-        train_rows = prediction_df[prediction_df["source_split"] == "train"]
-        if not train_rows.empty:
-            assert train_rows["rul_pred"].isna().all()
+        required_cols = {
+            "health_remaining_true",
+            "health_remaining_pred",
+            "dp_proxy_health",
+            "rul_true",
+            "rul_pred",
+            "total_life",
+            "is_observed",
+            "is_tail_reference",
+        }
+        assert required_cols.issubset(prediction_df.columns)
+        observed = prediction_df[prediction_df["is_observed"] == True].copy()
+        assert np.allclose(
+            observed["rul_pred"].to_numpy(dtype=np.float32),
+            observed["health_remaining_pred"].to_numpy(dtype=np.float32) * observed["total_life"].to_numpy(dtype=np.float32),
+        )
+        tail = prediction_df[prediction_df["is_tail_reference"] == True].copy()
+        if not tail.empty:
+            assert tail["health_remaining_pred"].isna().all()
+            assert tail["rul_pred"].isna().all()

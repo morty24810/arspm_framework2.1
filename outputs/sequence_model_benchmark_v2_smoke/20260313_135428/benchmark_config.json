@@ -1,0 +1,44 @@
+{
+  "train_csv": "Train_Data_CSV.csv",
+  "test_csv": "Test_Data_CSV.csv",
+  "models": [
+    "GRU",
+    "LSTM",
+    "TCN",
+    "ATTENTION"
+  ],
+  "families": [
+    "A2"
+  ],
+  "kfolds": 2,
+  "window": 32,
+  "batch_size": 16,
+  "epochs": 1,
+  "patience": 1,
+  "pretrain_epochs": 1,
+  "pretrain_patience": 1,
+  "seed": 42,
+  "outdir": "outputs/sequence_model_benchmark_v2_smoke",
+  "device": "cpu",
+  "learning_rate": 0.001,
+  "val_fraction": 0.1,
+  "hidden_dim": 32,
+  "recurrent_layers": 1,
+  "attention_heads": 2,
+  "attention_layers": 2,
+  "tcn_channels": [
+    32,
+    32
+  ],
+  "dropout": 0.1,
+  "weight_decay": 1e-05,
+  "max_sequences_per_family": 4,
+  "max_windows_per_sequence": 16,
+  "dt": 0.1,
+  "health_clean_dp": 25.0,
+  "health_failure_dp": 600.0,
+  "health_target_type": "remaining_life_fraction",
+  "pretrain_task": "next_step_dp_flow",
+  "rul_derivation": "health_hat_times_total_life",
+  "add_tail_reference_rows": true
+}

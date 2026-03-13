@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import math
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -33,6 +33,7 @@ FEATURE_NAMES = (
     "Flow_rate",
     "Dust_feed",
 )
+PRETRAIN_TARGET_NAMES = ("next_dp", "next_flow")
 
 
 @dataclass
@@ -48,8 +49,10 @@ class SequenceSample:
     ddp_dt: np.ndarray
     flow: np.ndarray
     feed: np.ndarray
-    health: np.ndarray
+    dp_proxy_health: np.ndarray
+    health_remaining_true: np.ndarray
     rul_true: np.ndarray
+    total_life: np.ndarray
 
     @property
     def features(self) -> np.ndarray:
@@ -58,6 +61,11 @@ class SequenceSample:
     @property
     def length(self) -> int:
         return int(self.time.shape[0])
+
+    @property
+    def total_life_scalar(self) -> float:
+        finite = self.total_life[np.isfinite(self.total_life)]
+        return float(finite[0]) if finite.size else math.nan
 
 
 @dataclass
@@ -78,6 +86,8 @@ class SequenceBenchmarkConfig:
     batch_size: int = 64
     epochs: int = 100
     patience: int = 10
+    pretrain_epochs: int = 20
+    pretrain_patience: int = 5
     seed: int = 42
     outdir: str = "outputs/sequence_model_benchmark"
     device: str = "auto"
@@ -92,12 +102,13 @@ class SequenceBenchmarkConfig:
     weight_decay: float = 1e-5
     max_sequences_per_family: Optional[int] = None
     max_windows_per_sequence: Optional[int] = None
-    representative_fold: int = 0
     dt: float = 0.1
     health_clean_dp: float = 25.0
     health_failure_dp: float = 600.0
-    rul_ewma_points: int = 5
-    rul_ewma_alpha: float = 0.30
+    health_target_type: str = "remaining_life_fraction"
+    pretrain_task: str = "next_step_dp_flow"
+    rul_derivation: str = "health_hat_times_total_life"
+    add_tail_reference_rows: bool = True
 
 
 class WindowDataset(Dataset):
@@ -129,6 +140,14 @@ class FeatureStandardizer:
             raise RuntimeError("standardizer must be fit before transform")
         return ((windows - self.mean[None, None, :]) / self.std[None, None, :]).astype(np.float32)
 
+    def transform_dp_flow_targets(self, targets: np.ndarray) -> np.ndarray:
+        if self.mean is None or self.std is None:
+            raise RuntimeError("standardizer must be fit before transform")
+        scaled = targets.copy().astype(np.float32)
+        scaled[:, 0] = (scaled[:, 0] - self.mean[0]) / self.std[0]
+        scaled[:, 1] = (scaled[:, 1] - self.mean[2]) / self.std[2]
+        return scaled
+
     def to_dict(self) -> Dict[str, List[float]]:
         if self.mean is None or self.std is None:
             raise RuntimeError("standardizer must be fit before export")
@@ -139,7 +158,7 @@ class FeatureStandardizer:
         }
 
 
-class RecurrentRegressor(nn.Module):
+class RecurrentEncoder(nn.Module):
     def __init__(self, input_dim: int, hidden_dim: int, num_layers: int, dropout: float, kind: str):
         super().__init__()
         rnn_cls = nn.GRU if kind.upper() == "GRU" else nn.LSTM
@@ -151,16 +170,11 @@ class RecurrentRegressor(nn.Module):
             dropout=effective_dropout,
             batch_first=True,
         )
-        self.head = nn.Sequential(
-            nn.LayerNorm(hidden_dim),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.GELU(),
-            nn.Linear(hidden_dim, 1),
-        )
+        self.output_dim = hidden_dim
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out, _hidden = self.rnn(x)
-        return self.head(out[:, -1, :]).squeeze(-1)
+        return out[:, -1, :]
 
 
 class CausalConvBlock(nn.Module):
@@ -191,7 +205,7 @@ class CausalConvBlock(nn.Module):
         return y + self.residual(x)
 
 
-class TCNRegressor(nn.Module):
+class TCNEncoder(nn.Module):
     def __init__(self, input_dim: int, channels: Sequence[int], dropout: float):
         super().__init__()
         layers: List[nn.Module] = []
@@ -200,19 +214,14 @@ class TCNRegressor(nn.Module):
             layers.append(CausalConvBlock(in_channels, int(out_channels), kernel_size=3, dilation=2**depth, dropout=dropout))
             in_channels = int(out_channels)
         self.network = nn.Sequential(*layers)
-        self.head = nn.Sequential(
-            nn.LayerNorm(in_channels),
-            nn.Linear(in_channels, in_channels),
-            nn.GELU(),
-            nn.Linear(in_channels, 1),
-        )
+        self.output_dim = in_channels
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         y = self.network(x.transpose(1, 2))
-        return self.head(y[:, :, -1]).squeeze(-1)
+        return y[:, :, -1]
 
 
-class AttentionRegressor(nn.Module):
+class AttentionEncoder(nn.Module):
     def __init__(self, input_dim: int, hidden_dim: int, heads: int, layers: int, dropout: float, max_length: int):
         super().__init__()
         self.proj = nn.Linear(input_dim, hidden_dim)
@@ -227,17 +236,62 @@ class AttentionRegressor(nn.Module):
         )
         self.encoder = nn.TransformerEncoder(enc_layer, num_layers=layers)
         self.norm = nn.LayerNorm(hidden_dim)
-        self.head = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.GELU(),
-            nn.Linear(hidden_dim, 1),
-        )
+        self.output_dim = hidden_dim
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = self.proj(x) + self.pos[:, : x.shape[1], :]
         h = self.encoder(h)
-        h = self.norm(h)
-        return self.head(h[:, -1, :]).squeeze(-1)
+        return self.norm(h[:, -1, :])
+
+
+class SequenceBenchmarkModel(nn.Module):
+    def __init__(self, model_name: str, cfg: SequenceBenchmarkConfig):
+        super().__init__()
+        input_dim = len(FEATURE_NAMES)
+        model_name = model_name.upper()
+        if model_name in {"GRU", "LSTM"}:
+            self.encoder = RecurrentEncoder(
+                input_dim=input_dim,
+                hidden_dim=int(cfg.hidden_dim),
+                num_layers=int(cfg.recurrent_layers),
+                dropout=float(cfg.dropout),
+                kind=model_name,
+            )
+        elif model_name == "TCN":
+            self.encoder = TCNEncoder(input_dim=input_dim, channels=cfg.tcn_channels, dropout=float(cfg.dropout))
+        elif model_name == "ATTENTION":
+            self.encoder = AttentionEncoder(
+                input_dim=input_dim,
+                hidden_dim=int(cfg.hidden_dim),
+                heads=int(cfg.attention_heads),
+                layers=int(cfg.attention_layers),
+                dropout=float(cfg.dropout),
+                max_length=int(cfg.window),
+            )
+        else:
+            raise ValueError(f"unsupported model: {model_name}")
+        hidden_dim = int(self.encoder.output_dim)
+        self.health_head = nn.Sequential(
+            nn.LayerNorm(hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, 1),
+        )
+        self.pretrain_head = nn.Sequential(
+            nn.LayerNorm(hidden_dim),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, len(PRETRAIN_TARGET_NAMES)),
+        )
+
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        return self.encoder(x)
+
+    def forward_health(self, x: torch.Tensor) -> torch.Tensor:
+        return self.health_head(self.encode(x)).squeeze(-1)
+
+    def forward_pretrain(self, x: torch.Tensor) -> torch.Tensor:
+        return self.pretrain_head(self.encode(x))
 
 
 def resolve_device(device_name: str) -> torch.device:
@@ -278,9 +332,29 @@ def normalize_family_names(families: Iterable[str]) -> Tuple[str, ...]:
     return tuple(dict.fromkeys(normalized))
 
 
-def compute_health(dp: np.ndarray, clean_dp: float, failure_dp: float) -> np.ndarray:
+def compute_dp_proxy_health(dp: np.ndarray, clean_dp: float, failure_dp: float) -> np.ndarray:
     health = (float(failure_dp) - dp.astype(np.float32)) / max(float(failure_dp) - float(clean_dp), 1e-6)
     return np.clip(health, 0.0, 1.0).astype(np.float32)
+
+
+def compute_health(dp: np.ndarray, clean_dp: float, failure_dp: float) -> np.ndarray:
+    return compute_dp_proxy_health(dp, clean_dp=clean_dp, failure_dp=failure_dp)
+
+
+def compute_total_life(time_arr: np.ndarray, rul_true: np.ndarray) -> np.ndarray:
+    if np.all(np.isnan(rul_true)):
+        return np.full_like(time_arr, np.nan, dtype=np.float32)
+    total_life = time_arr.astype(np.float32) + rul_true.astype(np.float32)
+    reference = float(np.nanmedian(total_life))
+    return np.full_like(time_arr, reference, dtype=np.float32)
+
+
+def compute_health_remaining(time_arr: np.ndarray, rul_true: np.ndarray) -> np.ndarray:
+    total_life = compute_total_life(time_arr, rul_true)
+    if np.all(np.isnan(total_life)):
+        return np.full_like(time_arr, np.nan, dtype=np.float32)
+    health_remaining = rul_true.astype(np.float32) / np.clip(total_life, 1e-6, None)
+    return np.clip(health_remaining, 0.0, 1.0).astype(np.float32)
 
 
 def canonical_family(dust_label: str) -> str:
@@ -305,11 +379,15 @@ def _load_split_sequences(path: str, split_name: str, cfg: SequenceBenchmarkConf
             dt = np.diff(time_arr)
             dt = np.clip(dt, 1e-6, None)
             ddp_dt[1:] = np.diff(dp) / dt
-        health = compute_health(dp, clean_dp=cfg.health_clean_dp, failure_dp=cfg.health_failure_dp)
+        dp_proxy_health = compute_dp_proxy_health(dp, clean_dp=cfg.health_clean_dp, failure_dp=cfg.health_failure_dp)
         if "RUL" in g.columns:
             rul_true = g["RUL"].to_numpy(dtype=np.float32)
+            total_life = compute_total_life(time_arr, rul_true)
+            health_remaining_true = compute_health_remaining(time_arr, rul_true)
         else:
             rul_true = np.full_like(dp, np.nan, dtype=np.float32)
+            total_life = np.full_like(dp, np.nan, dtype=np.float32)
+            health_remaining_true = np.full_like(dp, np.nan, dtype=np.float32)
         sequences.append(
             SequenceSample(
                 sequence_id=f"{split_name.lower()}_{int(data_no):02d}",
@@ -323,8 +401,10 @@ def _load_split_sequences(path: str, split_name: str, cfg: SequenceBenchmarkConf
                 ddp_dt=ddp_dt,
                 flow=flow,
                 feed=feed,
-                health=health,
+                dp_proxy_health=dp_proxy_health,
+                health_remaining_true=health_remaining_true,
                 rul_true=rul_true,
+                total_life=total_life,
             )
         )
     return sequences
@@ -341,23 +421,32 @@ def load_sequence_pool(cfg: SequenceBenchmarkConfig) -> Tuple[Dict[str, Sequence
             family_sequences = [sample for sample in split_sequences if sample.family == family]
             feed_sets = sorted({round(float(sample.dust_feed), 6) for sample in family_sequences})
             feed_sets_by_split[split_name][family] = feed_sets
-            summary_rows.append(
-                {
-                    "source_split": split_name,
-                    "family": family,
-                    "sequence_count": int(len(family_sequences)),
-                    "row_count": int(sum(sample.length for sample in family_sequences)),
-                    "feed_count": int(len(feed_sets)),
-                    "feed_values": ",".join(f"{value:.6f}" for value in feed_sets),
-                }
-            )
+            row = {
+                "source_split": split_name,
+                "family": family,
+                "sequence_count": int(len(family_sequences)),
+                "row_count": int(sum(sample.length for sample in family_sequences)),
+                "feed_count": int(len(feed_sets)),
+                "feed_values": ",".join(f"{value:.6f}" for value in feed_sets),
+            }
+            if split_name == "test" and family_sequences:
+                terminal_health = [float(sample.health_remaining_true[-1]) for sample in family_sequences]
+                total_life_values = [float(sample.total_life_scalar) for sample in family_sequences]
+                row["terminal_health_remaining_min"] = float(np.min(terminal_health))
+                row["terminal_health_remaining_max"] = float(np.max(terminal_health))
+                row["total_life_median"] = float(np.median(np.asarray(total_life_values, dtype=np.float64)))
+            summary_rows.append(row)
     a2_train = set(feed_sets_by_split["train"]["A2"])
     a2_test = set(feed_sets_by_split["test"]["A2"])
     summary = {
         "sequence_count": int(len(sequences)),
         "sequence_ids_unique": int(len(sequence_map) == len(sequences)),
         "feature_names": list(FEATURE_NAMES),
-        "health_formula": "clip((600 - Differential_pressure) / (600 - 25), 0, 1)",
+        "health_target_type": cfg.health_target_type,
+        "pretrain_task": cfg.pretrain_task,
+        "rul_derivation": cfg.rul_derivation,
+        "dp_proxy_health_formula": "clip((600 - Differential_pressure) / (600 - 25), 0, 1)",
+        "health_remaining_formula": "RUL / (Time + RUL)",
         "feed_sets_by_split": feed_sets_by_split,
         "a2_feed_overlap": [float(x) for x in sorted(a2_train & a2_test)],
         "a2_feed_train_only": [float(x) for x in sorted(a2_train - a2_test)],
@@ -367,29 +456,23 @@ def load_sequence_pool(cfg: SequenceBenchmarkConfig) -> Tuple[Dict[str, Sequence
     return sequence_map, summary
 
 
-def _select_evenly_spaced_indices(length: int, limit: Optional[int]) -> np.ndarray:
-    if limit is None or limit <= 0 or length <= limit:
-        return np.arange(length, dtype=np.int64)
-    return np.unique(np.linspace(0, length - 1, num=limit, dtype=np.int64))
+def _select_evenly_spaced_indices(length: int, limit: Optional[int], max_end: Optional[int] = None) -> np.ndarray:
+    end = length if max_end is None else max(0, min(length, int(max_end)))
+    if end <= 0:
+        return np.asarray([], dtype=np.int64)
+    if limit is None or limit <= 0 or end <= limit:
+        return np.arange(end, dtype=np.int64)
+    return np.unique(np.linspace(0, end - 1, num=limit, dtype=np.int64))
 
 
-def _limit_family_sequences(sequence_ids: Sequence[str], sequence_map: Dict[str, SequenceSample], limit: Optional[int], seed: int) -> List[str]:
-    ids = list(sequence_ids)
+def _limit_sequence_ids(sequence_ids: Sequence[str], limit: Optional[int], seed: int) -> List[str]:
+    ids = sorted(sequence_ids)
     if limit is None or limit <= 0 or len(ids) <= limit:
-        return sorted(ids)
+        return ids
     rng = np.random.default_rng(seed)
-    train_ids = [sid for sid in ids if sequence_map[sid].source_split == "train"]
-    test_ids = [sid for sid in ids if sequence_map[sid].source_split == "test"]
-    rng.shuffle(train_ids)
-    rng.shuffle(test_ids)
-    total = len(ids)
-    train_target = min(len(train_ids), max(1 if train_ids else 0, round(limit * len(train_ids) / total)))
-    test_target = min(len(test_ids), max(1 if test_ids else 0, limit - train_target))
-    selected = train_ids[:train_target] + test_ids[:test_target]
-    remaining = [sid for sid in ids if sid not in set(selected)]
-    if len(selected) < limit:
-        selected.extend(remaining[: limit - len(selected)])
-    return sorted(selected[:limit])
+    shuffled = list(ids)
+    rng.shuffle(shuffled)
+    return sorted(shuffled[:limit])
 
 
 def build_grouped_folds(
@@ -397,65 +480,90 @@ def build_grouped_folds(
     sequence_map: Dict[str, SequenceSample],
     cfg: SequenceBenchmarkConfig,
 ) -> Tuple[List[FoldSplit], List[str]]:
-    family_ids = [sid for sid, sample in sequence_map.items() if sample.family == family]
-    family_seed = cfg.seed + sum(ord(ch) for ch in family)
-    selected_ids = _limit_family_sequences(family_ids, sequence_map, cfg.max_sequences_per_family, seed=family_seed)
-    train_ids = [sid for sid in selected_ids if sequence_map[sid].source_split == "train"]
-    test_ids = [sid for sid in selected_ids if sequence_map[sid].source_split == "test"]
-    max_k = min(len(selected_ids), len(train_ids) if train_ids else len(selected_ids), len(test_ids) if test_ids else len(selected_ids))
-    effective_k = max(2, min(int(cfg.kfolds), max_k))
+    test_ids_all = [sid for sid, sample in sequence_map.items() if sample.family == family and sample.source_split == "test"]
+    family_seed = cfg.seed + 1009 + sum(ord(ch) for ch in family)
+    test_ids = _limit_sequence_ids(test_ids_all, cfg.max_sequences_per_family, seed=family_seed)
+    if len(test_ids) < 2:
+        raise ValueError(f"family {family} requires at least two test sequences for grouped folds")
+    effective_k = min(int(cfg.kfolds), len(test_ids))
+    effective_k = max(2, effective_k)
+    rng = np.random.default_rng(cfg.seed + 37 + sum(ord(ch) for ch in family))
+    shuffled = list(test_ids)
+    rng.shuffle(shuffled)
     buckets = [[] for _ in range(effective_k)]
-    for split_ids, seed_offset in ((train_ids, 11), (test_ids, 23)):
-        rng = np.random.default_rng(cfg.seed + seed_offset + sum(ord(ch) for ch in family))
-        shuffled = list(split_ids)
-        rng.shuffle(shuffled)
-        for idx, sid in enumerate(shuffled):
-            buckets[idx % effective_k].append(sid)
+    for idx, sid in enumerate(shuffled):
+        buckets[idx % effective_k].append(sid)
     folds = []
-    all_ids = set(selected_ids)
+    all_ids = set(test_ids)
     for fold_index in range(effective_k):
         fold_test_ids = tuple(sorted(buckets[fold_index]))
         outer_train_ids = sorted(all_ids - set(fold_test_ids))
-        val_ids = select_validation_ids(outer_train_ids, sequence_map, cfg.val_fraction, seed=cfg.seed + fold_index * 17)
+        val_ids = select_validation_ids(outer_train_ids, cfg.val_fraction, seed=cfg.seed + fold_index * 17 + sum(ord(ch) for ch in family))
         train_fold_ids = tuple(sorted(set(outer_train_ids) - set(val_ids)))
         folds.append(FoldSplit(train_ids=train_fold_ids, val_ids=tuple(sorted(val_ids)), test_ids=fold_test_ids))
-    return folds, selected_ids
+    return folds, test_ids
 
 
-def select_validation_ids(
-    train_pool_ids: Sequence[str],
-    sequence_map: Dict[str, SequenceSample],
-    val_fraction: float,
-    seed: int,
-) -> List[str]:
+def select_validation_ids(train_pool_ids: Sequence[str], val_fraction: float, seed: int) -> List[str]:
     if len(train_pool_ids) <= 1 or val_fraction <= 0.0:
         return []
     rng = np.random.default_rng(seed)
-    buckets = {
-        "train": [sid for sid in train_pool_ids if sequence_map[sid].source_split == "train"],
-        "test": [sid for sid in train_pool_ids if sequence_map[sid].source_split == "test"],
-    }
-    val_ids: List[str] = []
-    for split_name, split_ids in buckets.items():
-        del split_name
-        shuffled = list(split_ids)
-        rng.shuffle(shuffled)
-        if len(shuffled) <= 1:
-            continue
-        count = int(round(len(shuffled) * float(val_fraction)))
-        count = max(1, count) if len(shuffled) >= 4 else (1 if len(shuffled) >= 2 else 0)
-        count = min(count, len(shuffled) - 1)
-        val_ids.extend(shuffled[:count])
-    if not val_ids:
-        shuffled = list(train_pool_ids)
-        rng.shuffle(shuffled)
-        val_ids = shuffled[:1]
-    if len(val_ids) >= len(train_pool_ids):
-        val_ids = val_ids[: max(0, len(train_pool_ids) - 1)]
-    return sorted(dict.fromkeys(val_ids))
+    shuffled = list(train_pool_ids)
+    rng.shuffle(shuffled)
+    count = int(round(len(shuffled) * float(val_fraction)))
+    count = max(1, count) if len(shuffled) >= 4 else (1 if len(shuffled) >= 2 else 0)
+    count = min(count, len(shuffled) - 1)
+    return sorted(shuffled[:count])
 
 
-def build_window_arrays(
+def family_train_sequence_ids(
+    family: str,
+    sequence_map: Dict[str, SequenceSample],
+    cfg: SequenceBenchmarkConfig,
+) -> List[str]:
+    train_ids_all = [sid for sid, sample in sequence_map.items() if sample.family == family and sample.source_split == "train"]
+    family_seed = cfg.seed + 2027 + sum(ord(ch) for ch in family)
+    return _limit_sequence_ids(train_ids_all, cfg.max_sequences_per_family, seed=family_seed)
+
+
+def pretrain_ids_for_fold(
+    family: str,
+    fold: FoldSplit,
+    sequence_map: Dict[str, SequenceSample],
+    cfg: SequenceBenchmarkConfig,
+) -> List[str]:
+    return sorted(dict.fromkeys(family_train_sequence_ids(family, sequence_map, cfg) + list(fold.train_ids)))
+
+
+def build_pretrain_arrays(
+    sequence_ids: Sequence[str],
+    sequence_map: Dict[str, SequenceSample],
+    cfg: SequenceBenchmarkConfig,
+) -> Tuple[np.ndarray, np.ndarray]:
+    windows = []
+    targets = []
+    for sequence_id in sequence_ids:
+        sample = sequence_map[sequence_id]
+        features = sample.features
+        end_indices = _select_evenly_spaced_indices(sample.length - 1, cfg.max_windows_per_sequence)
+        for end_idx in end_indices:
+            start = int(end_idx) - int(cfg.window) + 1
+            if start < 0:
+                pad = np.repeat(features[0:1], repeats=-start, axis=0)
+                core = features[0 : int(end_idx) + 1]
+                window = np.concatenate([pad, core], axis=0)
+            else:
+                window = features[start : int(end_idx) + 1]
+            next_idx = int(end_idx) + 1
+            target = np.asarray([sample.dp[next_idx], sample.flow[next_idx]], dtype=np.float32)
+            windows.append(window.astype(np.float32))
+            targets.append(target)
+    if not windows:
+        raise ValueError("no pretraining windows were generated")
+    return np.stack(windows).astype(np.float32), np.stack(targets).astype(np.float32)
+
+
+def build_supervised_arrays(
     sequence_ids: Sequence[str],
     sequence_map: Dict[str, SequenceSample],
     cfg: SequenceBenchmarkConfig,
@@ -466,8 +574,8 @@ def build_window_arrays(
     for sequence_id in sequence_ids:
         sample = sequence_map[sequence_id]
         features = sample.features
-        indices = _select_evenly_spaced_indices(sample.length, cfg.max_windows_per_sequence)
-        for end_idx in indices:
+        end_indices = _select_evenly_spaced_indices(sample.length, cfg.max_windows_per_sequence)
+        for end_idx in end_indices:
             start = int(end_idx) - int(cfg.window) + 1
             if start < 0:
                 pad = np.repeat(features[0:1], repeats=-start, axis=0)
@@ -476,48 +584,53 @@ def build_window_arrays(
             else:
                 window = features[start : int(end_idx) + 1]
             windows.append(window.astype(np.float32))
-            targets.append(float(sample.health[int(end_idx)]))
+            targets.append(float(sample.health_remaining_true[int(end_idx)]))
             rows.append(
                 {
                     "sequence_id": sample.sequence_id,
+                    "family": sample.family,
                     "source_split": sample.source_split,
                     "data_no": int(sample.data_no),
-                    "family": sample.family,
-                    "dust_feed": float(sample.feed[int(end_idx)]),
                     "time": float(sample.time[int(end_idx)]),
                     "end_index": int(end_idx),
-                    "health_true": float(sample.health[int(end_idx)]),
-                    "rul_true": float(sample.rul_true[int(end_idx)]) if np.isfinite(sample.rul_true[int(end_idx)]) else np.nan,
+                    "dust_feed": float(sample.feed[int(end_idx)]),
+                    "health_remaining_true": float(sample.health_remaining_true[int(end_idx)]),
+                    "dp_proxy_health": float(sample.dp_proxy_health[int(end_idx)]),
+                    "rul_true": float(sample.rul_true[int(end_idx)]),
+                    "total_life": float(sample.total_life[int(end_idx)]),
+                    "is_observed": True,
+                    "is_tail_reference": False,
                 }
             )
     if not windows:
-        raise ValueError("no windows were generated for the requested split")
+        raise ValueError("no supervised windows were generated")
     return np.stack(windows).astype(np.float32), np.asarray(targets, dtype=np.float32), pd.DataFrame(rows)
 
 
-def build_model(model_name: str, cfg: SequenceBenchmarkConfig) -> nn.Module:
-    model_name = model_name.upper()
-    input_dim = len(FEATURE_NAMES)
-    if model_name in {"GRU", "LSTM"}:
-        return RecurrentRegressor(
-            input_dim=input_dim,
-            hidden_dim=int(cfg.hidden_dim),
-            num_layers=int(cfg.recurrent_layers),
-            dropout=float(cfg.dropout),
-            kind=model_name,
-        )
-    if model_name == "TCN":
-        return TCNRegressor(input_dim=input_dim, channels=cfg.tcn_channels, dropout=float(cfg.dropout))
-    if model_name == "ATTENTION":
-        return AttentionRegressor(
-            input_dim=input_dim,
-            hidden_dim=int(cfg.hidden_dim),
-            heads=int(cfg.attention_heads),
-            layers=int(cfg.attention_layers),
-            dropout=float(cfg.dropout),
-            max_length=int(cfg.window),
-        )
-    raise ValueError(f"unsupported model: {model_name}")
+def build_model(model_name: str, cfg: SequenceBenchmarkConfig) -> SequenceBenchmarkModel:
+    return SequenceBenchmarkModel(model_name=model_name, cfg=cfg)
+
+
+def _predict_health_batches(model: SequenceBenchmarkModel, features: np.ndarray, batch_size: int, device: torch.device) -> np.ndarray:
+    model.eval()
+    outputs = []
+    with torch.no_grad():
+        for start in range(0, len(features), batch_size):
+            batch = torch.as_tensor(features[start : start + batch_size], dtype=torch.float32, device=device)
+            pred = model.forward_health(batch).detach().cpu().numpy()
+            outputs.append(pred)
+    return np.concatenate(outputs, axis=0).astype(np.float32)
+
+
+def _predict_pretrain_batches(model: SequenceBenchmarkModel, features: np.ndarray, batch_size: int, device: torch.device) -> np.ndarray:
+    model.eval()
+    outputs = []
+    with torch.no_grad():
+        for start in range(0, len(features), batch_size):
+            batch = torch.as_tensor(features[start : start + batch_size], dtype=torch.float32, device=device)
+            pred = model.forward_pretrain(batch).detach().cpu().numpy()
+            outputs.append(pred)
+    return np.concatenate(outputs, axis=0).astype(np.float32)
 
 
 def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -550,30 +663,13 @@ def compute_health_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, 
     }
 
 
-def derive_rul_from_health(health_pred: np.ndarray, cfg: SequenceBenchmarkConfig) -> np.ndarray:
-    rul_hat = np.zeros_like(health_pred, dtype=np.float32)
-    alpha = float(cfg.rul_ewma_alpha)
-    lookback = max(1, int(cfg.rul_ewma_points))
-    positive_drops: List[float] = []
-    for idx, health_value in enumerate(health_pred):
-        if idx == 0:
-            positive_drops.append(0.0)
-        else:
-            drop = max(0.0, float(health_pred[idx - 1] - health_pred[idx]))
-            positive_drops.append(drop)
-        recent = positive_drops[max(0, len(positive_drops) - lookback) :]
-        weights = np.asarray([alpha * ((1.0 - alpha) ** (len(recent) - 1 - j)) for j in range(len(recent))], dtype=np.float32)
-        if float(weights.sum()) <= 1e-12:
-            decay = 0.0
-        else:
-            weights = weights / float(weights.sum())
-            decay = float(np.dot(weights, np.asarray(recent, dtype=np.float32)))
-        rul_hat[idx] = float(health_value) / max(decay, 1e-4) * float(cfg.dt)
-    return rul_hat
-
-
 def compute_rul_metrics(prediction_df: pd.DataFrame) -> Dict[str, float]:
-    valid = prediction_df[(prediction_df["source_split"] == "test") & prediction_df["rul_true"].notna() & prediction_df["rul_pred"].notna()]
+    valid = prediction_df[
+        prediction_df["is_observed"]
+        & prediction_df["rul_true"].notna()
+        & prediction_df["rul_pred"].notna()
+        & prediction_df["health_remaining_pred"].notna()
+    ]
     if valid.empty:
         return {
             "rul_mae": math.nan,
@@ -589,21 +685,109 @@ def compute_rul_metrics(prediction_df: pd.DataFrame) -> Dict[str, float]:
     }
 
 
-def _predict_batches(model: nn.Module, features: np.ndarray, batch_size: int, device: torch.device) -> np.ndarray:
-    model.eval()
-    outputs = []
-    with torch.no_grad():
-        for start in range(0, len(features), batch_size):
-            batch = torch.as_tensor(features[start : start + batch_size], dtype=torch.float32, device=device)
-            pred = model(batch).detach().cpu().numpy()
-            outputs.append(pred)
-    return np.concatenate(outputs, axis=0).astype(np.float32)
+def train_pretrain_phase(
+    model: SequenceBenchmarkModel,
+    train_x: np.ndarray,
+    train_targets: np.ndarray,
+    cfg: SequenceBenchmarkConfig,
+    device: torch.device,
+    history_path: Path,
+) -> Dict[str, float]:
+    optimizer = torch.optim.Adam(model.parameters(), lr=float(cfg.learning_rate), weight_decay=float(cfg.weight_decay))
+    loss_fn = nn.MSELoss()
+    loader = DataLoader(WindowDataset(train_x, train_targets), batch_size=int(cfg.batch_size), shuffle=True, num_workers=0)
+    best_state = {name: tensor.detach().cpu().clone() for name, tensor in model.state_dict().items()}
+    best_rmse = math.inf
+    best_epoch = 0
+    epochs_without_improve = 0
+    history_rows = []
+    for epoch in range(1, int(cfg.pretrain_epochs) + 1):
+        model.train()
+        losses = []
+        for batch_x, batch_y in loader:
+            batch_x = batch_x.to(device)
+            batch_y = batch_y.to(device)
+            optimizer.zero_grad(set_to_none=True)
+            pred = model.forward_pretrain(batch_x)
+            loss = loss_fn(pred, batch_y)
+            loss.backward()
+            optimizer.step()
+            losses.append(float(loss.detach().cpu().item()))
+        full_pred = _predict_pretrain_batches(model, train_x, batch_size=int(cfg.batch_size), device=device)
+        epoch_rmse = rmse(train_targets, full_pred)
+        history_rows.append({"epoch": epoch, "train_mse": float(np.mean(losses)) if losses else 0.0, "train_rmse": epoch_rmse})
+        if epoch_rmse < best_rmse - 1e-6:
+            best_rmse = epoch_rmse
+            best_epoch = epoch
+            best_state = {name: tensor.detach().cpu().clone() for name, tensor in model.state_dict().items()}
+            epochs_without_improve = 0
+        else:
+            epochs_without_improve += 1
+        if epochs_without_improve >= int(cfg.pretrain_patience):
+            break
+    model.load_state_dict(best_state)
+    pd.DataFrame(history_rows).to_csv(history_path, index=False)
+    return {"pretrain_best_epoch": int(best_epoch), "pretrain_best_rmse": float(best_rmse)}
+
+
+def train_finetune_phase(
+    model: SequenceBenchmarkModel,
+    train_x: np.ndarray,
+    train_y: np.ndarray,
+    val_x: np.ndarray,
+    val_y: np.ndarray,
+    cfg: SequenceBenchmarkConfig,
+    device: torch.device,
+    history_path: Path,
+) -> Dict[str, float]:
+    optimizer = torch.optim.Adam(model.parameters(), lr=float(cfg.learning_rate), weight_decay=float(cfg.weight_decay))
+    loss_fn = nn.MSELoss()
+    loader = DataLoader(WindowDataset(train_x, train_y), batch_size=int(cfg.batch_size), shuffle=True, num_workers=0)
+    use_validation = len(val_x) > 0
+    best_state = {name: tensor.detach().cpu().clone() for name, tensor in model.state_dict().items()}
+    best_val_rmse = math.inf
+    best_epoch = 0
+    epochs_without_improve = 0
+    history_rows = []
+    for epoch in range(1, int(cfg.epochs) + 1):
+        model.train()
+        losses = []
+        for batch_x, batch_y in loader:
+            batch_x = batch_x.to(device)
+            batch_y = batch_y.to(device)
+            optimizer.zero_grad(set_to_none=True)
+            pred = model.forward_health(batch_x)
+            loss = loss_fn(pred, batch_y)
+            loss.backward()
+            optimizer.step()
+            losses.append(float(loss.detach().cpu().item()))
+        if use_validation:
+            val_pred = np.clip(_predict_health_batches(model, val_x, batch_size=int(cfg.batch_size), device=device), 0.0, 1.0)
+            metric_rmse = rmse(val_y, val_pred)
+        else:
+            train_pred = np.clip(_predict_health_batches(model, train_x, batch_size=int(cfg.batch_size), device=device), 0.0, 1.0)
+            metric_rmse = rmse(train_y, train_pred)
+        history_rows.append({"epoch": epoch, "train_mse": float(np.mean(losses)) if losses else 0.0, "val_rmse": metric_rmse})
+        if metric_rmse < best_val_rmse - 1e-6:
+            best_val_rmse = metric_rmse
+            best_epoch = epoch
+            best_state = {name: tensor.detach().cpu().clone() for name, tensor in model.state_dict().items()}
+            epochs_without_improve = 0
+        else:
+            epochs_without_improve += 1
+        if epochs_without_improve >= int(cfg.patience):
+            break
+    model.load_state_dict(best_state)
+    pd.DataFrame(history_rows).to_csv(history_path, index=False)
+    return {"best_epoch": int(best_epoch), "best_val_rmse": float(best_val_rmse)}
 
 
 def train_fold_model(
     model_name: str,
     family: str,
     fold_index: int,
+    pretrain_x: np.ndarray,
+    pretrain_targets: np.ndarray,
     train_x: np.ndarray,
     train_y: np.ndarray,
     val_x: np.ndarray,
@@ -612,51 +796,26 @@ def train_fold_model(
     cfg: SequenceBenchmarkConfig,
     device: torch.device,
     artifact_dir: Path,
-) -> Tuple[nn.Module, Dict[str, object]]:
+) -> Tuple[SequenceBenchmarkModel, Dict[str, object]]:
     model = build_model(model_name, cfg).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=float(cfg.learning_rate), weight_decay=float(cfg.weight_decay))
-    loss_fn = nn.MSELoss()
-    train_loader = DataLoader(WindowDataset(train_x, train_y), batch_size=int(cfg.batch_size), shuffle=True, num_workers=0)
-    use_validation = len(val_x) > 0
-    best_state = None
-    best_val_rmse = math.inf
-    best_epoch = 0
-    epochs_without_improve = 0
-    history_rows = []
-    for epoch in range(1, int(cfg.epochs) + 1):
-        model.train()
-        batch_losses = []
-        for batch_x, batch_y in train_loader:
-            batch_x = batch_x.to(device)
-            batch_y = batch_y.to(device)
-            optimizer.zero_grad(set_to_none=True)
-            pred = model(batch_x)
-            loss = loss_fn(pred, batch_y)
-            loss.backward()
-            optimizer.step()
-            batch_losses.append(float(loss.detach().cpu().item()))
-        train_loss = float(np.mean(batch_losses)) if batch_losses else 0.0
-        if use_validation:
-            val_pred = _predict_batches(model, val_x, batch_size=int(cfg.batch_size), device=device)
-            val_rmse = rmse(val_y, val_pred)
-        else:
-            train_pred = _predict_batches(model, train_x, batch_size=int(cfg.batch_size), device=device)
-            val_rmse = rmse(train_y, train_pred)
-        history_rows.append({"epoch": epoch, "train_mse": train_loss, "val_rmse": float(val_rmse)})
-        if val_rmse < best_val_rmse - 1e-6:
-            best_val_rmse = float(val_rmse)
-            best_epoch = int(epoch)
-            best_state = {name: tensor.detach().cpu().clone() for name, tensor in model.state_dict().items()}
-            epochs_without_improve = 0
-        else:
-            epochs_without_improve += 1
-        if epochs_without_improve >= int(cfg.patience):
-            break
-    if best_state is None:
-        best_state = {name: tensor.detach().cpu().clone() for name, tensor in model.state_dict().items()}
-    model.load_state_dict(best_state)
-    history_path = artifact_dir / f"fold_{fold_index:02d}_history.csv"
-    pd.DataFrame(history_rows).to_csv(history_path, index=False)
+    pretrain_summary = train_pretrain_phase(
+        model=model,
+        train_x=pretrain_x,
+        train_targets=pretrain_targets,
+        cfg=cfg,
+        device=device,
+        history_path=artifact_dir / f"fold_{fold_index:02d}_pretrain_history.csv",
+    )
+    finetune_summary = train_finetune_phase(
+        model=model,
+        train_x=train_x,
+        train_y=train_y,
+        val_x=val_x,
+        val_y=val_y,
+        cfg=cfg,
+        device=device,
+        history_path=artifact_dir / f"fold_{fold_index:02d}_finetune_history.csv",
+    )
     checkpoint_path = artifact_dir / f"fold_{fold_index:02d}_best.pt"
     torch.save(
         {
@@ -664,11 +823,12 @@ def train_fold_model(
             "family": family,
             "fold_index": int(fold_index),
             "feature_names": list(FEATURE_NAMES),
+            "pretrain_target_names": list(PRETRAIN_TARGET_NAMES),
             "state_dict": model.state_dict(),
             "standardizer": standardizer.to_dict(),
             "config": asdict(cfg),
-            "best_epoch": int(best_epoch),
-            "best_val_rmse": float(best_val_rmse),
+            **pretrain_summary,
+            **finetune_summary,
         },
         checkpoint_path,
     )
@@ -676,37 +836,78 @@ def train_fold_model(
         "model_name": model_name,
         "family": family,
         "fold_index": int(fold_index),
-        "best_epoch": int(best_epoch),
-        "best_val_rmse": float(best_val_rmse),
         "checkpoint_path": str(checkpoint_path),
-        "history_path": str(history_path),
+        **pretrain_summary,
+        **finetune_summary,
     }
     with (artifact_dir / f"fold_{fold_index:02d}_summary.json").open("w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=True, indent=2)
     return model, summary
 
 
+def add_tail_reference_rows(pred_df: pd.DataFrame, sequence_map: Dict[str, SequenceSample], cfg: SequenceBenchmarkConfig) -> pd.DataFrame:
+    if not bool(cfg.add_tail_reference_rows):
+        return pred_df
+    tail_rows: List[Dict[str, object]] = []
+    for sequence_id, group in pred_df[pred_df["is_observed"]].groupby("sequence_id", sort=False):
+        sample = sequence_map[sequence_id]
+        if sample.source_split != "test":
+            continue
+        total_life = float(sample.total_life_scalar)
+        if not np.isfinite(total_life):
+            continue
+        last_time = float(group["time"].max())
+        if total_life <= last_time + 1e-9:
+            continue
+        tail_times = np.arange(last_time + float(cfg.dt), total_life + 0.5 * float(cfg.dt), float(cfg.dt), dtype=np.float32)
+        last_end_index = int(group["end_index"].max())
+        for offset, tail_time in enumerate(tail_times, start=1):
+            rul_true = max(total_life - float(tail_time), 0.0)
+            health_remaining_true = rul_true / max(total_life, 1e-6)
+            tail_rows.append(
+                {
+                    "sequence_id": sequence_id,
+                    "family": sample.family,
+                    "source_split": sample.source_split,
+                    "data_no": int(sample.data_no),
+                    "time": float(tail_time),
+                    "end_index": int(last_end_index + offset),
+                    "dust_feed": float(sample.dust_feed),
+                    "health_remaining_true": float(health_remaining_true),
+                    "health_remaining_pred": math.nan,
+                    "dp_proxy_health": math.nan,
+                    "rul_true": float(rul_true),
+                    "rul_pred": math.nan,
+                    "total_life": float(total_life),
+                    "is_observed": False,
+                    "is_tail_reference": True,
+                }
+            )
+    if not tail_rows:
+        return pred_df
+    merged_rows = pred_df.to_dict(orient="records")
+    merged_rows.extend(tail_rows)
+    merged = pd.DataFrame.from_records(merged_rows, columns=list(pred_df.columns))
+    return merged.sort_values(["sequence_id", "time", "is_tail_reference"]).reset_index(drop=True)
+
+
 def evaluate_fold_predictions(
-    model: nn.Module,
+    model: SequenceBenchmarkModel,
     test_x: np.ndarray,
     test_meta: pd.DataFrame,
+    sequence_map: Dict[str, SequenceSample],
     cfg: SequenceBenchmarkConfig,
     device: torch.device,
 ) -> Tuple[pd.DataFrame, Dict[str, float], Dict[str, float]]:
-    pred = np.clip(_predict_batches(model, test_x, batch_size=int(cfg.batch_size), device=device), 0.0, 1.0)
+    pred = np.clip(_predict_health_batches(model, test_x, batch_size=int(cfg.batch_size), device=device), 0.0, 1.0)
     pred_df = test_meta.copy()
-    pred_df["health_pred"] = pred
-    pred_df["rul_pred"] = np.nan
-    for sequence_id, group in pred_df.groupby("sequence_id", sort=False):
-        ordered = group.sort_values("end_index")
-        if ordered["source_split"].iloc[0] != "test":
-            continue
-        rul_hat = derive_rul_from_health(ordered["health_pred"].to_numpy(dtype=np.float32), cfg)
-        pred_df.loc[ordered.index, "rul_pred"] = rul_hat.astype(np.float32)
-        del sequence_id
+    pred_df["health_remaining_pred"] = pred
+    pred_df["rul_pred"] = pred_df["health_remaining_pred"] * pred_df["total_life"]
+    pred_df = add_tail_reference_rows(pred_df, sequence_map=sequence_map, cfg=cfg)
+    observed = pred_df[pred_df["is_observed"]].copy()
     health_metrics = compute_health_metrics(
-        pred_df["health_true"].to_numpy(dtype=np.float32),
-        pred_df["health_pred"].to_numpy(dtype=np.float32),
+        observed["health_remaining_true"].to_numpy(dtype=np.float32),
+        observed["health_remaining_pred"].to_numpy(dtype=np.float32),
     )
     rul_metrics = compute_rul_metrics(pred_df)
     return pred_df, health_metrics, rul_metrics
@@ -766,8 +967,8 @@ def add_rankings(overall_df: pd.DataFrame) -> pd.DataFrame:
     return ranked
 
 
-def _sample_scatter_points(df: pd.DataFrame, metric_col: str, target_col: str, seed: int, max_points: int = 4000) -> pd.DataFrame:
-    subset = df[[metric_col, target_col, "model"]].dropna()
+def _sample_scatter_points(df: pd.DataFrame, true_col: str, pred_col: str, seed: int, max_points: int = 4000) -> pd.DataFrame:
+    subset = df[[true_col, pred_col, "model"]].dropna()
     if len(subset) <= max_points:
         return subset
     return subset.sample(n=max_points, random_state=seed)
@@ -782,14 +983,14 @@ def plot_metric_bars(overall_df: pd.DataFrame, outdir: Path):
     axes[0].bar(x + 0.2, overall_df["health_mae"], width=0.4, label="MAE")
     axes[0].set_xticks(x)
     axes[0].set_xticklabels(overall_df["model"])
-    axes[0].set_title("Health Metrics by Model")
+    axes[0].set_title("Remaining-Life Health Metrics by Model")
     axes[0].grid(True, axis="y", alpha=0.3)
     axes[0].legend()
     axes[1].bar(x - 0.2, overall_df["rul_rmse"], width=0.4, label="RMSE")
     axes[1].bar(x + 0.2, overall_df["rul_mae"], width=0.4, label="MAE")
     axes[1].set_xticks(x)
     axes[1].set_xticklabels(overall_df["model"])
-    axes[1].set_title("Derived RUL Metrics by Model")
+    axes[1].set_title("Observed-Segment RUL Metrics by Model")
     axes[1].grid(True, axis="y", alpha=0.3)
     axes[1].legend()
     fig.tight_layout()
@@ -797,17 +998,18 @@ def plot_metric_bars(overall_df: pd.DataFrame, outdir: Path):
     plt.close(fig)
 
 
-def plot_scatter_grid(pred_df: pd.DataFrame, outdir: Path, value_col: str, pred_col: str, title_prefix: str, seed: int):
-    models = sorted(pred_df["model"].unique().tolist())
+def plot_scatter_grid(pred_df: pd.DataFrame, outdir: Path, true_col: str, pred_col: str, title_prefix: str, seed: int):
+    observed = pred_df[pred_df["is_observed"]].copy()
+    models = sorted(observed["model"].dropna().unique().tolist())
     if not models:
         return
     fig, axes = plt.subplots(1, len(models), figsize=(4 * len(models), 4), squeeze=False)
     for ax, model_name in zip(axes[0], models):
-        subset = pred_df[pred_df["model"] == model_name]
-        sampled = _sample_scatter_points(subset, value_col, pred_col, seed=seed)
-        ax.scatter(sampled[value_col], sampled[pred_col], s=10, alpha=0.35)
-        lo = min(float(sampled[value_col].min()), float(sampled[pred_col].min()))
-        hi = max(float(sampled[value_col].max()), float(sampled[pred_col].max()))
+        subset = observed[observed["model"] == model_name]
+        sampled = _sample_scatter_points(subset, true_col=true_col, pred_col=pred_col, seed=seed)
+        ax.scatter(sampled[true_col], sampled[pred_col], s=10, alpha=0.35)
+        lo = min(float(sampled[true_col].min()), float(sampled[pred_col].min()))
+        hi = max(float(sampled[true_col].max()), float(sampled[pred_col].max()))
         ax.plot([lo, hi], [lo, hi], linestyle="--", color="black", linewidth=1.0)
         ax.set_title(model_name)
         ax.set_xlabel(f"True {title_prefix}")
@@ -820,52 +1022,61 @@ def plot_scatter_grid(pred_df: pd.DataFrame, outdir: Path, value_col: str, pred_
 
 def plot_representative_sequences(pred_df: pd.DataFrame, outdir: Path):
     for (family, model_name), group in pred_df.groupby(["family", "model"], sort=True):
-        health_seq = group.sort_values(["source_split", "sequence_id", "end_index"])
-        if health_seq.empty:
+        if group.empty:
             continue
-        health_sequence_ids = health_seq["sequence_id"].unique().tolist()
-        representative_id = None
-        for sequence_id in health_sequence_ids:
-            sequence_rows = health_seq[health_seq["sequence_id"] == sequence_id]
-            if sequence_rows["source_split"].iloc[0] == "test":
+        sequence_ids = group["sequence_id"].unique().tolist()
+        representative_id = sequence_ids[0]
+        longest_len = -1
+        for sequence_id in sequence_ids:
+            candidate = group[group["sequence_id"] == sequence_id]
+            observed_len = int(candidate["is_observed"].sum())
+            if observed_len > longest_len:
+                longest_len = observed_len
                 representative_id = sequence_id
-                break
-        if representative_id is None:
-            representative_id = health_sequence_ids[0]
-        rep = health_seq[health_seq["sequence_id"] == representative_id].sort_values("end_index")
+        rep = group[group["sequence_id"] == representative_id].sort_values("time")
+        observed = rep[rep["is_observed"]].copy()
+        true_line = rep.copy()
+
         fig, ax = plt.subplots(figsize=(8, 4))
-        ax.plot(rep["time"], rep["health_true"], label="true health", linewidth=2.0)
-        ax.plot(rep["time"], rep["health_pred"], label="pred health", linewidth=2.0)
-        ax.set_title(f"{family} {model_name} held-out health trajectory")
+        ax.plot(true_line["time"], true_line["health_remaining_true"], label="true health_remaining", linewidth=2.0)
+        ax.plot(observed["time"], observed["health_remaining_pred"], label="pred health_remaining", linewidth=2.0)
+        if rep["is_tail_reference"].any():
+            ax.axvline(float(observed["time"].max()), color="gray", linestyle=":", linewidth=1.0, label="observed end")
+        ax.set_title(f"{family} {model_name} health_remaining trajectory")
         ax.set_xlabel("Time")
-        ax.set_ylabel("Normalized health")
+        ax.set_ylabel("Remaining-life health")
         ax.set_ylim(-0.05, 1.05)
         ax.grid(True, alpha=0.3)
         ax.legend()
         fig.tight_layout()
         fig.savefig(outdir / f"health_curve_{family}_{model_name}.png", dpi=200)
         plt.close(fig)
-        if rep["source_split"].iloc[0] == "test" and rep["rul_true"].notna().any():
-            fig, ax = plt.subplots(figsize=(8, 4))
-            ax.plot(rep["time"], rep["rul_true"], label="true RUL", linewidth=2.0)
-            ax.plot(rep["time"], rep["rul_pred"], label="derived RUL", linewidth=2.0)
-            ax.set_title(f"{family} {model_name} held-out derived RUL")
-            ax.set_xlabel("Time")
-            ax.set_ylabel("RUL")
-            ax.grid(True, alpha=0.3)
-            ax.legend()
-            fig.tight_layout()
-            fig.savefig(outdir / f"rul_curve_{family}_{model_name}.png", dpi=200)
-            plt.close(fig)
+
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.plot(true_line["time"], true_line["rul_true"], label="true RUL", linewidth=2.0)
+        ax.plot(observed["time"], observed["rul_pred"], label="pred RUL", linewidth=2.0)
+        if rep["is_tail_reference"].any():
+            ax.axvline(float(observed["time"].max()), color="gray", linestyle=":", linewidth=1.0, label="observed end")
+        ax.set_title(f"{family} {model_name} RUL trajectory")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("RUL")
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(outdir / f"rul_curve_{family}_{model_name}.png", dpi=200)
+        plt.close(fig)
 
 
-def print_rankings(family_df: pd.DataFrame, ranking_df: pd.DataFrame, out_root: Path, dataset_summary: Dict[str, object]):
-    a2_train_only = dataset_summary.get("a2_feed_train_only", [])
-    a2_test_only = dataset_summary.get("a2_feed_test_only", [])
+def print_rankings(family_df: pd.DataFrame, ranking_df: pd.DataFrame, out_root: Path, dataset_summary: Dict[str, object], cfg: SequenceBenchmarkConfig):
+    print("benchmark reminders:")
+    print(f"  health_target_type: {cfg.health_target_type}")
+    print(f"  pretrain_task: {cfg.pretrain_task}")
+    print(f"  rul_derivation: {cfg.rul_derivation}")
+    print(f"  RUL uses true total_life from Test only; this is not simulator-side inference.")
     print("dataset summary:")
     print(f"  total sequences: {dataset_summary['sequence_count']}")
-    print(f"  A2 train-only feeds: {a2_train_only}")
-    print(f"  A2 test-only feeds: {a2_test_only}")
+    print(f"  A2 train-only feeds: {dataset_summary.get('a2_feed_train_only', [])}")
+    print(f"  A2 test-only feeds: {dataset_summary.get('a2_feed_test_only', [])}")
     for family, group in family_df.groupby("family", sort=True):
         print(f"{family} ranking:")
         ranked = group.sort_values(["health_rmse_mean", "rul_rmse_mean", "model"]).reset_index(drop=True)
@@ -919,21 +1130,31 @@ def run_benchmark(cfg: SequenceBenchmarkConfig) -> Dict[str, object]:
     fold_rows: List[Dict[str, object]] = []
     all_predictions: List[pd.DataFrame] = []
     for family in cfg.families:
-        folds, selected_ids = build_grouped_folds(family, sequence_map, cfg)
-        print(f"{family}: {len(selected_ids)} sequences, {len(folds)} folds")
+        folds, selected_test_ids = build_grouped_folds(family, sequence_map, cfg)
+        selected_train_ids = family_train_sequence_ids(family, sequence_map, cfg)
+        print(
+            f"{family}: "
+            f"train_pretrain_sequences={len(selected_train_ids)} "
+            f"test_supervised_sequences={len(selected_test_ids)} "
+            f"folds={len(folds)}"
+        )
         for model_name in cfg.models:
             family_model_dir = artifact_root / family / model_name.lower()
             family_model_dir.mkdir(parents=True, exist_ok=True)
             print(f"training {model_name} for {family}")
             for fold_index, fold in enumerate(folds):
-                train_x_raw, train_y, _train_meta = build_window_arrays(fold.train_ids, sequence_map, cfg)
+                pretrain_ids = pretrain_ids_for_fold(family, fold, sequence_map, cfg)
+                pretrain_x_raw, pretrain_targets_raw = build_pretrain_arrays(pretrain_ids, sequence_map, cfg)
+                train_x_raw, train_y, _train_meta = build_supervised_arrays(fold.train_ids, sequence_map, cfg)
                 if fold.val_ids:
-                    val_x_raw, val_y, _val_meta = build_window_arrays(fold.val_ids, sequence_map, cfg)
+                    val_x_raw, val_y, _val_meta = build_supervised_arrays(fold.val_ids, sequence_map, cfg)
                 else:
                     val_x_raw = np.empty((0, cfg.window, len(FEATURE_NAMES)), dtype=np.float32)
                     val_y = np.empty((0,), dtype=np.float32)
-                test_x_raw, _test_y, test_meta = build_window_arrays(fold.test_ids, sequence_map, cfg)
-                standardizer = FeatureStandardizer().fit(train_x_raw)
+                test_x_raw, _test_y, test_meta = build_supervised_arrays(fold.test_ids, sequence_map, cfg)
+                standardizer = FeatureStandardizer().fit(pretrain_x_raw)
+                pretrain_x = standardizer.transform(pretrain_x_raw)
+                pretrain_targets = standardizer.transform_dp_flow_targets(pretrain_targets_raw)
                 train_x = standardizer.transform(train_x_raw)
                 val_x = standardizer.transform(val_x_raw) if len(val_x_raw) else val_x_raw
                 test_x = standardizer.transform(test_x_raw)
@@ -941,6 +1162,8 @@ def run_benchmark(cfg: SequenceBenchmarkConfig) -> Dict[str, object]:
                     model_name=model_name,
                     family=family,
                     fold_index=fold_index,
+                    pretrain_x=pretrain_x,
+                    pretrain_targets=pretrain_targets,
                     train_x=train_x,
                     train_y=train_y,
                     val_x=val_x,
@@ -954,6 +1177,7 @@ def run_benchmark(cfg: SequenceBenchmarkConfig) -> Dict[str, object]:
                     model=model,
                     test_x=test_x,
                     test_meta=test_meta,
+                    sequence_map=sequence_map,
                     cfg=cfg,
                     device=device,
                 )
@@ -965,9 +1189,12 @@ def run_benchmark(cfg: SequenceBenchmarkConfig) -> Dict[str, object]:
                     "family": family,
                     "model": model_name,
                     "fold": int(fold_index),
+                    "pretrain_sequence_count": int(len(pretrain_ids)),
                     "train_sequence_count": int(len(fold.train_ids)),
                     "val_sequence_count": int(len(fold.val_ids)),
                     "test_sequence_count": int(len(fold.test_ids)),
+                    "pretrain_best_epoch": int(train_summary["pretrain_best_epoch"]),
+                    "pretrain_best_rmse": float(train_summary["pretrain_best_rmse"]),
                     "best_epoch": int(train_summary["best_epoch"]),
                     "best_val_rmse": float(train_summary["best_val_rmse"]),
                 }
@@ -990,6 +1217,9 @@ def run_benchmark(cfg: SequenceBenchmarkConfig) -> Dict[str, object]:
     overall_df.to_csv(out_root / "metrics_overall.csv", index=False)
     ranking_df.to_csv(out_root / "model_rankings.csv", index=False)
     overall_payload = {
+        "health_target_type": cfg.health_target_type,
+        "pretrain_task": cfg.pretrain_task,
+        "rul_derivation": cfg.rul_derivation,
         "best_model": None if ranking_df.empty else str(ranking_df.iloc[0]["model"]),
         "models": [] if ranking_df.empty else ranking_df.to_dict(orient="records"),
         "dataset_summary_path": str(out_root / "dataset_summary.json"),
@@ -1000,17 +1230,30 @@ def run_benchmark(cfg: SequenceBenchmarkConfig) -> Dict[str, object]:
     pred_df = pd.concat(all_predictions, ignore_index=True) if all_predictions else pd.DataFrame()
     if not pred_df.empty:
         plot_metric_bars(ranking_df, plots_root)
-        plot_scatter_grid(pred_df, plots_root, value_col="health_true", pred_col="health_pred", title_prefix="health", seed=cfg.seed)
-        rul_subset = pred_df[pred_df["rul_true"].notna() & pred_df["rul_pred"].notna()].copy()
-        if not rul_subset.empty:
-            plot_scatter_grid(rul_subset, plots_root, value_col="rul_true", pred_col="rul_pred", title_prefix="RUL", seed=cfg.seed + 13)
+        plot_scatter_grid(
+            pred_df,
+            plots_root,
+            true_col="health_remaining_true",
+            pred_col="health_remaining_pred",
+            title_prefix="health_remaining",
+            seed=cfg.seed,
+        )
+        plot_scatter_grid(
+            pred_df[pred_df["is_observed"] & pred_df["rul_pred"].notna()].copy(),
+            plots_root,
+            true_col="rul_true",
+            pred_col="rul_pred",
+            title_prefix="RUL",
+            seed=cfg.seed + 13,
+        )
         plot_representative_sequences(pred_df, plots_root)
 
-    print_rankings(family_df, ranking_df, out_root, dataset_summary)
+    print_rankings(family_df, ranking_df, out_root, dataset_summary, cfg)
     return {
         "out_root": str(out_root),
         "dataset_summary": dataset_summary,
         "metrics_by_fold": fold_df,
         "metrics_by_family": family_df,
         "metrics_overall": ranking_df,
+        "predictions": pred_df,
     }

@@ -89,7 +89,7 @@ An independent pooled-data sequence benchmark is also available for validating t
 python benchmark_sequence_models.py
 ```
 
-This benchmark compares `GRU / LSTM / TCN / ATTENTION` as `family-specific` health regressors on pooled `Train_Data_CSV.csv` and `Test_Data_CSV.csv`, then derives `RUL` from predicted health trajectories.
+This benchmark v2 compares `GRU / LSTM / TCN / ATTENTION` as `family-specific` sequence models, uses `Train` for self-supervised dynamics pretraining, uses `Test` for `remaining-life health` supervision, and computes benchmark-side `RUL` as `health_hat * total_life`.
 
 Implementation details and task-completion notes are recorded in:
 

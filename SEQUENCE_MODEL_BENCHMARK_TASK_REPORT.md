@@ -2,122 +2,154 @@
 
 ## Task Goal
 
-This task adds an independent sequence-model benchmark program for the new time-series training direction.
+This batch redefines the standalone sequence benchmark so that `health` matches `remaining-life progress`, not `DP`-proxy clogging severity.
 
-The goal of this batch is:
+The benchmark now exists to answer one question first:
 
-- stop using the old interpretation of "pick a few `Test Data_No` entries as fixed machine lifespans"
-- pool `Train_Data_CSV.csv` and `Test_Data_CSV.csv` into one sequence sample space
-- train `family-specific` sequence regressors for `A2 / A3 / A4`
-- compare `GRU / LSTM / TCN / Attention`
-- evaluate whether `normalized health` regression and derived `RUL` behavior are reasonable before reconnecting anything to the simulator or RL pipeline
+- can we learn a family-specific sequence representation whose main supervised target is `remaining-life health`, and can that remove the previous `RUL` bouncing problem?
 
-## Completed In This Task
+## Implemented In This Batch
 
-### Implemented
+### Core Semantic Change
 
-- Added a new standalone entrypoint:
+- The main supervised target is now:
+  - `health_remaining = RUL / total_life`
+- `total_life` is defined per `Test` sequence as:
+  - `Time + RUL`
+- `health_remaining` is therefore:
+  - close to `1` near sequence start
+  - close to `0` at failure
+
+This replaces the previous benchmark target:
+
+- `DP`-proxy `health = clip((600 - DP) / (600 - 25), 0, 1)`
+
+### Current Program Behavior
+
+- The standalone entrypoint remains:
   - `benchmark_sequence_models.py`
-- Added a reusable benchmark module:
+- The reusable benchmark module remains:
   - `src/sequence_benchmark.py`
-- Implemented pooled data loading from:
-  - `Train_Data_CSV.csv`
-  - `Test_Data_CSV.csv`
-- Implemented sequence identity as:
-  - `source_split + Data_No`
-- Implemented `family-specific` training for:
+- The benchmark still compares:
   - `GRU`
   - `LSTM`
   - `TCN`
   - `ATTENTION`
-- Implemented grouped cross-validation by `sequence_id`
-- Implemented validation split inside each outer fold
-- Implemented standardized many-to-one window regression for `normalized health`
-- Implemented derived `RUL` calculation from predicted health trajectories
-- Implemented benchmark outputs:
-  - metrics tables
-  - model rankings
-  - fold prediction artifacts
-  - representative health/RUL trajectory plots
-  - metric bar plots
-  - predicted-vs-true scatter plots
+- The benchmark still runs family-specific experiments for:
+  - `A2`
+  - `A3`
+  - `A4`
 
-### Default Settings
+### Data Role Redefinition
+
+- `Train_Data_CSV.csv`
+  - no longer contributes life-label supervision
+  - now serves as family-specific self-supervised pretraining data
+- `Test_Data_CSV.csv`
+  - now serves as the only source of life-progress supervision
+  - also remains the only source of true `RUL` evaluation
+
+### Training Pipeline
+
+For each `family x model x fold`, the benchmark now runs two stages:
+
+1. Self-supervised pretraining
+   - data:
+     - all selected family `Train` sequences
+     - plus the current fold's `train_fold` `Test` sequences
+   - task:
+     - predict next-step `Differential_pressure`
+     - predict next-step `Flow_rate`
+
+2. Supervised fine-tuning
+   - data:
+     - current fold's `train_fold` `Test` sequences
+   - target:
+     - window-end `health_remaining`
+
+Validation is drawn only from the supervised `Test` training side of the fold.
+
+### RUL Definition In This Benchmark
+
+The old slope-based `health -> RUL` derivation has been removed.
+
+Current benchmark `RUL` prediction is now defined as:
+
+```text
+rul_hat = health_remaining_hat * total_life
+```
+
+Important note:
+
+- this works only inside the benchmark because true `total_life` is known from `Test`
+- this is a benchmark-side alignment check
+- this is not yet the final simulator-side inference rule
+
+### Output Changes
+
+Each prediction CSV now distinguishes:
+
+- `health_remaining_true`
+- `health_remaining_pred`
+- `dp_proxy_health`
+- `rul_true`
+- `rul_pred`
+- `total_life`
+- `is_observed`
+- `is_tail_reference`
+
+The benchmark also records:
+
+- `health_target_type = remaining_life_fraction`
+- `pretrain_task = next_step_dp_flow`
+- `rul_derivation = health_hat_times_total_life`
+
+### Visualization Changes
+
+Representative plots now use two layers:
+
+- observed segment
+  - true vs predicted `health_remaining`
+  - true vs predicted `RUL`
+- reference full-life view
+  - true tail is extended to failure using true `RUL`
+  - predicted tail is not fabricated beyond the observed segment
+
+## Default Settings
 
 - Models:
   - `GRU,LSTM,TCN,ATTENTION`
 - Families:
   - `A2,A3,A4`
-- Cross-validation:
-  - grouped `5-fold`
+- Grouped evaluation:
+  - `5-fold`
 - Window length:
   - `32`
 - Batch size:
   - `64`
-- Epoch budget:
+- Fine-tuning epochs:
   - `100`
-- Early stopping patience:
+- Fine-tuning patience:
   - `10`
+- Pretraining epochs:
+  - `20`
+- Pretraining patience:
+  - `5`
 - Optimizer:
   - `Adam`
 - Learning rate:
   - `1e-3`
-- Training target:
-  - window-end `normalized health`
-- Derived RUL:
-  - computed from predicted health with `5`-step EWMA decay
 
-### Explicitly Not Done In This Task
+## Explicitly Not Done In This Batch
 
 - No change to `run_experiment.py`
-- No change to the current RL training or evaluation path
-- No reconnection to `DegradationReplay`
-- No reuse of `RULPredictorWrapper`
+- No change to the current RL path
+- No pseudo life labels for `Train`
 - No unified conditional model
 - No feed interpolation
 - No particle-size curve input features
-- No direct raw `RUL` supervision
-- No hyperparameter sweep
-- No replacement of the current simulator-side health source
-
-## Data Scope And Label Definition
-
-### Data Used
-
-- `Train_Data_CSV.csv` and `Test_Data_CSV.csv` are both used for health supervision
-- only `Test_Data_CSV.csv` contributes true `RUL` values for derived-RUL evaluation
-
-### Sequence Key
-
-- each sequence is keyed as `train_XX` or `test_XX`
-- this avoids collisions because both files use `Data_No = 1..50`
-
-### Input Features
-
-- `Differential_pressure`
-- `d(Differential_pressure)/dt`
-- `Flow_rate`
-- `Dust_feed`
-
-### Health Label
-
-The benchmark uses:
-
-```text
-health = clip((600 - Differential_pressure) / (600 - 25), 0, 1)
-```
-
-Interpretation:
-
-- `25 Pa` is the clean-filter baseline
-- `600 Pa` is the failure threshold
-- the window-end health value is the supervised regression target
-
-### Dataset Constraint Recorded
-
-`A2` has asymmetric feed coverage between `Train` and `Test`.
-
-The benchmark records this asymmetry in the dataset summary outputs and prints it in the console summary, but does not interpolate missing feed levels in this batch.
+- No direct raw `RUL` regression head
+- No simulator-side inference redesign
 
 ## How To Run
 
@@ -127,7 +159,7 @@ Default run:
 python benchmark_sequence_models.py
 ```
 
-Example smoke run:
+Small smoke run:
 
 ```bash
 python benchmark_sequence_models.py \
@@ -135,66 +167,29 @@ python benchmark_sequence_models.py \
   --kfolds 2 \
   --epochs 1 \
   --patience 1 \
+  --pretrain-epochs 1 \
+  --pretrain-patience 1 \
   --batch-size 16 \
   --max-sequences-per-family 4 \
-  --max-windows-per-sequence 24 \
+  --max-windows-per-sequence 16 \
   --device cpu
 ```
 
-## Output Structure
+## How To Interpret The Result
 
-Each run writes to:
+This benchmark is successful when:
 
-```text
-outputs/sequence_model_benchmark/<timestamp>/
-```
+- `health_remaining` is still learnable under grouped `Test`-only supervision
+- `RUL` plots become much smoother than the previous slope-based version
+- `RUL` scatter no longer shows the previous large vertical explosion
+- the benchmark can clearly separate:
+  - `DP`-proxy health
+  - life-progress health
 
-Important files:
+## Next Step After This Batch
 
-- `benchmark_config.json`
-- `dataset_summary.json`
-- `dataset_summary.csv`
-- `metrics_by_fold.csv`
-- `metrics_by_family.csv`
-- `metrics_overall.csv`
-- `metrics_overall.json`
-- `model_rankings.csv`
+If this version behaves well, the next step is:
 
-Important directories:
-
-- `artifacts/<family>/<model>/`
-  - fold-level checkpoints
-  - fold history CSV
-  - fold summary JSON
-  - fold prediction CSV
-- `plots/`
-  - representative `health_curve_*`
-  - representative `rul_curve_*`
-  - `metric_bars_overall.png`
-  - `scatter_health_pred.png`
-  - `scatter_rul_pred.png`
-
-## How To Judge Whether The Result Matches Expectations
-
-The result is considered aligned with this batch's goal when:
-
-- all four sequence models can complete the benchmark run
-- grouped folds show no sequence leakage
-- health metrics are produced for every family/model/fold
-- derived RUL metrics are produced on held-out `Test` windows
-- representative trajectory plots show predicted health following the major degradation trend
-- derived RUL curves are directionally reasonable and not dominated by obvious instability
-- the ranking table clearly identifies a best current baseline for the next integration step
-
-This batch is not trying to prove final production quality. It is trying to verify that the new pooled-data, family-specific sequence training setup is coherent and measurable.
-
-## Next Integration Step
-
-If the benchmark result is acceptable, the next batch should:
-
-- choose the winning sequence backend from this benchmark
-- expose its artifact format as a stable inference interface
-- connect that inference path to the simulator's health source
-- then update maintenance-state construction and downstream RL experiments to consume the new health output
-
-That integration is intentionally left out of this task.
+- choose the strongest family/model baseline under `health_remaining`
+- decide how simulator-side inference will estimate `total_life` or equivalent latent quantity without using true `Test` labels
+- only then reconnect benchmark output back to the simulator / RL pipeline
