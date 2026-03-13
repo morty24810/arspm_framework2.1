@@ -1,0 +1,43 @@
+{
+  "train_csv": "Train_Data_CSV.csv",
+  "test_csv": "Test_Data_CSV.csv",
+  "models": [
+    "GRU",
+    "LSTM",
+    "TCN",
+    "ATTENTION"
+  ],
+  "families": [
+    "A2",
+    "A3",
+    "A4"
+  ],
+  "kfolds": 5,
+  "window": 32,
+  "batch_size": 64,
+  "epochs": 100,
+  "patience": 10,
+  "seed": 42,
+  "outdir": "outputs/sequence_model_benchmark",
+  "device": "auto",
+  "learning_rate": 0.001,
+  "val_fraction": 0.1,
+  "hidden_dim": 32,
+  "recurrent_layers": 1,
+  "attention_heads": 2,
+  "attention_layers": 2,
+  "tcn_channels": [
+    32,
+    32
+  ],
+  "dropout": 0.1,
+  "weight_decay": 1e-05,
+  "max_sequences_per_family": null,
+  "max_windows_per_sequence": null,
+  "representative_fold": 0,
+  "dt": 0.1,
+  "health_clean_dp": 25.0,
+  "health_failure_dp": 600.0,
+  "rul_ewma_points": 5,
+  "rul_ewma_alpha": 0.3
+}

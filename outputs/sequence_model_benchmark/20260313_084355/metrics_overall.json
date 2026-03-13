@@ -1,0 +1,54 @@
+{
+  "best_model": "LSTM",
+  "models": [
+    {
+      "model": "LSTM",
+      "family_count": 3,
+      "health_mae": 0.0015735563801210662,
+      "health_rmse": 0.0026165704123741417,
+      "health_r2": 0.9996831656181744,
+      "rul_mae": 339.52486732628716,
+      "rul_rmse": 500.03059466934104,
+      "rul_smape": 1.021290665957277,
+      "rank": 1,
+      "is_best_model": 1
+    },
+    {
+      "model": "GRU",
+      "family_count": 3,
+      "health_mae": 0.0018281507208664676,
+      "health_rmse": 0.0030402634168039283,
+      "health_r2": 0.9996030139439057,
+      "rul_mae": 346.39692679063984,
+      "rul_rmse": 506.27498831944087,
+      "rul_smape": 1.017243489343693,
+      "rank": 2,
+      "is_best_model": 0
+    },
+    {
+      "model": "ATTENTION",
+      "family_count": 3,
+      "health_mae": 0.0018150366941775539,
+      "health_rmse": 0.0030988419260316907,
+      "health_r2": 0.9994554527377782,
+      "rul_mae": 344.83708686794915,
+      "rul_rmse": 507.81748961975427,
+      "rul_smape": 1.0174952665274841,
+      "rank": 3,
+      "is_best_model": 0
+    },
+    {
+      "model": "TCN",
+      "family_count": 3,
+      "health_mae": 0.0022001082158223406,
+      "health_rmse": 0.003502827105895658,
+      "health_r2": 0.9995198898628898,
+      "rul_mae": 328.320465884014,
+      "rul_rmse": 490.9022295706784,
+      "rul_smape": 0.994655765919454,
+      "rank": 4,
+      "is_best_model": 0
+    }
+  ],
+  "dataset_summary_path": "outputs/sequence_model_benchmark/20260313_084355/dataset_summary.json"
+}

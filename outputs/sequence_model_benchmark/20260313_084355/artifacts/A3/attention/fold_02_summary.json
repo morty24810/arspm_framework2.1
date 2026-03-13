@@ -1,0 +1,9 @@
+{
+  "model_name": "ATTENTION",
+  "family": "A3",
+  "fold_index": 2,
+  "best_epoch": 39,
+  "best_val_rmse": 0.0022656515514318963,
+  "checkpoint_path": "outputs/sequence_model_benchmark/20260313_084355/artifacts/A3/attention/fold_02_best.pt",
+  "history_path": "outputs/sequence_model_benchmark/20260313_084355/artifacts/A3/attention/fold_02_history.csv"
+}

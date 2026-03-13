@@ -80,3 +80,18 @@ This runs both maintenance modes on the same seed / combo plan and emits:
 ## Notes
 - This is an MVP designed to be extended (better state features, richer rules, better reward shaping).
 - The simulator is **event-driven**: decision points occur at job arrivals and operation completions.
+
+## Sequence Model Benchmark
+
+An independent pooled-data sequence benchmark is also available for validating the new time-series training path before reconnecting it to the simulator:
+
+```bash
+python benchmark_sequence_models.py
+```
+
+This benchmark compares `GRU / LSTM / TCN / ATTENTION` as `family-specific` health regressors on pooled `Train_Data_CSV.csv` and `Test_Data_CSV.csv`, then derives `RUL` from predicted health trajectories.
+
+Implementation details and task-completion notes are recorded in:
+
+- [SEQUENCE_MODEL_BENCHMARK_TASK_REPORT.md](SEQUENCE_MODEL_BENCHMARK_TASK_REPORT.md)
+- [SEQUENCE_MODEL_BENCHMARK_RESULT_ANALYSIS.md](SEQUENCE_MODEL_BENCHMARK_RESULT_ANALYSIS.md)
