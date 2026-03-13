@@ -1,0 +1,10 @@
+{
+  "model_name": "ATTENTION",
+  "family": "A4",
+  "fold_index": 2,
+  "checkpoint_path": "outputs/sequence_model_benchmark/20260313_141821/artifacts/A4/attention/fold_02_best.pt",
+  "pretrain_best_epoch": 7,
+  "pretrain_best_rmse": 0.04141613908702276,
+  "best_epoch": 16,
+  "best_val_rmse": 0.049903128157596226
+}

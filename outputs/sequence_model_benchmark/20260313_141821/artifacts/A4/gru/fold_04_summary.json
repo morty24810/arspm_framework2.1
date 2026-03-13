@@ -1,0 +1,10 @@
+{
+  "model_name": "GRU",
+  "family": "A4",
+  "fold_index": 4,
+  "checkpoint_path": "outputs/sequence_model_benchmark/20260313_141821/artifacts/A4/gru/fold_04_best.pt",
+  "pretrain_best_epoch": 12,
+  "pretrain_best_rmse": 0.03572448684218919,
+  "best_epoch": 3,
+  "best_val_rmse": 0.021789937563054678
+}

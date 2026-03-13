@@ -1,0 +1,57 @@
+{
+  "health_target_type": "remaining_life_fraction",
+  "pretrain_task": "next_step_dp_flow",
+  "rul_derivation": "health_hat_times_total_life",
+  "best_model": "LSTM",
+  "models": [
+    {
+      "model": "LSTM",
+      "family_count": 3,
+      "health_mae": 0.05223164670426885,
+      "health_rmse": 0.06375796898930446,
+      "health_r2": 0.895137792133009,
+      "rul_mae": 7.197061179439125,
+      "rul_rmse": 8.712722890947285,
+      "rul_smape": 0.09812234419060369,
+      "rank": 1,
+      "is_best_model": 1
+    },
+    {
+      "model": "GRU",
+      "family_count": 3,
+      "health_mae": 0.05546605742054534,
+      "health_rmse": 0.06818059596516692,
+      "health_r2": 0.8791911086417591,
+      "rul_mae": 7.550488774749426,
+      "rul_rmse": 9.231173761680106,
+      "rul_smape": 0.10459892567194175,
+      "rank": 2,
+      "is_best_model": 0
+    },
+    {
+      "model": "ATTENTION",
+      "family_count": 3,
+      "health_mae": 0.05700552505039555,
+      "health_rmse": 0.06885856234138298,
+      "health_r2": 0.8649658656068541,
+      "rul_mae": 7.959067034033482,
+      "rul_rmse": 9.568319595657508,
+      "rul_smape": 0.10609236828145581,
+      "rank": 3,
+      "is_best_model": 0
+    },
+    {
+      "model": "TCN",
+      "family_count": 3,
+      "health_mae": 0.05970099324324741,
+      "health_rmse": 0.071316682100778,
+      "health_r2": 0.8564233035519105,
+      "rul_mae": 8.399755667150664,
+      "rul_rmse": 10.019967384878177,
+      "rul_smape": 0.11286254027190966,
+      "rank": 4,
+      "is_best_model": 0
+    }
+  ],
+  "dataset_summary_path": "outputs/sequence_model_benchmark/20260313_141821/dataset_summary.json"
+}

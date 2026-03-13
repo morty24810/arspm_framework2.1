@@ -1,0 +1,10 @@
+{
+  "model_name": "TCN",
+  "family": "A4",
+  "fold_index": 2,
+  "checkpoint_path": "outputs/sequence_model_benchmark/20260313_141821/artifacts/A4/tcn/fold_02_best.pt",
+  "pretrain_best_epoch": 18,
+  "pretrain_best_rmse": 0.034079169425215466,
+  "best_epoch": 7,
+  "best_val_rmse": 0.0537506431974336
+}
