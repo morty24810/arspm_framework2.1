@@ -1,0 +1,4 @@
+family,window,hidden_dim,dropout
+A2,32,32,0.1
+A3,48,64,0.1
+A4,48,64,0.1

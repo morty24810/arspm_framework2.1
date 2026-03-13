@@ -1,0 +1,10 @@
+{
+  "model_name": "LSTM",
+  "family": "A3",
+  "fold_index": 3,
+  "checkpoint_path": "outputs/sequence_model_benchmark/20260313_181038/tuning_search/A3/w48_h64_d0p05/artifacts/A3/lstm/fold_03_best.pt",
+  "pretrain_best_epoch": 8,
+  "pretrain_best_rmse": 0.04767644488197238,
+  "best_epoch": 4,
+  "best_val_rmse": 0.03468491765671415
+}

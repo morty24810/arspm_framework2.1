@@ -1,0 +1,22 @@
+{
+  "health_target_type": "remaining_life_fraction",
+  "pretrain_task": "next_step_dp_flow",
+  "rul_derivation": "health_hat_times_total_life",
+  "best_model": "LSTM",
+  "models": [
+    {
+      "model": "LSTM",
+      "family_count": 3,
+      "health_mae": 0.05775147573154432,
+      "health_rmse": 0.07138112878961692,
+      "health_r2": 0.8744444252620928,
+      "rul_mae": 7.950406395051402,
+      "rul_rmse": 9.959029149343833,
+      "rul_smape": 0.10413138506114383,
+      "rank": 1,
+      "is_best_model": 1
+    }
+  ],
+  "dataset_summary_path": "outputs/sequence_model_benchmark/20260313_181038/phase1_protocol/dataset_summary.json",
+  "family_hparam_overrides": {}
+}

@@ -1,0 +1,10 @@
+{
+  "model_name": "LSTM",
+  "family": "A2",
+  "fold_index": 4,
+  "checkpoint_path": "outputs/sequence_model_benchmark/20260313_181038/artifacts/A2/lstm/fold_04_best.pt",
+  "pretrain_best_epoch": 18,
+  "pretrain_best_rmse": 0.035718667360021585,
+  "best_epoch": 20,
+  "best_val_rmse": 0.05737898692867346
+}

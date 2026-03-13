@@ -1,0 +1,20 @@
+[
+  {
+    "family": "A2",
+    "window": 32,
+    "hidden_dim": 32,
+    "dropout": 0.1
+  },
+  {
+    "family": "A3",
+    "window": 48,
+    "hidden_dim": 64,
+    "dropout": 0.1
+  },
+  {
+    "family": "A4",
+    "window": 48,
+    "hidden_dim": 64,
+    "dropout": 0.1
+  }
+]

@@ -1,0 +1,61 @@
+{
+  "train_csv": "Train_Data_CSV.csv",
+  "test_csv": "Test_Data_CSV.csv",
+  "models": [
+    "LSTM"
+  ],
+  "families": [
+    "A2"
+  ],
+  "kfolds": 5,
+  "window": 32,
+  "batch_size": 64,
+  "epochs": 100,
+  "patience": 10,
+  "pretrain_epochs": 20,
+  "pretrain_patience": 5,
+  "seed": 42,
+  "outdir": "outputs/sequence_model_benchmark",
+  "device": "auto",
+  "learning_rate": 0.001,
+  "val_fraction": 0.1,
+  "hidden_dim": 32,
+  "recurrent_layers": 1,
+  "attention_heads": 2,
+  "attention_layers": 2,
+  "tcn_channels": [
+    32,
+    32
+  ],
+  "dropout": 0.1,
+  "weight_decay": 1e-05,
+  "max_sequences_per_family": null,
+  "max_windows_per_sequence": null,
+  "dt": 0.1,
+  "health_clean_dp": 25.0,
+  "health_failure_dp": 600.0,
+  "health_target_type": "remaining_life_fraction",
+  "pretrain_task": "next_step_dp_flow",
+  "rul_derivation": "health_hat_times_total_life",
+  "add_tail_reference_rows": true,
+  "stage_weight_alpha_a2": 1.0,
+  "stage_weight_alpha_a3": 1.5,
+  "stage_weight_alpha_a4": 1.0,
+  "a2_long_life_weight": 2.0,
+  "enable_monotone_projection": true,
+  "enable_family_tuning": false,
+  "tuning_windows": [
+    32,
+    48
+  ],
+  "tuning_hidden_dims": [
+    32,
+    64
+  ],
+  "tuning_dropouts": [
+    0.05,
+    0.1
+  ],
+  "baseline_run_root": "outputs/sequence_model_benchmark/20260313_141821",
+  "family_hparam_overrides": {}
+}

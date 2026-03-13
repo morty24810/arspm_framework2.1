@@ -1,0 +1,23 @@
+{
+  "phase1_protocol": {
+    "baseline_root": "outputs/sequence_model_benchmark/20260313_141821",
+    "baseline_available": true,
+    "accepted_as_default": false,
+    "blocking_reasons": [
+      "A2: health_rmse gate failed",
+      "A3: health_rmse gate failed, rul_rmse gate failed, worst-fold rul_rmse gate failed",
+      "A4: health_rmse gate failed, rul_rmse gate failed, worst-fold rul_rmse gate failed"
+    ]
+  },
+  "phase2_tuned": {
+    "baseline_root": "outputs/sequence_model_benchmark/20260313_141821",
+    "baseline_available": true,
+    "accepted_as_default": false,
+    "blocking_reasons": [
+      "A2: health_rmse gate failed",
+      "A3: health_rmse gate failed, rul_rmse gate failed, worst-fold rul_rmse gate failed",
+      "A4: health_rmse gate failed, rul_rmse gate failed, worst-fold rul_rmse gate failed"
+    ]
+  },
+  "accepted_candidate": null
+}

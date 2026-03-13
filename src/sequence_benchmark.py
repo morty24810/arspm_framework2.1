@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import math
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -79,7 +79,7 @@ class FoldSplit:
 class SequenceBenchmarkConfig:
     train_csv: str = "Train_Data_CSV.csv"
     test_csv: str = "Test_Data_CSV.csv"
-    models: Tuple[str, ...] = ("GRU", "LSTM", "TCN", "ATTENTION")
+    models: Tuple[str, ...] = ("LSTM",)
     families: Tuple[str, ...] = FAMILY_ORDER
     kfolds: int = 5
     window: int = 32
@@ -109,18 +109,38 @@ class SequenceBenchmarkConfig:
     pretrain_task: str = "next_step_dp_flow"
     rul_derivation: str = "health_hat_times_total_life"
     add_tail_reference_rows: bool = True
+    stage_weight_alpha_a2: float = 1.0
+    stage_weight_alpha_a3: float = 1.5
+    stage_weight_alpha_a4: float = 1.0
+    a2_long_life_weight: float = 2.0
+    enable_monotone_projection: bool = True
+    enable_family_tuning: bool = True
+    tuning_windows: Tuple[int, ...] = (32, 48)
+    tuning_hidden_dims: Tuple[int, ...] = (32, 64)
+    tuning_dropouts: Tuple[float, ...] = (0.05, 0.10)
+    baseline_run_root: str = "outputs/sequence_model_benchmark/20260313_141821"
+
+
+@dataclass(frozen=True)
+class FamilyHyperParams:
+    window: int
+    hidden_dim: int
+    dropout: float
 
 
 class WindowDataset(Dataset):
-    def __init__(self, features: np.ndarray, targets: np.ndarray):
+    def __init__(self, features: np.ndarray, targets: np.ndarray, weights: Optional[np.ndarray] = None):
         self.features = torch.as_tensor(features, dtype=torch.float32)
         self.targets = torch.as_tensor(targets, dtype=torch.float32)
+        if weights is None:
+            weights = np.ones((len(features),), dtype=np.float32)
+        self.weights = torch.as_tensor(weights, dtype=torch.float32)
 
     def __len__(self) -> int:
         return int(self.features.shape[0])
 
     def __getitem__(self, idx: int):
-        return self.features[idx], self.targets[idx]
+        return self.features[idx], self.targets[idx], self.weights[idx]
 
 
 class FeatureStandardizer:
@@ -339,6 +359,15 @@ def compute_dp_proxy_health(dp: np.ndarray, clean_dp: float, failure_dp: float) 
 
 def compute_health(dp: np.ndarray, clean_dp: float, failure_dp: float) -> np.ndarray:
     return compute_dp_proxy_health(dp, clean_dp=clean_dp, failure_dp=failure_dp)
+
+
+def family_stage_alpha(family: str, cfg: SequenceBenchmarkConfig) -> float:
+    mapping = {
+        "A2": float(cfg.stage_weight_alpha_a2),
+        "A3": float(cfg.stage_weight_alpha_a3),
+        "A4": float(cfg.stage_weight_alpha_a4),
+    }
+    return mapping[str(family).upper()]
 
 
 def compute_total_life(time_arr: np.ndarray, rul_true: np.ndarray) -> np.ndarray:
@@ -575,6 +604,7 @@ def build_supervised_arrays(
         sample = sequence_map[sequence_id]
         features = sample.features
         end_indices = _select_evenly_spaced_indices(sample.length, cfg.max_windows_per_sequence)
+        window_count = int(len(end_indices))
         for end_idx in end_indices:
             start = int(end_idx) - int(cfg.window) + 1
             if start < 0:
@@ -598,6 +628,8 @@ def build_supervised_arrays(
                     "dp_proxy_health": float(sample.dp_proxy_health[int(end_idx)]),
                     "rul_true": float(sample.rul_true[int(end_idx)]),
                     "total_life": float(sample.total_life[int(end_idx)]),
+                    "sequence_total_life": float(sample.total_life_scalar),
+                    "window_count": window_count,
                     "is_observed": True,
                     "is_tail_reference": False,
                 }
@@ -607,8 +639,56 @@ def build_supervised_arrays(
     return np.stack(windows).astype(np.float32), np.asarray(targets, dtype=np.float32), pd.DataFrame(rows)
 
 
+def build_supervised_sample_weights(
+    family: str,
+    meta: pd.DataFrame,
+    train_ids: Sequence[str],
+    sequence_map: Dict[str, SequenceSample],
+    cfg: SequenceBenchmarkConfig,
+) -> np.ndarray:
+    if meta.empty:
+        return np.empty((0,), dtype=np.float32)
+    weights = 1.0 / np.clip(meta["window_count"].to_numpy(dtype=np.float32), 1.0, None)
+    health_remaining = meta["health_remaining_true"].to_numpy(dtype=np.float32)
+    weights *= 1.0 + family_stage_alpha(family, cfg) * (1.0 - health_remaining)
+    if str(family).upper() == "A2" and train_ids:
+        seq_lives = sorted(
+            [(sequence_id, float(sequence_map[sequence_id].total_life_scalar)) for sequence_id in train_ids],
+            key=lambda item: item[1],
+        )
+        long_count = max(1, int(math.ceil(len(seq_lives) / 3.0)))
+        long_ids = {sequence_id for sequence_id, _life in seq_lives[-long_count:]}
+        if long_ids:
+            long_mask = meta["sequence_id"].isin(long_ids).to_numpy(dtype=bool)
+            weights[long_mask] *= float(cfg.a2_long_life_weight)
+    weights = weights.astype(np.float32)
+    weight_mean = float(np.mean(weights))
+    if weight_mean > 1e-8:
+        weights /= weight_mean
+    return weights.astype(np.float32)
+
+
 def build_model(model_name: str, cfg: SequenceBenchmarkConfig) -> SequenceBenchmarkModel:
     return SequenceBenchmarkModel(model_name=model_name, cfg=cfg)
+
+
+def cfg_with_family_hparams(cfg: SequenceBenchmarkConfig, override: Optional[FamilyHyperParams]) -> SequenceBenchmarkConfig:
+    if override is None:
+        return cfg
+    return replace(
+        cfg,
+        window=int(override.window),
+        hidden_dim=int(override.hidden_dim),
+        dropout=float(override.dropout),
+    )
+
+
+def weighted_mse_loss(pred: torch.Tensor, target: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+    sample_error = torch.square(pred - target)
+    if sample_error.ndim > 1:
+        sample_error = sample_error.mean(dim=1)
+    sample_weights = weights.reshape(-1).to(sample_error.dtype)
+    return torch.sum(sample_error * sample_weights) / torch.clamp(sample_weights.sum(), min=1e-6)
 
 
 def _predict_health_batches(model: SequenceBenchmarkModel, features: np.ndarray, batch_size: int, device: torch.device) -> np.ndarray:
@@ -704,7 +784,7 @@ def train_pretrain_phase(
     for epoch in range(1, int(cfg.pretrain_epochs) + 1):
         model.train()
         losses = []
-        for batch_x, batch_y in loader:
+        for batch_x, batch_y, _batch_w in loader:
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
             optimizer.zero_grad(set_to_none=True)
@@ -734,6 +814,7 @@ def train_finetune_phase(
     model: SequenceBenchmarkModel,
     train_x: np.ndarray,
     train_y: np.ndarray,
+    train_weights: np.ndarray,
     val_x: np.ndarray,
     val_y: np.ndarray,
     cfg: SequenceBenchmarkConfig,
@@ -741,8 +822,7 @@ def train_finetune_phase(
     history_path: Path,
 ) -> Dict[str, float]:
     optimizer = torch.optim.Adam(model.parameters(), lr=float(cfg.learning_rate), weight_decay=float(cfg.weight_decay))
-    loss_fn = nn.MSELoss()
-    loader = DataLoader(WindowDataset(train_x, train_y), batch_size=int(cfg.batch_size), shuffle=True, num_workers=0)
+    loader = DataLoader(WindowDataset(train_x, train_y, train_weights), batch_size=int(cfg.batch_size), shuffle=True, num_workers=0)
     use_validation = len(val_x) > 0
     best_state = {name: tensor.detach().cpu().clone() for name, tensor in model.state_dict().items()}
     best_val_rmse = math.inf
@@ -752,12 +832,13 @@ def train_finetune_phase(
     for epoch in range(1, int(cfg.epochs) + 1):
         model.train()
         losses = []
-        for batch_x, batch_y in loader:
+        for batch_x, batch_y, batch_w in loader:
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
+            batch_w = batch_w.to(device)
             optimizer.zero_grad(set_to_none=True)
             pred = model.forward_health(batch_x)
-            loss = loss_fn(pred, batch_y)
+            loss = weighted_mse_loss(pred, batch_y, batch_w)
             loss.backward()
             optimizer.step()
             losses.append(float(loss.detach().cpu().item()))
@@ -790,6 +871,7 @@ def train_fold_model(
     pretrain_targets: np.ndarray,
     train_x: np.ndarray,
     train_y: np.ndarray,
+    train_weights: np.ndarray,
     val_x: np.ndarray,
     val_y: np.ndarray,
     standardizer: FeatureStandardizer,
@@ -810,6 +892,7 @@ def train_fold_model(
         model=model,
         train_x=train_x,
         train_y=train_y,
+        train_weights=train_weights,
         val_x=val_x,
         val_y=val_y,
         cfg=cfg,
@@ -891,6 +974,24 @@ def add_tail_reference_rows(pred_df: pd.DataFrame, sequence_map: Dict[str, Seque
     return merged.sort_values(["sequence_id", "time", "is_tail_reference"]).reset_index(drop=True)
 
 
+def apply_monotone_projection(pred_df: pd.DataFrame, cfg: SequenceBenchmarkConfig) -> pd.DataFrame:
+    projected = pred_df.copy()
+    projected["health_remaining_pred_raw"] = projected["health_remaining_pred"]
+    projected["rul_pred_raw"] = projected["rul_pred"]
+    if not bool(cfg.enable_monotone_projection):
+        return projected
+    observed = projected[projected["is_observed"]].copy()
+    if observed.empty:
+        return projected
+    for sequence_id, group in observed.groupby("sequence_id", sort=False):
+        seq = group.sort_values("time")
+        raw = seq["health_remaining_pred_raw"].to_numpy(dtype=np.float32)
+        monotone = np.minimum.accumulate(raw).astype(np.float32)
+        projected.loc[seq.index, "health_remaining_pred"] = monotone
+        projected.loc[seq.index, "rul_pred"] = monotone * seq["total_life"].to_numpy(dtype=np.float32)
+    return projected
+
+
 def evaluate_fold_predictions(
     model: SequenceBenchmarkModel,
     test_x: np.ndarray,
@@ -903,6 +1004,7 @@ def evaluate_fold_predictions(
     pred_df = test_meta.copy()
     pred_df["health_remaining_pred"] = pred
     pred_df["rul_pred"] = pred_df["health_remaining_pred"] * pred_df["total_life"]
+    pred_df = apply_monotone_projection(pred_df, cfg=cfg)
     pred_df = add_tail_reference_rows(pred_df, sequence_map=sequence_map, cfg=cfg)
     observed = pred_df[pred_df["is_observed"]].copy()
     health_metrics = compute_health_metrics(
@@ -1109,109 +1211,44 @@ def print_rankings(family_df: pd.DataFrame, ranking_df: pd.DataFrame, out_root: 
     print(f"output directory: {out_root}")
 
 
-def run_benchmark(cfg: SequenceBenchmarkConfig) -> Dict[str, object]:
-    cfg.models = normalize_model_names(cfg.models)
-    cfg.families = normalize_family_names(cfg.families)
-    set_seed(int(cfg.seed))
-    device = resolve_device(cfg.device)
-    out_root = Path(cfg.outdir) / time.strftime("%Y%m%d_%H%M%S")
-    artifact_root = out_root / "artifacts"
-    plots_root = out_root / "plots"
-    artifact_root.mkdir(parents=True, exist_ok=True)
-    plots_root.mkdir(parents=True, exist_ok=True)
-
-    sequence_map, dataset_summary = load_sequence_pool(cfg)
+def save_run_metadata(
+    out_root: Path,
+    cfg: SequenceBenchmarkConfig,
+    dataset_summary: Dict[str, object],
+    family_overrides: Optional[Dict[str, FamilyHyperParams]] = None,
+):
+    config_payload = asdict(cfg)
+    config_payload["family_hparam_overrides"] = {
+        family: {
+            "window": int(override.window),
+            "hidden_dim": int(override.hidden_dim),
+            "dropout": float(override.dropout),
+        }
+        for family, override in (family_overrides or {}).items()
+    }
     with (out_root / "benchmark_config.json").open("w", encoding="utf-8") as f:
-        json.dump(asdict(cfg), f, ensure_ascii=True, indent=2)
+        json.dump(config_payload, f, ensure_ascii=True, indent=2)
     with (out_root / "dataset_summary.json").open("w", encoding="utf-8") as f:
         json.dump(dataset_summary, f, ensure_ascii=True, indent=2)
     pd.DataFrame(dataset_summary["rows"]).to_csv(out_root / "dataset_summary.csv", index=False)
 
-    fold_rows: List[Dict[str, object]] = []
-    all_predictions: List[pd.DataFrame] = []
-    for family in cfg.families:
-        folds, selected_test_ids = build_grouped_folds(family, sequence_map, cfg)
-        selected_train_ids = family_train_sequence_ids(family, sequence_map, cfg)
-        print(
-            f"{family}: "
-            f"train_pretrain_sequences={len(selected_train_ids)} "
-            f"test_supervised_sequences={len(selected_test_ids)} "
-            f"folds={len(folds)}"
-        )
-        for model_name in cfg.models:
-            family_model_dir = artifact_root / family / model_name.lower()
-            family_model_dir.mkdir(parents=True, exist_ok=True)
-            print(f"training {model_name} for {family}")
-            for fold_index, fold in enumerate(folds):
-                pretrain_ids = pretrain_ids_for_fold(family, fold, sequence_map, cfg)
-                pretrain_x_raw, pretrain_targets_raw = build_pretrain_arrays(pretrain_ids, sequence_map, cfg)
-                train_x_raw, train_y, _train_meta = build_supervised_arrays(fold.train_ids, sequence_map, cfg)
-                if fold.val_ids:
-                    val_x_raw, val_y, _val_meta = build_supervised_arrays(fold.val_ids, sequence_map, cfg)
-                else:
-                    val_x_raw = np.empty((0, cfg.window, len(FEATURE_NAMES)), dtype=np.float32)
-                    val_y = np.empty((0,), dtype=np.float32)
-                test_x_raw, _test_y, test_meta = build_supervised_arrays(fold.test_ids, sequence_map, cfg)
-                standardizer = FeatureStandardizer().fit(pretrain_x_raw)
-                pretrain_x = standardizer.transform(pretrain_x_raw)
-                pretrain_targets = standardizer.transform_dp_flow_targets(pretrain_targets_raw)
-                train_x = standardizer.transform(train_x_raw)
-                val_x = standardizer.transform(val_x_raw) if len(val_x_raw) else val_x_raw
-                test_x = standardizer.transform(test_x_raw)
-                model, train_summary = train_fold_model(
-                    model_name=model_name,
-                    family=family,
-                    fold_index=fold_index,
-                    pretrain_x=pretrain_x,
-                    pretrain_targets=pretrain_targets,
-                    train_x=train_x,
-                    train_y=train_y,
-                    val_x=val_x,
-                    val_y=val_y,
-                    standardizer=standardizer,
-                    cfg=cfg,
-                    device=device,
-                    artifact_dir=family_model_dir,
-                )
-                pred_df, health_metrics, rul_metrics = evaluate_fold_predictions(
-                    model=model,
-                    test_x=test_x,
-                    test_meta=test_meta,
-                    sequence_map=sequence_map,
-                    cfg=cfg,
-                    device=device,
-                )
-                pred_df["model"] = model_name
-                pred_df["fold"] = int(fold_index)
-                pred_df.to_csv(family_model_dir / f"fold_{fold_index:02d}_predictions.csv", index=False)
-                all_predictions.append(pred_df)
-                fold_row = {
-                    "family": family,
-                    "model": model_name,
-                    "fold": int(fold_index),
-                    "pretrain_sequence_count": int(len(pretrain_ids)),
-                    "train_sequence_count": int(len(fold.train_ids)),
-                    "val_sequence_count": int(len(fold.val_ids)),
-                    "test_sequence_count": int(len(fold.test_ids)),
-                    "pretrain_best_epoch": int(train_summary["pretrain_best_epoch"]),
-                    "pretrain_best_rmse": float(train_summary["pretrain_best_rmse"]),
-                    "best_epoch": int(train_summary["best_epoch"]),
-                    "best_val_rmse": float(train_summary["best_val_rmse"]),
-                }
-                fold_row.update(health_metrics)
-                fold_row.update(rul_metrics)
-                fold_rows.append(fold_row)
-                print(
-                    f"  fold {fold_index + 1}/{len(folds)} "
-                    f"health_rmse={float(health_metrics['health_rmse']):.4f} "
-                    f"rul_rmse={float(rul_metrics['rul_rmse']):.4f}"
-                )
 
-    fold_df = pd.DataFrame(fold_rows).sort_values(["family", "model", "fold"]).reset_index(drop=True)
-    family_df = aggregate_family_metrics(fold_df)
-    overall_df = aggregate_overall_metrics(family_df)
-    ranking_df = add_rankings(overall_df)
-
+def save_run_outputs(
+    out_root: Path,
+    cfg: SequenceBenchmarkConfig,
+    dataset_summary: Dict[str, object],
+    fold_df: pd.DataFrame,
+    family_df: pd.DataFrame,
+    overall_df: pd.DataFrame,
+    ranking_df: pd.DataFrame,
+    pred_df: pd.DataFrame,
+    family_overrides: Optional[Dict[str, FamilyHyperParams]] = None,
+    write_plots: bool = True,
+):
+    out_root.mkdir(parents=True, exist_ok=True)
+    plots_root = out_root / "plots"
+    plots_root.mkdir(parents=True, exist_ok=True)
+    save_run_metadata(out_root, cfg, dataset_summary, family_overrides=family_overrides)
     fold_df.to_csv(out_root / "metrics_by_fold.csv", index=False)
     family_df.to_csv(out_root / "metrics_by_family.csv", index=False)
     overall_df.to_csv(out_root / "metrics_overall.csv", index=False)
@@ -1223,12 +1260,18 @@ def run_benchmark(cfg: SequenceBenchmarkConfig) -> Dict[str, object]:
         "best_model": None if ranking_df.empty else str(ranking_df.iloc[0]["model"]),
         "models": [] if ranking_df.empty else ranking_df.to_dict(orient="records"),
         "dataset_summary_path": str(out_root / "dataset_summary.json"),
+        "family_hparam_overrides": {
+            family: {
+                "window": int(override.window),
+                "hidden_dim": int(override.hidden_dim),
+                "dropout": float(override.dropout),
+            }
+            for family, override in (family_overrides or {}).items()
+        },
     }
     with (out_root / "metrics_overall.json").open("w", encoding="utf-8") as f:
         json.dump(overall_payload, f, ensure_ascii=True, indent=2)
-
-    pred_df = pd.concat(all_predictions, ignore_index=True) if all_predictions else pd.DataFrame()
-    if not pred_df.empty:
+    if write_plots and not pred_df.empty:
         plot_metric_bars(ranking_df, plots_root)
         plot_scatter_grid(
             pred_df,
@@ -1248,7 +1291,142 @@ def run_benchmark(cfg: SequenceBenchmarkConfig) -> Dict[str, object]:
         )
         plot_representative_sequences(pred_df, plots_root)
 
-    print_rankings(family_df, ranking_df, out_root, dataset_summary, cfg)
+
+def run_benchmark_pass(
+    cfg: SequenceBenchmarkConfig,
+    out_root: Path,
+    sequence_map: Dict[str, SequenceSample],
+    dataset_summary: Dict[str, object],
+    device: torch.device,
+    family_overrides: Optional[Dict[str, FamilyHyperParams]] = None,
+    write_outputs: bool = True,
+    write_plots: bool = True,
+    verbose: bool = True,
+) -> Dict[str, object]:
+    artifact_root = out_root / "artifacts"
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    fold_rows: List[Dict[str, object]] = []
+    all_predictions: List[pd.DataFrame] = []
+    for family in cfg.families:
+        family_override = (family_overrides or {}).get(family)
+        family_cfg = cfg_with_family_hparams(cfg, family_override if "LSTM" in cfg.models else None)
+        folds, selected_test_ids = build_grouped_folds(family, sequence_map, family_cfg)
+        selected_train_ids = family_train_sequence_ids(family, sequence_map, family_cfg)
+        if verbose:
+            print(
+                f"{family}: "
+                f"train_pretrain_sequences={len(selected_train_ids)} "
+                f"test_supervised_sequences={len(selected_test_ids)} "
+                f"folds={len(folds)}"
+            )
+        for model_name in cfg.models:
+            model_cfg = family_cfg if model_name == "LSTM" else cfg
+            family_model_dir = artifact_root / family / model_name.lower()
+            family_model_dir.mkdir(parents=True, exist_ok=True)
+            if verbose:
+                print(
+                    f"training {model_name} for {family} "
+                    f"(window={int(model_cfg.window)}, hidden_dim={int(model_cfg.hidden_dim)}, dropout={float(model_cfg.dropout):.2f})"
+                )
+            for fold_index, fold in enumerate(folds):
+                pretrain_ids = pretrain_ids_for_fold(family, fold, sequence_map, model_cfg)
+                pretrain_x_raw, pretrain_targets_raw = build_pretrain_arrays(pretrain_ids, sequence_map, model_cfg)
+                train_x_raw, train_y, train_meta = build_supervised_arrays(fold.train_ids, sequence_map, model_cfg)
+                train_weights = build_supervised_sample_weights(
+                    family=family,
+                    meta=train_meta,
+                    train_ids=fold.train_ids,
+                    sequence_map=sequence_map,
+                    cfg=model_cfg,
+                )
+                if fold.val_ids:
+                    val_x_raw, val_y, _val_meta = build_supervised_arrays(fold.val_ids, sequence_map, model_cfg)
+                else:
+                    val_x_raw = np.empty((0, model_cfg.window, len(FEATURE_NAMES)), dtype=np.float32)
+                    val_y = np.empty((0,), dtype=np.float32)
+                test_x_raw, _test_y, test_meta = build_supervised_arrays(fold.test_ids, sequence_map, model_cfg)
+                standardizer = FeatureStandardizer().fit(pretrain_x_raw)
+                pretrain_x = standardizer.transform(pretrain_x_raw)
+                pretrain_targets = standardizer.transform_dp_flow_targets(pretrain_targets_raw)
+                train_x = standardizer.transform(train_x_raw)
+                val_x = standardizer.transform(val_x_raw) if len(val_x_raw) else val_x_raw
+                test_x = standardizer.transform(test_x_raw)
+                model, train_summary = train_fold_model(
+                    model_name=model_name,
+                    family=family,
+                    fold_index=fold_index,
+                    pretrain_x=pretrain_x,
+                    pretrain_targets=pretrain_targets,
+                    train_x=train_x,
+                    train_y=train_y,
+                    train_weights=train_weights,
+                    val_x=val_x,
+                    val_y=val_y,
+                    standardizer=standardizer,
+                    cfg=model_cfg,
+                    device=device,
+                    artifact_dir=family_model_dir,
+                )
+                pred_df, health_metrics, rul_metrics = evaluate_fold_predictions(
+                    model=model,
+                    test_x=test_x,
+                    test_meta=test_meta,
+                    sequence_map=sequence_map,
+                    cfg=model_cfg,
+                    device=device,
+                )
+                pred_df["model"] = model_name
+                pred_df["fold"] = int(fold_index)
+                pred_df["window"] = int(model_cfg.window)
+                pred_df["hidden_dim"] = int(model_cfg.hidden_dim)
+                pred_df["dropout"] = float(model_cfg.dropout)
+                pred_df.to_csv(family_model_dir / f"fold_{fold_index:02d}_predictions.csv", index=False)
+                all_predictions.append(pred_df)
+                fold_row = {
+                    "family": family,
+                    "model": model_name,
+                    "fold": int(fold_index),
+                    "window": int(model_cfg.window),
+                    "hidden_dim": int(model_cfg.hidden_dim),
+                    "dropout": float(model_cfg.dropout),
+                    "pretrain_sequence_count": int(len(pretrain_ids)),
+                    "train_sequence_count": int(len(fold.train_ids)),
+                    "val_sequence_count": int(len(fold.val_ids)),
+                    "test_sequence_count": int(len(fold.test_ids)),
+                    "pretrain_best_epoch": int(train_summary["pretrain_best_epoch"]),
+                    "pretrain_best_rmse": float(train_summary["pretrain_best_rmse"]),
+                    "best_epoch": int(train_summary["best_epoch"]),
+                    "best_val_rmse": float(train_summary["best_val_rmse"]),
+                }
+                fold_row.update(health_metrics)
+                fold_row.update(rul_metrics)
+                fold_rows.append(fold_row)
+                if verbose:
+                    print(
+                        f"  fold {fold_index + 1}/{len(folds)} "
+                        f"health_rmse={float(health_metrics['health_rmse']):.4f} "
+                        f"rul_rmse={float(rul_metrics['rul_rmse']):.4f}"
+                    )
+    fold_df = pd.DataFrame(fold_rows).sort_values(["family", "model", "fold"]).reset_index(drop=True)
+    family_df = aggregate_family_metrics(fold_df)
+    overall_df = aggregate_overall_metrics(family_df)
+    ranking_df = add_rankings(overall_df)
+    pred_df = pd.concat(all_predictions, ignore_index=True) if all_predictions else pd.DataFrame()
+    if write_outputs:
+        save_run_outputs(
+            out_root=out_root,
+            cfg=cfg,
+            dataset_summary=dataset_summary,
+            fold_df=fold_df,
+            family_df=family_df,
+            overall_df=overall_df,
+            ranking_df=ranking_df,
+            pred_df=pred_df,
+            family_overrides=family_overrides,
+            write_plots=write_plots,
+        )
+    if verbose:
+        print_rankings(family_df, ranking_df, out_root, dataset_summary, cfg)
     return {
         "out_root": str(out_root),
         "dataset_summary": dataset_summary,
@@ -1257,3 +1435,320 @@ def run_benchmark(cfg: SequenceBenchmarkConfig) -> Dict[str, object]:
         "metrics_overall": ranking_df,
         "predictions": pred_df,
     }
+
+
+def iter_lstm_tuning_candidates(cfg: SequenceBenchmarkConfig) -> List[FamilyHyperParams]:
+    candidates: List[FamilyHyperParams] = []
+    for window in cfg.tuning_windows:
+        for hidden_dim in cfg.tuning_hidden_dims:
+            for dropout in cfg.tuning_dropouts:
+                candidates.append(FamilyHyperParams(window=int(window), hidden_dim=int(hidden_dim), dropout=float(dropout)))
+    return candidates
+
+
+def select_best_family_candidate(search_df: pd.DataFrame, family: str) -> FamilyHyperParams:
+    family_rows = search_df[search_df["family"] == family].copy()
+    ranked = family_rows.sort_values(
+        ["health_rmse_mean", "rul_rmse_mean", "health_r2_mean", "window", "hidden_dim", "dropout"],
+        ascending=[True, True, False, True, True, True],
+    ).reset_index(drop=True)
+    best = ranked.iloc[0]
+    return FamilyHyperParams(window=int(best["window"]), hidden_dim=int(best["hidden_dim"]), dropout=float(best["dropout"]))
+
+
+def run_lstm_family_tuning_search(
+    cfg: SequenceBenchmarkConfig,
+    out_root: Path,
+    sequence_map: Dict[str, SequenceSample],
+    dataset_summary: Dict[str, object],
+    device: torch.device,
+) -> Tuple[pd.DataFrame, Dict[str, FamilyHyperParams]]:
+    search_root = out_root / "tuning_search"
+    rows: List[Dict[str, object]] = []
+    selected: Dict[str, FamilyHyperParams] = {}
+    for family in cfg.families:
+        print(f"tuning LSTM for {family}")
+        for candidate in iter_lstm_tuning_candidates(cfg):
+            candidate_cfg = replace(
+                cfg,
+                models=("LSTM",),
+                families=(family,),
+                window=int(candidate.window),
+                hidden_dim=int(candidate.hidden_dim),
+                dropout=float(candidate.dropout),
+                enable_family_tuning=False,
+            )
+            config_tag = f"w{int(candidate.window)}_h{int(candidate.hidden_dim)}_d{str(float(candidate.dropout)).replace('.', 'p')}"
+            candidate_root = search_root / family / config_tag
+            result = run_benchmark_pass(
+                cfg=candidate_cfg,
+                out_root=candidate_root,
+                sequence_map=sequence_map,
+                dataset_summary=dataset_summary,
+                device=device,
+                family_overrides=None,
+                write_outputs=True,
+                write_plots=False,
+                verbose=False,
+            )
+            family_row = result["metrics_by_family"].iloc[0].to_dict()
+            family_row.update(
+                {
+                    "window": int(candidate.window),
+                    "hidden_dim": int(candidate.hidden_dim),
+                    "dropout": float(candidate.dropout),
+                    "config_tag": config_tag,
+                    "candidate_root": str(candidate_root),
+                }
+            )
+            rows.append(family_row)
+        family_df = pd.DataFrame(rows)
+        selected[family] = select_best_family_candidate(family_df, family)
+        best = selected[family]
+        print(
+            f"  selected for {family}: "
+            f"window={best.window} hidden_dim={best.hidden_dim} dropout={best.dropout:.2f}"
+        )
+    search_df = pd.DataFrame(rows).sort_values(
+        ["family", "health_rmse_mean", "rul_rmse_mean", "health_r2_mean", "window", "hidden_dim", "dropout"],
+        ascending=[True, True, True, False, True, True, True],
+    ).reset_index(drop=True)
+    search_df.to_csv(out_root / "family_tuning_search.csv", index=False)
+    selected_rows = [
+        {
+            "family": family,
+            "window": int(params.window),
+            "hidden_dim": int(params.hidden_dim),
+            "dropout": float(params.dropout),
+        }
+        for family, params in selected.items()
+    ]
+    selected_df = pd.DataFrame(selected_rows).sort_values("family").reset_index(drop=True)
+    selected_df.to_csv(out_root / "selected_lstm_family_configs.csv", index=False)
+    with (out_root / "selected_lstm_family_configs.json").open("w", encoding="utf-8") as f:
+        json.dump(selected_rows, f, ensure_ascii=True, indent=2)
+    return search_df, selected
+
+
+def compare_family_results(candidate_df: pd.DataFrame, reference_df: pd.DataFrame) -> pd.DataFrame:
+    candidate = candidate_df[candidate_df["model"] == "LSTM"].copy()
+    reference = reference_df[reference_df["model"] == "LSTM"].copy()
+    merged = candidate.merge(
+        reference,
+        on="family",
+        suffixes=("_candidate", "_reference"),
+        how="outer",
+    )
+    for metric in ("health_rmse_mean", "rul_rmse_mean", "health_r2_mean"):
+        merged[f"{metric}_delta"] = merged[f"{metric}_candidate"] - merged[f"{metric}_reference"]
+    return merged.sort_values("family").reset_index(drop=True)
+
+
+def compare_against_baseline(
+    baseline_root: Path,
+    candidate_family_df: pd.DataFrame,
+    candidate_fold_df: pd.DataFrame,
+) -> Tuple[pd.DataFrame, Dict[str, object]]:
+    baseline_family_path = baseline_root / "metrics_by_family.csv"
+    baseline_fold_path = baseline_root / "metrics_by_fold.csv"
+    if not baseline_family_path.exists() or not baseline_fold_path.exists():
+        return (
+            pd.DataFrame(),
+            {
+                "baseline_root": str(baseline_root),
+                "baseline_available": False,
+                "accepted_as_default": False,
+                "blocking_reasons": ["baseline reference files not found"],
+            },
+        )
+    baseline_family_df = pd.read_csv(baseline_family_path)
+    baseline_fold_df = pd.read_csv(baseline_fold_path)
+    baseline_family = baseline_family_df[baseline_family_df["model"] == "LSTM"].copy()
+    candidate_family = candidate_family_df[candidate_family_df["model"] == "LSTM"].copy()
+    baseline_worst = (
+        baseline_fold_df[baseline_fold_df["model"] == "LSTM"]
+        .groupby("family", as_index=False)["rul_rmse"]
+        .max()
+        .rename(columns={"rul_rmse": "baseline_worst_fold_rul_rmse"})
+    )
+    candidate_worst = (
+        candidate_fold_df[candidate_fold_df["model"] == "LSTM"]
+        .groupby("family", as_index=False)["rul_rmse"]
+        .max()
+        .rename(columns={"rul_rmse": "candidate_worst_fold_rul_rmse"})
+    )
+    merged = candidate_family.merge(
+        baseline_family[
+            [
+                "family",
+                "health_rmse_mean",
+                "rul_rmse_mean",
+                "health_r2_mean",
+            ]
+        ].rename(
+            columns={
+                "health_rmse_mean": "baseline_health_rmse",
+                "rul_rmse_mean": "baseline_rul_rmse",
+                "health_r2_mean": "baseline_health_r2",
+            }
+        ),
+        on="family",
+        how="left",
+    )
+    merged = merged.merge(baseline_worst, on="family", how="left")
+    merged = merged.merge(candidate_worst, on="family", how="left")
+    merged = merged.rename(
+        columns={
+            "health_rmse_mean": "candidate_health_rmse",
+            "rul_rmse_mean": "candidate_rul_rmse",
+            "health_r2_mean": "candidate_health_r2",
+        }
+    )
+    merged["health_rmse_delta"] = merged["candidate_health_rmse"] - merged["baseline_health_rmse"]
+    merged["rul_rmse_delta"] = merged["candidate_rul_rmse"] - merged["baseline_rul_rmse"]
+    merged["health_r2_delta"] = merged["candidate_health_r2"] - merged["baseline_health_r2"]
+    merged["worst_fold_rul_rmse_delta"] = (
+        merged["candidate_worst_fold_rul_rmse"] - merged["baseline_worst_fold_rul_rmse"]
+    )
+    merged["health_gate_pass"] = False
+    merged["rul_gate_pass"] = False
+    for family in merged["family"].tolist():
+        family_mask = merged["family"] == family
+        if family == "A3":
+            merged.loc[family_mask, "health_gate_pass"] = (
+                merged.loc[family_mask, "candidate_health_rmse"] < merged.loc[family_mask, "baseline_health_rmse"]
+            )
+            merged.loc[family_mask, "rul_gate_pass"] = (
+                merged.loc[family_mask, "candidate_rul_rmse"] < merged.loc[family_mask, "baseline_rul_rmse"]
+            )
+        else:
+            merged.loc[family_mask, "health_gate_pass"] = (
+                merged.loc[family_mask, "candidate_health_rmse"] <= merged.loc[family_mask, "baseline_health_rmse"]
+            )
+            merged.loc[family_mask, "rul_gate_pass"] = (
+                merged.loc[family_mask, "candidate_rul_rmse"] <= merged.loc[family_mask, "baseline_rul_rmse"]
+            )
+    merged["worst_fold_gate_pass"] = merged["candidate_worst_fold_rul_rmse"] <= merged["baseline_worst_fold_rul_rmse"]
+    merged["family_gate_pass"] = merged["health_gate_pass"] & merged["rul_gate_pass"] & merged["worst_fold_gate_pass"]
+    blocking_reasons: List[str] = []
+    for row in merged.sort_values("family").to_dict(orient="records"):
+        family_failures = []
+        if not bool(row["health_gate_pass"]):
+            family_failures.append("health_rmse gate failed")
+        if not bool(row["rul_gate_pass"]):
+            family_failures.append("rul_rmse gate failed")
+        if not bool(row["worst_fold_gate_pass"]):
+            family_failures.append("worst-fold rul_rmse gate failed")
+        if family_failures:
+            blocking_reasons.append(f"{row['family']}: {', '.join(family_failures)}")
+    summary = {
+        "baseline_root": str(baseline_root),
+        "baseline_available": True,
+        "accepted_as_default": bool(len(merged) > 0 and merged["family_gate_pass"].all()),
+        "blocking_reasons": blocking_reasons,
+    }
+    return merged.sort_values("family").reset_index(drop=True), summary
+
+
+def save_compare_outputs(out_root: Path, stem: str, compare_df: pd.DataFrame, summary: Dict[str, object]):
+    if not compare_df.empty:
+        compare_df.to_csv(out_root / f"{stem}.csv", index=False)
+    with (out_root / f"{stem}.json").open("w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=True, indent=2)
+
+
+def run_benchmark(cfg: SequenceBenchmarkConfig) -> Dict[str, object]:
+    cfg.models = normalize_model_names(cfg.models)
+    cfg.families = normalize_family_names(cfg.families)
+    set_seed(int(cfg.seed))
+    device = resolve_device(cfg.device)
+    out_root = Path(cfg.outdir) / time.strftime("%Y%m%d_%H%M%S")
+    sequence_map, dataset_summary = load_sequence_pool(cfg)
+    tuning_active = bool(cfg.enable_family_tuning) and cfg.models == ("LSTM",)
+    phase1_result = None
+    if tuning_active:
+        phase1_root = out_root / "phase1_protocol"
+        phase1_result = run_benchmark_pass(
+            cfg=cfg,
+            out_root=phase1_root,
+            sequence_map=sequence_map,
+            dataset_summary=dataset_summary,
+            device=device,
+            family_overrides=None,
+            write_outputs=True,
+            write_plots=False,
+            verbose=True,
+        )
+        _search_df, selected_overrides = run_lstm_family_tuning_search(
+            cfg=cfg,
+            out_root=out_root,
+            sequence_map=sequence_map,
+            dataset_summary=dataset_summary,
+            device=device,
+        )
+        final_result = run_benchmark_pass(
+            cfg=cfg,
+            out_root=out_root,
+            sequence_map=sequence_map,
+            dataset_summary=dataset_summary,
+            device=device,
+            family_overrides=selected_overrides,
+            write_outputs=True,
+            write_plots=True,
+            verbose=True,
+        )
+        protocol_compare_df = compare_family_results(
+            candidate_df=final_result["metrics_by_family"],
+            reference_df=phase1_result["metrics_by_family"],
+        )
+        protocol_compare_df.to_csv(out_root / "protocol_vs_tuned_compare.csv", index=False)
+        baseline_root = Path(cfg.baseline_run_root)
+        phase1_compare_df, phase1_summary = compare_against_baseline(
+            baseline_root=baseline_root,
+            candidate_family_df=phase1_result["metrics_by_family"],
+            candidate_fold_df=phase1_result["metrics_by_fold"],
+        )
+        final_compare_df, final_summary = compare_against_baseline(
+            baseline_root=baseline_root,
+            candidate_family_df=final_result["metrics_by_family"],
+            candidate_fold_df=final_result["metrics_by_fold"],
+        )
+        save_compare_outputs(out_root, "baseline_compare_phase1", phase1_compare_df, phase1_summary)
+        save_compare_outputs(out_root, "baseline_compare_phase2", final_compare_df, final_summary)
+        acceptance_summary = {
+            "phase1_protocol": phase1_summary,
+            "phase2_tuned": final_summary,
+            "accepted_candidate": (
+                "phase2_tuned"
+                if final_summary.get("accepted_as_default")
+                else ("phase1_protocol" if phase1_summary.get("accepted_as_default") else None)
+            ),
+        }
+        with (out_root / "acceptance_summary.json").open("w", encoding="utf-8") as f:
+            json.dump(acceptance_summary, f, ensure_ascii=True, indent=2)
+        print("acceptance summary:")
+        print(json.dumps(acceptance_summary, ensure_ascii=True, indent=2))
+        final_result["phase1_protocol"] = phase1_result
+        final_result["acceptance_summary"] = acceptance_summary
+        return final_result
+
+    result = run_benchmark_pass(
+        cfg=cfg,
+        out_root=out_root,
+        sequence_map=sequence_map,
+        dataset_summary=dataset_summary,
+        device=device,
+        family_overrides=None,
+        write_outputs=True,
+        write_plots=True,
+        verbose=True,
+    )
+    if "LSTM" in cfg.models:
+        baseline_compare_df, baseline_summary = compare_against_baseline(
+            baseline_root=Path(cfg.baseline_run_root),
+            candidate_family_df=result["metrics_by_family"],
+            candidate_fold_df=result["metrics_by_fold"],
+        )
+        save_compare_outputs(out_root, "baseline_compare_phase1", baseline_compare_df, baseline_summary)
+        result["acceptance_summary"] = baseline_summary
+    return result

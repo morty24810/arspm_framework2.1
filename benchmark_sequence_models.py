@@ -9,7 +9,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Benchmark family-specific sequence models on remaining-life health targets.")
     parser.add_argument("--train-csv", default="Train_Data_CSV.csv")
     parser.add_argument("--test-csv", default="Test_Data_CSV.csv")
-    parser.add_argument("--models", default="GRU,LSTM,TCN,ATTENTION")
+    parser.add_argument("--models", default="LSTM")
     parser.add_argument("--families", default="A2,A3,A4")
     parser.add_argument("--kfolds", type=int, default=5)
     parser.add_argument("--window", type=int, default=32)
@@ -26,6 +26,8 @@ def parse_args():
     parser.add_argument("--dropout", type=float, default=0.10)
     parser.add_argument("--max-sequences-per-family", type=int, default=None)
     parser.add_argument("--max-windows-per-sequence", type=int, default=None)
+    parser.add_argument("--disable-family-tuning", action="store_true")
+    parser.add_argument("--baseline-run-root", default="outputs/sequence_model_benchmark/20260313_141821")
     return parser.parse_args()
 
 
@@ -51,6 +53,8 @@ def main():
         dropout=float(args.dropout),
         max_sequences_per_family=args.max_sequences_per_family,
         max_windows_per_sequence=args.max_windows_per_sequence,
+        enable_family_tuning=not bool(args.disable_family_tuning),
+        baseline_run_root=str(args.baseline_run_root),
     )
     run_benchmark(cfg)
 
