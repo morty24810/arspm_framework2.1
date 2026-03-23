@@ -507,12 +507,16 @@ def compute_overdue_stats(timeline_ops, jobs) -> Dict[str, float]:
 
 
 def compute_breakdown_reward_terms(env: EventDrivenShopEnv, mid: int, local_urgency: float,
-                                   slack_pressure: float, h_true: Optional[float] = None) -> Dict[str, float]:
+                                   slack_pressure: float, h_true: Optional[float] = None,
+                                   pt: Optional[float] = None,
+                                   idx_before: Optional[float] = None) -> Dict[str, float]:
     details = env.expected_breakdown_loss(
         mid,
         local_urgency,
+        pt=pt,
         stress=float(slack_pressure),
         h_true=h_true,
+        idx_before=idx_before,
     )
     return {
         "p_fail_exec": float(details["p_fail_exec"]),
@@ -523,6 +527,19 @@ def compute_breakdown_reward_terms(env: EventDrivenShopEnv, mid: int, local_urge
         "would_hard_breakdown": bool(details["hard_breakdown_flag"] >= 0.5),
         "h_end_true": float(details["h_end_true"]),
     }
+
+
+def _sync_idle_after_maintenance(payload: Dict[str, Any],
+                                 pending_maint: Dict[int, Dict[str, Any]],
+                                 last_h: Dict[int, Optional[float]],
+                                 env: EventDrivenShopEnv):
+    if not payload.get("from_maint", False):
+        return
+    mid = int(payload["mid"])
+    if payload.get("from_breakdown", False):
+        pending_maint.pop(mid, None)
+    last_h[mid] = float(env.peek_rul_true(mid))
+
 
 def write_summary_files(outdir: Path, stem: str, summary: Dict[str, Any]):
     outdir.mkdir(parents=True, exist_ok=True)
@@ -626,6 +643,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
 
             if etype == "MACHINE_IDLE":
                 mid = payload["mid"]
+                _sync_idle_after_maintenance(payload, pending_maint, last_h, env)
                 if not payload.get("from_maint", False):
                     if mid in pending_maint:
                         rec = pending_maint[mid]
@@ -1120,12 +1138,21 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
 
         def model(state_p, action):
             h_state = float(state_p.get("h_true", 1.0))
+            state_stress = float(state_p.get("stress", slack_pressure))
             a = enforce_action_by_region(int(action), h_state, cfg, enforce_region)
-            next_state, obs, info = env.generative_step(mid, state_p, a, slack_pressure, rng)
-            breakdown_terms = compute_breakdown_reward_terms(
-                env, mid, local_urgency, slack_pressure, h_true=h_state
-            )
-            expected_breakdown_loss = breakdown_terms["expected_breakdown_loss"] if a == 0 else 0.0
+            expected_breakdown_loss = 0.0
+            if a == 0:
+                idx_before = env.operating_index_from_rul(mid, h_state)
+                breakdown_terms = compute_breakdown_reward_terms(
+                    env,
+                    mid,
+                    local_urgency,
+                    state_stress,
+                    h_true=h_state,
+                    idx_before=idx_before,
+                )
+                expected_breakdown_loss = breakdown_terms["expected_breakdown_loss"]
+            next_state, obs, info = env.generative_step(mid, state_p, a, state_stress, rng)
             reward = maintenance_reward(a, info.get("dur", 0.0), local_urgency, expected_breakdown_loss, False, cfg)
             return next_state, obs, reward
 
@@ -1192,8 +1219,16 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
                                     result_rows: List[Dict[str, Any]],
                                     compare_rows: List[Dict[str, Any]]):
     outdir.mkdir(parents=True, exist_ok=True)
-    policy_rows = [row for row in result_rows if row["policy_tag"] == policy_tag]
-    compare_policy_rows = [row for row in compare_rows if row["policy_tag"] == policy_tag]
+    policy_rows = [
+        row for row in result_rows
+        if row["policy_tag"] == policy_tag and row.get("compare_type") == "full_system"
+    ]
+    compare_policy_rows = [
+        row for row in compare_rows
+        if row["policy_tag"] == policy_tag and row.get("compare_type") == "full_system"
+    ]
+    if not policy_rows and not compare_policy_rows:
+        return
     payload: Dict[str, Any] = {"policy_tag": policy_tag, "modes": {}, "delta_pomcp_minus_dqn": {}}
     csv_rows: List[Dict[str, Any]] = []
     metrics = [
@@ -1418,6 +1453,7 @@ def train_one_mode(
 
             if etype == "MACHINE_IDLE":
                 mid = payload["mid"]
+                _sync_idle_after_maintenance(payload, pending_maint, last_h, env)
                 if not payload.get("from_maint", False):
                     if mid in pending_maint:
                         rec = pending_maint[mid]
@@ -2210,6 +2246,9 @@ def main():
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(all_compare_rows)
+
+    for _, _, policy_tag, _ in route_specs:
+        write_aggregate_compare_outputs(output_root, policy_tag, all_result_rows, all_compare_rows)
 
     print(f"paired training finished; outputs saved to {output_root}")
 

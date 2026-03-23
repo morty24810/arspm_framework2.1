@@ -5,7 +5,7 @@ import math
 import random
 import time
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
 import torch
 
@@ -75,6 +75,30 @@ def make_maint_agent(cfg: SimConfig, seed: int, device: torch.device) -> Mainten
     return MaintenanceAgentDDQN(state_dim=17, cfg=cfg, rng=random.Random(seed), device=device)
 
 
+def make_sched_agent(cfg: SimConfig, seed: int, device: torch.device, state_dim: int = 14) -> THDQNAgent:
+    return THDQNAgent(state_dim=int(state_dim), cfg=cfg, rng=random.Random(seed), device=device)
+
+
+def build_infer_route_result(metrics: Dict[str, Any], env: Any, overdue_stats: Dict[str, Any],
+                             policy_label: str, maint_mode_tag: str) -> Dict[str, Any]:
+    return {
+        "metrics": metrics,
+        "env": env,
+        "overdue": overdue_stats,
+        "policy_label": policy_label,
+        "decision_log": list(getattr(env, "last_decision_log", [])),
+        "maint_mode_tag": maint_mode_tag,
+    }
+
+
+def infer_scheduler_state_dim(ckpt_path: Path, map_location: torch.device) -> int:
+    ckpt = torch.load(str(ckpt_path), map_location=map_location)
+    weight = ckpt.get("models", {}).get("high_q", {}).get("net.0.weight")
+    if hasattr(weight, "shape") and len(weight.shape) >= 2:
+        return int(weight.shape[1])
+    return 14
+
+
 def main():
     args = parse_args()
     ckpt_path = Path(args.ckpt)
@@ -120,7 +144,8 @@ def main():
     _, degr, rul = build_degradation_and_rul(cfg, machine_curve_ids)
 
     maint_agent = make_maint_agent(cfg, cfg.SEED, device)
-    sched_agent = THDQNAgent(state_dim=12, cfg=cfg, rng=random.Random(cfg.SEED), device=device)
+    sched_state_dim = infer_scheduler_state_dim(ckpt_path, device)
+    sched_agent = make_sched_agent(cfg, cfg.SEED, device, state_dim=sched_state_dim)
 
     allow_missing_maint = cfg.MAINT_MODE != "DQN" or compare_maint_modes
     ckpt = load_checkpoint(
@@ -237,13 +262,13 @@ def main():
                         rul_obs_rng=make_rng(seed, "infer", ep + 1, policy_tag, "env_obs"),
                         belief_rng=make_rng(seed, maint_mode, "infer", ep + 1, policy_tag, "belief"),
                     )
-                route_results[policy_tag][maint_mode] = {
-                    "metrics": metrics,
-                    "overdue": overdue_stats,
-                    "policy_label": policy_label,
-                    "decision_log": list(getattr(env, "last_decision_log", [])),
-                    "maint_mode_tag": maint_mode_tag,
-                }
+                route_results[policy_tag][maint_mode] = build_infer_route_result(
+                    metrics,
+                    env,
+                    overdue_stats,
+                    policy_label,
+                    maint_mode_tag,
+                )
                 summary_row = {
                     "timestamp": ts,
                     "episode": int(ep + 1),

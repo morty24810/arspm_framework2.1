@@ -58,8 +58,8 @@ class MaintenanceAgentDDQN:
             return int(self.rng.choice(allowed_actions))
         with torch.no_grad():
             x = torch.tensor(s[None], dtype=torch.float32, device=self.device)
-            q = self.q(x).detach().cpu().numpy()[0]
-            best_a = max(allowed_actions, key=lambda a: q[a])
+            q = self.q(x).detach().cpu()[0]
+            best_a = max(allowed_actions, key=lambda a: float(q[a].item()))
             return int(best_a)
 
     def learn(self):
@@ -81,14 +81,15 @@ class THDQNAgent:
         self.cfg = cfg
         self.rng = rng
         self.device = device
+        self.state_dim = int(state_dim)
 
-        self.q_high = MLP(state_dim, 4).to(device)
-        self.q_high_t = MLP(state_dim, 4).to(device)
+        self.q_high = MLP(self.state_dim, 4).to(device)
+        self.q_high_t = MLP(self.state_dim, 4).to(device)
         self.q_high_t.load_state_dict(self.q_high.state_dict())
         self.opt_h = torch.optim.Adam(self.q_high.parameters(), lr=cfg.LR)
 
-        self.q_low = MLP(state_dim + 4, 6).to(device)
-        self.q_low_t = MLP(state_dim + 4, 6).to(device)
+        self.q_low = MLP(self.state_dim + 4, 6).to(device)
+        self.q_low_t = MLP(self.state_dim + 4, 6).to(device)
         self.q_low_t.load_state_dict(self.q_low.state_dict())
         self.opt_l = torch.optim.Adam(self.q_low.parameters(), lr=cfg.LR)
 
@@ -103,7 +104,18 @@ class THDQNAgent:
         v[int(g)] = 1.0
         return v
 
+    def _match_state_dim(self, s: np.ndarray) -> np.ndarray:
+        arr = np.asarray(s, dtype=np.float32)
+        if arr.shape[0] == self.state_dim:
+            return arr
+        if arr.shape[0] > self.state_dim:
+            return arr[:self.state_dim]
+        padded = np.zeros(self.state_dim, dtype=np.float32)
+        padded[:arr.shape[0]] = arr
+        return padded
+
     def act(self, s: np.ndarray, explore=True):
+        s = self._match_state_dim(s)
         e = self.eps(self.steps)
         self.steps += 1
 

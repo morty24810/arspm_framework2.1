@@ -570,9 +570,10 @@ class EventDrivenShopEnv:
         pt: Optional[float] = None,
         stress: Optional[float] = None,
         h_true: Optional[float] = None,
+        idx_before: Optional[float] = None,
     ) -> Dict[str, float]:
         pt_eval = self._mean_proc_time(mid) if pt is None else float(pt)
-        preview = self._project_process_outcome(mid, pt_eval, stress=stress, h_true=h_true)
+        preview = self._project_process_outcome(mid, pt_eval, stress=stress, h_true=h_true, idx_before=idx_before)
         recovery_dur = self.breakdown_recovery_duration()
         expected_redispatch_pt = pt_eval
         breakdown_cost = self.breakdown_penalty_cost(recovery_dur)
@@ -723,7 +724,7 @@ class EventDrivenShopEnv:
             m.status = "MAINT"
             m.busy_until = t1
             self.timeline_maint.append((mid, t0, t1, kind))
-            self._push_event(t1, "MACHINE_IDLE", {"mid": mid, "from_maint": True})
+            self._push_event(t1, "MACHINE_IDLE", {"mid": mid, "from_maint": True, "from_breakdown": False})
 
         def log_damage():
             self.im_damage_log[mid].append((self.time, float(m.im_damage)))
@@ -983,7 +984,7 @@ class EventDrivenShopEnv:
             m.busy_until = t_recover
             self.timeline_ops.append((mid, t0, t_fail, op.job_id, op.op_id, "INTERRUPTED"))
             self.timeline_maint.append((mid, t_fail, t_recover, kind))
-            self._push_event(t_recover, "MACHINE_IDLE", {"mid": mid, "from_maint": True})
+            self._push_event(t_recover, "MACHINE_IDLE", {"mid": mid, "from_maint": True, "from_breakdown": True})
             self.material_cost += self.cfg.MAT_COST_CM + self.cfg.SCRAP_PART_COST
             self.scrap_part_cost += self.cfg.SCRAP_PART_COST
             self.breakdown_count += 1
