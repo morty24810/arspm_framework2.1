@@ -96,8 +96,11 @@ class SimConfig:
     IM_LONGTERM_W: float = 6.0         # legacy
     OPPORTUNITY_W: float = 3.0         # legacy
     RISK_TAU: float = 0.08
-    BREAKDOWN_ENABLE: bool = False
+    BREAKDOWN_ENABLE: bool = True
     BREAKDOWN_W: float = 1.0
+    HARD_BREAKDOWN_RUL: float = 0.05
+    BREAKDOWN_REQUEUE_MODE: str = "restart_op"
+    SCHED_SAFE_DISPATCH: bool = True
     URGENCY_REF: float = 0.0
     URGENCY_SCALE: float = 120.0
     URGENCY_CAP: float = 1.0
@@ -161,7 +164,7 @@ class SimConfig:
     POMCP_UCB_C: float = 1.2
     POMCP_PARTICLES: int = 64
     POMCP_OBS_NOISE: float = 0.02
-    POMCP_H_DECAY: float = 0.02
+    POMCP_H_DECAY: float = 0.02            # legacy (no longer the primary generative decay)
     # failure probability feature (generative rollout)
     PFAIL_HORIZON: int = 6
     PFAIL_NUM_SIMS: int = 64
@@ -194,6 +197,13 @@ class SimConfig:
 
     MAX_EVENTS: int = 20000
     TARGET_MAINT_DECISIONS_PER_MACHINE: int = 6
+
+    # paired experiment runner
+    EXPERIMENT_SEEDS: tuple = (42,)
+    TRAIN_MAINT_MODES: tuple = ("DQN", "POMCP")
+    TRAIN_POLICY_ROUTES: tuple = ("region_on", "region_off")
+    SCENARIO_LOCK_SCOPE: str = "full"
+    ENABLE_OOD_DIAGNOSTIC_EVAL: bool = False
 
     # --- checkpointing ---
     CKPT_DIR: str = "checkpoints"
