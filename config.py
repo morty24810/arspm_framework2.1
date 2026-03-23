@@ -4,11 +4,14 @@ from dataclasses import dataclass
 class SimConfig:
     # --- data / artifact paths ---
     TRAIN_CSV: str = "Train_Data_CSV.csv"
+    TEST_CSV: str = "Test_Data_CSV.csv"
     RUL_ARTIFACT_DIR: str = "rul_model_artifact"  # optional
 
     # --- shop / jobs ---
     NUM_MACHINES: int = 6
-    MACHINE_CURVE_IDS: tuple = (7, 1, 35, 42, 28, 48)
+    # Align with dataset_analysis.md §4.2 validation matrix:
+    # use the first six machines from Data_No = 4, 8, 11, 17, 18, 23, 28, 49.
+    MACHINE_CURVE_IDS: tuple = (4, 8, 11, 17, 18, 23)
     JOBS_TARGET: int = 40           # how many jobs arrive in an episode (approx., eval default)
     MAX_TIME: float = 2000.0        # legacy cap (not used when running by job count only)
     TRAIN_JOBS_TARGET: int = 100     # doubled to increase training operations
@@ -51,6 +54,15 @@ class SimConfig:
 
     # --- degradation / RUL ---
     RUL_WINDOW: int = 30
+    RUL_FEATURES: tuple = ("Differential_pressure",)
+    RUL_PREDICTOR_MODE: str = "paper_gru"
+    RUL_TRAIN_DATA_NO: int = 18
+    RUL_VAL_RATIO: float = 0.2
+    RUL_GRU_HIDDEN_DIM: int = 32
+    RUL_GRU_NUM_LAYERS: int = 1
+    RUL_GRU_EPOCHS: int = 30
+    RUL_GRU_BATCH_SIZE: int = 128
+    RUL_GRU_LR: float = 1e-3
     DEGRAD_NOISE_STD: float = 0.02
     BASE_DEGRADATION_RATE: float = 56.0
     DEGRAD_ALPHA: float = 1.0

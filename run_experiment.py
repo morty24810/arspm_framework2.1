@@ -463,18 +463,25 @@ def refresh_belief(pomcp_beliefs, mid: int, h_obs: float, slack_pressure: float,
 def get_sensor_features(cfg: SimConfig) -> list[str]:
     import pandas as pd
     df0 = pd.read_csv(cfg.TRAIN_CSV)
-    features = ["Differential_pressure"]
-    if "Flow_rate" in df0.columns:
-        features.append("Flow_rate")
-    if "Dust_feed" in df0.columns:
-        features.append("Dust_feed")
+    configured = [str(f) for f in getattr(cfg, "RUL_FEATURES", ("Differential_pressure",))]
+    features = [f for f in configured if f in df0.columns]
+    if not features:
+        raise ValueError(
+            "Configured RUL_FEATURES are not present in TRAIN_CSV. "
+            f"requested={configured}"
+        )
     return features
 
 def build_degradation_and_rul(cfg: SimConfig, machine_curve_ids: list[int]):
     features = get_sensor_features(cfg)
     print("sensor features:", features)
     degr = DegradationReplay(cfg.TRAIN_CSV, selected_data_nos=machine_curve_ids, features=features, noise_std=cfg.DEGRAD_NOISE_STD)
-    rul = RULPredictorWrapper(cfg.RUL_ARTIFACT_DIR, window=cfg.RUL_WINDOW, features=features)
+    rul = RULPredictorWrapper(
+        cfg.RUL_ARTIFACT_DIR,
+        window=cfg.RUL_WINDOW,
+        features=features,
+        cfg=cfg,
+    )
     print("RUL predictor uses GRU artifact:", rul.use_artifact)
     if list(degr.features) != list(rul.features):
         raise ValueError(
