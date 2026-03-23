@@ -8,6 +8,28 @@ from .observer import ObserverAgent
 from .sensor_bank import SensorReplayBank, GRUCache
 
 @dataclass
+class OperationTemplate:
+    feasible_machines: List[int]
+    proc_times: Dict[int, float]
+
+@dataclass
+class JobTemplate:
+    arrival: float
+    due: float
+    urgency: float
+    ops: List[OperationTemplate]
+
+@dataclass
+class EpisodeScenario:
+    jobs_target: int
+    machine_curve_ids: List[int]
+    combos: List[Tuple[float, float]]
+    combo_seq: List[int]
+    degradation_rate: float
+    arrival_times: List[float]
+    job_templates: List[JobTemplate]
+
+@dataclass
 class Operation:
     job_id: int
     op_id: int
@@ -24,6 +46,7 @@ class Job:
     next_op: int = 0
     completed: bool = False
     completion_time: Optional[float] = None
+    interrupted_count: int = 0
 
 @dataclass
 class Machine:
@@ -48,9 +71,13 @@ class EventDrivenShopEnv:
     - MACHINE_IDLE (after operation or maintenance)
     Maintenance decisions are evaluated *before* scheduling decisions to avoid conflicts.
     """
-    def __init__(self, cfg, rng: random.Random, degr, rul_predictor):
+    def __init__(self, cfg, rng: random.Random, degr, rul_predictor,
+                 breakdown_rng: Optional[random.Random] = None,
+                 obs_rng: Optional[random.Random] = None):
         self.cfg = cfg
         self.rng = rng
+        self.breakdown_rng = breakdown_rng if breakdown_rng is not None else rng
+        self.obs_rng = obs_rng if obs_rng is not None else self.breakdown_rng
         self.degr = degr
         self.rul = rul_predictor
         self.observer = ObserverAgent(cfg)
@@ -63,7 +90,7 @@ class EventDrivenShopEnv:
         self.waiting_ops: List[Operation] = []
 
         # logs for visualization
-        self.timeline_ops = []     # (mid, t0, t1, job_id, op_id)
+        self.timeline_ops = []     # (mid, t0, t1, job_id, op_id, status)
         self.timeline_maint = []   # (mid, t0, t1, kind)
         self.rul_log = { }         # mid -> list[(t, h)]
         self.im_damage_log = { }   # mid -> list[(t, im_damage)]
@@ -84,8 +111,15 @@ class EventDrivenShopEnv:
         self.sensor_bank: Optional[SensorReplayBank] = None
         self.rul_cache: Optional[GRUCache] = None
         self.last_breakdown: Optional[Dict[str, float]] = None
+        self.last_dispatch_info: Optional[Dict[str, Any]] = None
         self.material_cost: float = 0.0
         self.scrap_part_cost: float = 0.0
+        self.breakdown_cost_total: float = 0.0
+        self.breakdown_count: int = 0
+        self.hard_breakdown_count: int = 0
+        self.stochastic_breakdown_count: int = 0
+        self.requeued_op_count: int = 0
+        self.interrupted_proc_time: float = 0.0
 
         # per-machine mapping to degradation curve id
         self.machine_curve: Dict[int, int] = {}
@@ -96,6 +130,9 @@ class EventDrivenShopEnv:
         self.machine_pt_sum: Dict[int, float] = {}
         self.machine_pt_count: Dict[int, int] = {}
         self.machine_pt_base: Dict[int, float] = {}
+        self.episode_scenario: Optional[EpisodeScenario] = None
+        self._scenario_arrival_times: Dict[int, float] = {}
+        self._scenario_job_templates: Dict[int, JobTemplate] = {}
 
     # ------------------- scenario sampling -------------------
     def _build_combo_plan(self):
@@ -192,6 +229,8 @@ class EventDrivenShopEnv:
         return log
 
     def _sample_next_arrival(self, t: float, job_id: int) -> float:
+        if self._scenario_arrival_times:
+            return float(self._scenario_arrival_times.get(job_id, math.inf))
         lam, _, _, _ = self._combo_for_job(job_id)
         if lam <= 0:
             return math.inf
@@ -200,6 +239,25 @@ class EventDrivenShopEnv:
         return t + (-math.log(max(u, 1e-12)) * lam)
 
     def _make_job(self, job_id: int, arrival: float) -> Job:
+        template = self._scenario_job_templates.get(job_id)
+        if template is not None:
+            self._update_combo_on_job(job_id, arrival)
+            ops = [
+                Operation(
+                    job_id=job_id,
+                    op_id=op_id,
+                    feasible_machines=list(op_tpl.feasible_machines),
+                    proc_times={int(m): float(pt) for m, pt in op_tpl.proc_times.items()},
+                )
+                for op_id, op_tpl in enumerate(template.ops)
+            ]
+            return Job(
+                job_id=job_id,
+                arrival=float(template.arrival),
+                due=float(template.due),
+                urgency=float(template.urgency),
+                ops=ops,
+            )
         # operations and flexibility
         num_ops = self.rng.randint(self.cfg.OPS_PER_JOB_MIN, self.cfg.OPS_PER_JOB_MAX)
         ops: List[Operation] = []
@@ -225,7 +283,24 @@ class EventDrivenShopEnv:
         return Job(job_id=job_id, arrival=arrival, due=due, urgency=urgency, ops=ops)
 
     # ------------------- reset / step -------------------
-    def reset(self, machine_curve_ids: List[int]):
+    def reset(self, machine_curve_ids: Optional[List[int]] = None,
+              scenario: Optional[EpisodeScenario] = None):
+        scenario = scenario if scenario is not None else self.episode_scenario
+        self.episode_scenario = scenario
+        if scenario is not None:
+            machine_curve_ids = list(scenario.machine_curve_ids)
+            self._scenario_arrival_times = {
+                job_id: float(t) for job_id, t in enumerate(scenario.arrival_times)
+            }
+            self._scenario_job_templates = {
+                job_id: tpl for job_id, tpl in enumerate(scenario.job_templates)
+            }
+            self.episode_combos = list(scenario.combos)
+            self.episode_combo_seq = list(scenario.combo_seq)
+            self.cfg.JOBS_TARGET = int(scenario.jobs_target)
+        else:
+            self._scenario_arrival_times = {}
+            self._scenario_job_templates = {}
         if not machine_curve_ids:
             default_ids = list(getattr(self.cfg, "MACHINE_CURVE_IDS", []))
             if not default_ids:
@@ -243,8 +318,15 @@ class EventDrivenShopEnv:
         self.last_slack_pressure = 0.0
         self.event_count = 0
         self.last_breakdown = None
+        self.last_dispatch_info = None
         self.material_cost = 0.0
         self.scrap_part_cost = 0.0
+        self.breakdown_cost_total = 0.0
+        self.breakdown_count = 0
+        self.hard_breakdown_count = 0
+        self.stochastic_breakdown_count = 0
+        self.requeued_op_count = 0
+        self.interrupted_proc_time = 0.0
 
         self.machines = [Machine(mid=i) for i in range(self.cfg.NUM_MACHINES)]
         self.machine_curve = {i: int(machine_curve_ids[i % len(machine_curve_ids)]) for i in range(self.cfg.NUM_MACHINES)}
@@ -265,7 +347,7 @@ class EventDrivenShopEnv:
             self.machine_pt_base[i] = float(base_mean)
         self.sensor_bank = SensorReplayBank(self.degr, self.machine_curve)
         self.rul_cache = GRUCache(self.rul, self.sensor_bank, self.cfg.RUL_WINDOW,
-                                  noise_std=self.cfg.RUL_OBS_NOISE, rng=self.rng)
+                                  noise_std=self.cfg.RUL_OBS_NOISE, rng=self.obs_rng)
         self.rul_cache.build()
 
         self.timeline_ops.clear()
@@ -292,11 +374,19 @@ class EventDrivenShopEnv:
         avg_slack, slack_q10, overdue_rate, slack_pressure = self.compute_slack_stats()
         arrivals, lam_hat, _, _, ddt_hat, rush = self.get_obs_estimates(avg_slack, slack_pressure)
         u_ave = self._utilization()
+        idle_risks = [
+            self.failure_prob(self._peek_rul(m.mid))
+            for m in self.machines
+            if m.status == "IDLE"
+        ]
+        idle_fail_risk_mean = float(np.mean(idle_risks)) if idle_risks else 0.0
+        idle_fail_risk_max = float(np.max(idle_risks)) if idle_risks else 0.0
         return np.array([
             idle, wip, ready_len,
             arrivals, lam_hat, ddt_hat,
             avg_slack, slack_q10, slack_pressure,
-            u_ave, overdue_rate, rush
+            u_ave, overdue_rate, rush,
+            idle_fail_risk_mean, idle_fail_risk_max,
         ], dtype=np.float32)
 
     def _get_global_state(self):
@@ -397,6 +487,107 @@ class EventDrivenShopEnv:
             return self.machine_pt_sum.get(mid, 0.0) / count
         return self.machine_pt_base.get(mid, 0.5 * (self.cfg.PT_MIN + self.cfg.PT_MAX))
 
+    def breakdown_recovery_duration(self) -> float:
+        return float(self.cfg.MT_CM + self.cfg.FAIL_EXTRA_DUR)
+
+    def breakdown_penalty_cost(self, recovery_dur: Optional[float] = None) -> float:
+        dur = self.breakdown_recovery_duration() if recovery_dur is None else float(recovery_dur)
+        return float(self.cfg.FAIL_COST_MULT * dur + self.cfg.SCRAP_PART_COST + self.cfg.FAIL_PENALTY)
+
+    def _current_processing_stress(self) -> float:
+        avg_slack, _, _, slack_pressure = self.compute_slack_stats()
+        util = self._utilization()
+        util_ref = max(float(self.cfg.UTIL_REF), 1e-6)
+        util_stress = max(0.0, (util - util_ref) / util_ref)
+        return float(self.cfg.STRESS_W_SLACK * slack_pressure + self.cfg.STRESS_W_UTIL * util_stress)
+
+    def processing_delta_idx(self, pt: float, stress: float) -> float:
+        effective_rate = float(self.cfg.BASE_DEGRADATION_RATE) * (1.0 + float(self.cfg.DEGRAD_ALPHA) * float(stress))
+        return float(effective_rate * float(pt) / max(float(self.cfg.PT_REF), 1e-6))
+
+    def peek_rul_true(self, mid: int) -> float:
+        idx_float = float(self.machine_operating_idx.get(mid, 0)) + float(self.machine_operating_frac.get(mid, 0.0))
+        return self.rul_from_operating_index(mid, idx_float)
+
+    def _project_process_outcome(
+        self,
+        mid: int,
+        pt: float,
+        *,
+        stress: Optional[float] = None,
+        h_true: Optional[float] = None,
+        idx_before: Optional[float] = None,
+    ) -> Dict[str, float]:
+        pt = max(float(pt), 0.0)
+        stress_val = self._current_processing_stress() if stress is None else float(stress)
+        if idx_before is None:
+            idx_before = float(self.machine_operating_idx.get(mid, 0)) + float(self.machine_operating_frac.get(mid, 0.0))
+        else:
+            idx_before = float(idx_before)
+        h_start_true = self.peek_rul_true(mid) if h_true is None else float(h_true)
+        delta_idx = self.processing_delta_idx(pt, stress_val)
+        idx_after = idx_before + delta_idx
+        h_end_true = self.rul_from_operating_index(mid, idx_after)
+        threshold = float(getattr(self.cfg, "HARD_BREAKDOWN_RUL", 0.05))
+        hard_breakdown = bool(h_start_true <= threshold or h_end_true <= threshold)
+        fail_frac = 0.0
+        if hard_breakdown:
+            if delta_idx <= 1e-9:
+                fail_frac = 0.0
+            else:
+                threshold_idx = self.operating_index_from_rul(mid, threshold)
+                fail_frac = (threshold_idx - idx_before) / delta_idx
+            fail_frac = min(max(fail_frac, 0.0), 1.0)
+        p_break_stochastic = 0.0
+        if bool(getattr(self.cfg, "BREAKDOWN_ENABLE", False)) and bool(getattr(self.cfg, "FAIL_STOCHASTIC", True)) and not hard_breakdown:
+            p_break_stochastic = self.failure_prob(h_start_true) * (pt / max(float(self.cfg.PT_REF), 1e-6)) * float(self.cfg.BREAKDOWN_W)
+            p_break_stochastic = min(max(float(p_break_stochastic), 0.0), 1.0)
+        p_fail_exec = 1.0 if hard_breakdown else p_break_stochastic
+        return {
+            "pt": pt,
+            "stress": stress_val,
+            "idx_before": idx_before,
+            "delta_idx": delta_idx,
+            "idx_after": idx_after,
+            "h_start_true": h_start_true,
+            "h_end_true": h_end_true,
+            "hard_breakdown": float(hard_breakdown),
+            "hard_breakdown_flag": 1.0 if hard_breakdown else 0.0,
+            "hard_fail_frac": fail_frac,
+            "p_break_stochastic": p_break_stochastic,
+            "p_fail_exec": p_fail_exec,
+        }
+
+    def is_safe_dispatch(self, mid: int, pt: float, stress: Optional[float] = None) -> bool:
+        preview = self._project_process_outcome(mid, pt, stress=stress)
+        return bool(preview["hard_breakdown_flag"] < 0.5)
+
+    def expected_breakdown_loss(
+        self,
+        mid: int,
+        local_urgency: float,
+        *,
+        pt: Optional[float] = None,
+        stress: Optional[float] = None,
+        h_true: Optional[float] = None,
+        idx_before: Optional[float] = None,
+    ) -> Dict[str, float]:
+        pt_eval = self._mean_proc_time(mid) if pt is None else float(pt)
+        preview = self._project_process_outcome(mid, pt_eval, stress=stress, h_true=h_true, idx_before=idx_before)
+        recovery_dur = self.breakdown_recovery_duration()
+        expected_redispatch_pt = pt_eval
+        breakdown_cost = self.breakdown_penalty_cost(recovery_dur)
+        delay_cost = float(local_urgency) * float(recovery_dur + expected_redispatch_pt)
+        expected_loss = float(preview["p_fail_exec"]) * float(breakdown_cost + delay_cost)
+        return {
+            **preview,
+            "recovery_dur": recovery_dur,
+            "expected_redispatch_pt": expected_redispatch_pt,
+            "breakdown_penalty_cost": breakdown_cost,
+            "delay_cost": delay_cost,
+            "expected_breakdown_loss": expected_loss,
+        }
+
     def _region_b_elapsed(self, mid: int, h: Optional[float] = None) -> float:
         if h is not None and h > self.cfg.Hx:
             return 0.0
@@ -423,6 +614,34 @@ class EventDrivenShopEnv:
         return self._region_b_elapsed(mid, h=h)
 
     # ------------------- maintenance routing -------------------
+    def rul_from_operating_index(self, mid: int, idx_float: float) -> float:
+        life = max(int(self.machine_lifespan.get(mid, 1)), 1)
+        idx_float = max(0.0, min(float(idx_float), float(life - 1)))
+        lo = int(math.floor(idx_float))
+        hi = int(math.ceil(idx_float))
+        frac = float(idx_float - lo)
+        if self.rul_cache is not None:
+            h_lo = float(self.rul_cache.get_h(mid, lo))
+            h_hi = float(self.rul_cache.get_h(mid, hi))
+        else:
+            curve = self.machine_curve[mid]
+            lifespan = self.degr.lifespan(curve)
+            xw_lo = self.degr.window(curve, end_idx=lo, W=self.cfg.RUL_WINDOW)
+            xw_hi = self.degr.window(curve, end_idx=hi, W=self.cfg.RUL_WINDOW)
+            h_lo = float(self.rul.predict(curve, xw_lo, t_idx=lo, lifespan=lifespan))
+            h_hi = float(self.rul.predict(curve, xw_hi, t_idx=hi, lifespan=lifespan))
+        return float(max(0.0, min(1.0, h_lo + frac * (h_hi - h_lo))))
+
+    def operating_index_from_rul(self, mid: int, h: float) -> float:
+        target = max(0.0, min(1.0, float(h)))
+        if self.rul_cache is not None:
+            curve_vals = self.rul_cache.cache.get(mid)
+            if curve_vals is not None and len(curve_vals) > 0:
+                diffs = np.abs(curve_vals.astype(np.float64) - target)
+                return float(int(np.argmin(diffs)))
+        life = max(int(self.machine_lifespan.get(mid, 1)), 1)
+        return float(max(0.0, min(float(life - 1), (1.0 - target) * max(life - 1, 0))))
+
     def _query_rul(self, mid: int) -> float:
         idx = self.machine_operating_idx[mid]
         if self.rul_cache is not None:
@@ -505,7 +724,7 @@ class EventDrivenShopEnv:
             m.status = "MAINT"
             m.busy_until = t1
             self.timeline_maint.append((mid, t0, t1, kind))
-            self._push_event(t1, "MACHINE_IDLE", {"mid": mid, "from_maint": True})
+            self._push_event(t1, "MACHINE_IDLE", {"mid": mid, "from_maint": True, "from_breakdown": False})
 
         def log_damage():
             self.im_damage_log[mid].append((self.time, float(m.im_damage)))
@@ -558,14 +777,12 @@ class EventDrivenShopEnv:
         m.im_since_cm += 1
         m.total_im_count += 1
 
-        curve = self.machine_curve[mid]
-        lifespan = self.degr.lifespan(curve)
         # legacy behavior (commented): fixed-target repair.
         # target_rul = max(0.0, min(1.0, float(self.cfg.IM_TARGET_RUL)))
         # new behavior: geometric maintenance baseline, L_k = 0.8 * L_{k-1}.
         target_rul = max(0.0, min(1.0, 0.8 * float(m.maint_rul_baseline)))
         m.maint_rul_baseline = target_rul
-        self.machine_operating_idx[mid] = int((1.0 - target_rul) * (lifespan - 1))
+        self.machine_operating_idx[mid] = int(self.operating_index_from_rul(mid, target_rul))
         self.machine_operating_frac[mid] = 0.0
         m.crossed_Hx_time = None
         kind = "IM"
@@ -603,18 +820,41 @@ class EventDrivenShopEnv:
             region_b_elapsed = 0.0
             h = baseline_rul
 
-        h_before_decay = h
-        degr = self.cfg.POMCP_H_DECAY * (1.0 + self.cfg.DEGRAD_ALPHA * stress)
-        h = max(0.0, h - degr)
+        breakdown_flag = False
+        hard_breakdown = False
+        stochastic_breakdown = False
+        expected_breakdown_cost = 0.0
         if action == 0:
-            if h > self.cfg.Hx:
-                region_b_elapsed = 0.0
-            elif h_before_decay > self.cfg.Hx:
-                region_b_elapsed = 0.0
-            else:
-                region_b_elapsed += float(self.cfg.OBS_PROC_DEFAULT)
+            expected_pt = max(self._mean_proc_time(mid), 1e-6)
+            idx_before = self.operating_index_from_rul(mid, h)
+            preview = self._project_process_outcome(mid, expected_pt, stress=stress, h_true=h, idx_before=idx_before)
+            hard_breakdown = bool(preview["hard_breakdown_flag"] >= 0.5)
+            if hard_breakdown:
+                breakdown_flag = True
+            elif bool(getattr(self.cfg, "BREAKDOWN_ENABLE", False)) and preview["p_break_stochastic"] > 0.0:
+                stochastic_breakdown = bool(rng.random() < float(preview["p_break_stochastic"]))
+                breakdown_flag = stochastic_breakdown
 
-        p_fail = self.failure_prob(h)
+            if breakdown_flag:
+                kind = "BREAKDOWN"
+                dur = self.breakdown_recovery_duration()
+                baseline_rul = 1.0
+                region_b_elapsed = 0.0
+                h = 1.0
+                expected_breakdown_cost = self.breakdown_penalty_cost(dur)
+            else:
+                h_before_decay = h
+                h = float(preview["h_end_true"])
+                if h > self.cfg.Hx:
+                    region_b_elapsed = 0.0
+                elif h_before_decay > self.cfg.Hx:
+                    region_b_elapsed = 0.0
+                else:
+                    region_b_elapsed += float(expected_pt)
+        else:
+            h = max(0.0, min(1.0, h))
+
+        p_fail = 1.0 if breakdown_flag else self.failure_prob(h)
         obs = h + rng.normalvariate(0.0, self.cfg.POMCP_OBS_NOISE)
         obs = max(0.0, min(1.0, obs))
         next_particle = {
@@ -623,13 +863,22 @@ class EventDrivenShopEnv:
             "baseline_rul": baseline_rul,
             "region_b_elapsed": region_b_elapsed,
         }
-        info = {"kind": kind, "dur": dur, "p_fail": p_fail}
+        info = {
+            "kind": kind,
+            "dur": dur,
+            "p_fail": p_fail,
+            "breakdown": breakdown_flag,
+            "hard_breakdown": hard_breakdown,
+            "stochastic_breakdown": stochastic_breakdown,
+            "breakdown_cost": expected_breakdown_cost,
+        }
         return next_particle, obs, info
 
     # ------------------- scheduling -------------------
     def dispatch(self, rule_id: int):
         # deterministic composite dispatching rules (MVP)
         self.last_breakdown = None
+        self.last_dispatch_info = None
         avail = self._available_ops()
         if not avail:
             return False
@@ -638,12 +887,24 @@ class EventDrivenShopEnv:
         def job_of(op): return self.jobs[op.job_id]
 
         # machine selection helpers
-        def earliest_idle_machine(op: Operation) -> int:
+        stress = self._current_processing_stress()
+
+        def safe_idle_machines(op: Operation) -> List[int]:
             idle = [m.mid for m in self.machines if m.status == "IDLE" and m.mid in op.feasible_machines]
+            if not bool(getattr(self.cfg, "SCHED_SAFE_DISPATCH", True)):
+                return idle
+            safe = [
+                mid for mid in idle
+                if self.is_safe_dispatch(mid, float(op.proc_times[mid]), stress=stress)
+            ]
+            return safe if safe else idle
+
+        def earliest_idle_machine(op: Operation) -> int:
+            idle = safe_idle_machines(op)
             return min(idle)  # tie-break: smallest id
 
         def shortest_pt_machine(op: Operation) -> int:
-            idle = [m.mid for m in self.machines if m.status == "IDLE" and m.mid in op.feasible_machines]
+            idle = safe_idle_machines(op)
             return min(idle, key=lambda mid: op.proc_times[mid])
 
         # job-level metrics
@@ -688,45 +949,115 @@ class EventDrivenShopEnv:
         pt = float(op.proc_times[mid])
         t0 = self.time
         t1 = self.time + pt
-        h = self._peek_rul(mid)
-        self._log_rul(mid, t0, h)
-        if self.cfg.BREAKDOWN_ENABLE:
-            p_break = self.failure_prob(h) * (pt / max(self.cfg.PT_REF, 1e-6)) * self.cfg.BREAKDOWN_W
-            p_break = max(0.0, min(1.0, p_break))
-            if self.rng.random() < p_break:
-                dur = self._maintenance_duration(mid, action=2)
-                t1 = self.time + dur
-                m.status = "MAINT"
-                m.busy_until = t1
-                m.current = None
-                m.maint_count_cm += 1
-                m.maint_count_im = 0
-                m.im_since_cm = 0
-                m.im_damage = 0.0
-                m.crossed_Hx_time = None
-                m.maint_rul_baseline = 1.0
-                m.im_grace_until = 0.0
-                self.machine_operating_idx[mid] = 0
-                self.machine_operating_frac[mid] = 0.0
-                self.timeline_maint.append((mid, self.time, t1, "BREAKDOWN"))
-                self._push_event(t1, "MACHINE_IDLE", {"mid": mid, "from_maint": True})
-                self.material_cost += self.cfg.MAT_COST_CM + self.cfg.SCRAP_PART_COST
-                self.scrap_part_cost += self.cfg.SCRAP_PART_COST
-                self.last_breakdown = {
-                    "mid": float(mid),
-                    "time": float(self.time),
-                    "dur": float(dur),
-                    "cost": float(self.cfg.SCRAP_PART_COST),
-                    "p_break": float(p_break),
-                }
-                return False
+        h_obs = self._peek_rul(mid)
+        h_true = self.peek_rul_true(mid)
+        self._log_rul(mid, t0, h_obs)
+        idx_before = float(self.machine_operating_idx.get(mid, 0)) + float(self.machine_operating_frac.get(mid, 0.0))
+        preview = self._project_process_outcome(mid, pt, stress=stress, h_true=h_true, idx_before=idx_before)
+        hard_breakdown = bool(preview["hard_breakdown_flag"] >= 0.5)
+        p_break = float(preview["p_break_stochastic"])
+        stochastic_breakdown = False
+        if not hard_breakdown and bool(getattr(self.cfg, "BREAKDOWN_ENABLE", False)) and p_break > 0.0:
+            stochastic_breakdown = bool(self.breakdown_rng.random() < p_break)
+
+        def reset_after_breakdown():
+            m.status = "MAINT"
+            m.current = None
+            m.maint_count_cm += 1
+            m.maint_count_im = 0
+            m.im_since_cm = 0
+            m.im_damage = 0.0
+            m.crossed_Hx_time = None
+            m.maint_rul_baseline = 1.0
+            m.im_grace_until = 0.0
+            self.machine_operating_idx[mid] = 0
+            self.machine_operating_frac[mid] = 0.0
+
+        if hard_breakdown or stochastic_breakdown:
+            fail_frac = float(preview["hard_fail_frac"]) if hard_breakdown else min(max(self.breakdown_rng.random(), 1e-6), 0.999999)
+            fail_proc_time = float(pt * fail_frac)
+            t_fail = t0 + fail_proc_time
+            recovery_dur = self.breakdown_recovery_duration()
+            t_recover = t_fail + recovery_dur
+            kind = "BREAKDOWN"
+            reset_after_breakdown()
+            m.busy_until = t_recover
+            self.timeline_ops.append((mid, t0, t_fail, op.job_id, op.op_id, "INTERRUPTED"))
+            self.timeline_maint.append((mid, t_fail, t_recover, kind))
+            self._push_event(t_recover, "MACHINE_IDLE", {"mid": mid, "from_maint": True, "from_breakdown": True})
+            self.material_cost += self.cfg.MAT_COST_CM + self.cfg.SCRAP_PART_COST
+            self.scrap_part_cost += self.cfg.SCRAP_PART_COST
+            self.breakdown_count += 1
+            self.requeued_op_count += 1
+            self.interrupted_proc_time += fail_proc_time
+            if hard_breakdown:
+                self.hard_breakdown_count += 1
+            else:
+                self.stochastic_breakdown_count += 1
+            breakdown_cost = self.breakdown_penalty_cost(recovery_dur)
+            self.breakdown_cost_total += breakdown_cost
+            job = self.jobs.get(op.job_id)
+            if job is not None:
+                job.interrupted_count += 1
+            self.last_breakdown = {
+                "mid": float(mid),
+                "jid": float(op.job_id),
+                "oid": float(op.op_id),
+                "time": float(t_fail),
+                "dur": float(recovery_dur),
+                "cost": float(breakdown_cost),
+                "p_break": float(1.0 if hard_breakdown else p_break),
+                "hard_breakdown": bool(hard_breakdown),
+                "stochastic_breakdown": bool(stochastic_breakdown),
+                "requeued": True,
+                "interrupted_proc_time": float(fail_proc_time),
+                "segment_t0": float(t0),
+                "segment_t1": float(t_fail),
+            }
+            self.last_dispatch_info = {
+                "mid": int(mid),
+                "jid": int(op.job_id),
+                "oid": int(op.op_id),
+                "t0": float(t0),
+                "t1": float(t_fail),
+                "pt": float(pt),
+                "status": "INTERRUPTED",
+                "dispatched": True,
+                "breakdown": dict(self.last_breakdown),
+                "h_obs": float(h_obs),
+                "h_true": float(h_true),
+            }
+            return True
         self.machine_pt_sum[mid] += pt
         self.machine_pt_count[mid] += 1
         m.status = "PROC"
         m.busy_until = t1
         m.current = (op.job_id, op.op_id)
-        self.timeline_ops.append((mid, t0, t1, op.job_id, op.op_id))
-        self._push_event(t1, "MACHINE_IDLE", {"mid": mid, "job_id": op.job_id, "pt": pt, "t0": t0})
+        self.timeline_ops.append((mid, t0, t1, op.job_id, op.op_id, "DONE"))
+        self._push_event(
+            t1,
+            "MACHINE_IDLE",
+            {
+                "mid": mid,
+                "job_id": op.job_id,
+                "pt": pt,
+                "t0": t0,
+                "delta_idx": float(preview["delta_idx"]),
+            },
+        )
+        self.last_dispatch_info = {
+            "mid": int(mid),
+            "jid": int(op.job_id),
+            "oid": int(op.op_id),
+            "t0": float(t0),
+            "t1": float(t1),
+            "pt": float(pt),
+            "status": "DONE",
+            "dispatched": True,
+            "breakdown": None,
+            "h_obs": float(h_obs),
+            "h_true": float(h_true),
+        }
         return True
 
     # ------------------- event loop -------------------
@@ -776,18 +1107,12 @@ class EventDrivenShopEnv:
             jid = payload["job_id"]
             pt = float(payload.get("pt", 0.0))
             t0 = float(payload.get("t0", self.time - pt))
+            delta_idx = float(payload.get("delta_idx", 0.0))
 
             self.observer.update_on_op_complete(self.time, op_duration=pt)
             avg_slack, _, _, _ = self.compute_slack_stats()
-            slack_pressure = self.update_slack_state(avg_slack)
-            slack_stress = slack_pressure
-            util = self._utilization()
-            util_ref = max(self.cfg.UTIL_REF, 1e-6)
-            util_stress = max(0.0, (util - util_ref) / util_ref)
-            stress = self.cfg.STRESS_W_SLACK * slack_stress + self.cfg.STRESS_W_UTIL * util_stress
-            effective_rate = self.cfg.BASE_DEGRADATION_RATE * (1.0 + self.cfg.DEGRAD_ALPHA * stress)
-            delta = effective_rate * pt / self.cfg.PT_REF
-            acc = self.machine_operating_frac.get(mid, 0.0) + delta
+            self.update_slack_state(avg_slack)
+            acc = self.machine_operating_frac.get(mid, 0.0) + delta_idx
             inc = int(acc)
             if inc > 0:
                 self.machine_operating_idx[mid] += inc
@@ -837,5 +1162,5 @@ class EventDrivenShopEnv:
             elif kind == "FAIL_CM":
                 maint += self.cfg.FAIL_COST_MULT * (t1 - t0)
             elif kind == "BREAKDOWN":
-                maint += self.cfg.CM_COST * (t1 - t0)
+                maint += self.breakdown_penalty_cost(t1 - t0)
         return tard, maint
