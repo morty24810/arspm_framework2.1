@@ -1,2 +1,0 @@
-timestamp,policy_tag,policy_label,enforce_region_policy,hx,hy,seed,jobs_target,maint_mode,tard,maint,total,overdue_ratio_ops,overdue_ratio_time,overdue_ops,total_ops
-20260309_104612,region_on_hx0p3_hy0p1,"Policy: Region constrained (Hx=0.3, Hy=0.1)",1,0.3,0.1,910042,80,DQN,83.46566337904842,1011.6021657878372,1095.0678291668855,0.039285714285714285,0.05288782604956819,11.0,280.0
