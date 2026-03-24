@@ -164,6 +164,9 @@ class SimConfig:
     IM_TIME_WEIGHT: float = 0.02
     CM_COST: float = 5.0
     CM_TIME_WEIGHT: float = 0.02
+    PRIOR_EARLY_W: float = 4.0
+    PRIOR_LATE_W: float = 4.0
+    PRIOR_EPS: float = 1e-6
     ETA_EPS: float = 1e-6
     ETA_CAP: float = 100.0
     MAINT_BIAS_ENABLED: bool = True
@@ -211,11 +214,12 @@ class SimConfig:
     TARGET_MAINT_DECISIONS_PER_MACHINE: int = 6
 
     # paired experiment runner
-    EXPERIMENT_SEEDS: tuple = (41, 42, 43, 44, 45)
+    EXPERIMENT_SEEDS: tuple = (42,)
     TRAIN_MAINT_MODES: tuple = ("DQN", "POMCP")
     TRAIN_POLICY_ROUTES: tuple = ("region_on", "region_off")
     SCENARIO_LOCK_SCOPE: str = "full"
     ENABLE_OOD_DIAGNOSTIC_EVAL: bool = False
+    ENABLE_MAINT_ONLY_COMPARE: bool = False
 
     # --- checkpointing ---
     CKPT_DIR: str = "checkpoints"

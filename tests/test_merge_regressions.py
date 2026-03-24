@@ -6,8 +6,14 @@ import numpy as np
 
 from config import SimConfig
 from infer_demo import build_infer_route_result
-from run_experiment import _sync_idle_after_maintenance, select_maintenance_action
+from run_experiment import (
+    _sync_idle_after_maintenance,
+    maintenance_prior_penalty,
+    maintenance_reward,
+    select_maintenance_action,
+)
 from src.compare import compare_mode_results
+from src.env import EventDrivenShopEnv
 
 
 class _RecoveryEnvStub:
@@ -76,7 +82,90 @@ class _CompareEnvStub:
         self.last_decision_log = []
 
 
+class _CostEnvStub:
+    def __init__(self, cfg):
+        self.cfg = cfg
+        self.jobs = {}
+        self.timeline_maint = [
+            (0, 0.0, 10.0, "IM"),
+            (0, 10.0, 30.0, "CM"),
+            (0, 30.0, 40.0, "FAIL_CM"),
+            (0, 40.0, 50.0, "SCRAP"),
+            (0, 50.0, 70.0, "BREAKDOWN"),
+        ]
+
+    @staticmethod
+    def breakdown_penalty_cost(recovery_dur=None):
+        return 77.0
+
+
 class MergeRegressionTests(unittest.TestCase):
+    def test_unrestricted_maintenance_prior_penalty_matches_health_range(self):
+        cfg = SimConfig()
+
+        self.assertEqual(maintenance_prior_penalty(1, 0.2, cfg, enforce_region=False), 0.0)
+        self.assertEqual(maintenance_prior_penalty(2, 0.3, cfg, enforce_region=False), 0.0)
+        self.assertGreater(maintenance_prior_penalty(1, 0.8, cfg, enforce_region=False), 0.0)
+        self.assertGreater(maintenance_prior_penalty(2, 0.05, cfg, enforce_region=False), 0.0)
+        self.assertEqual(maintenance_prior_penalty(1, 0.8, cfg, enforce_region=True), 0.0)
+        self.assertEqual(maintenance_prior_penalty(0, 0.8, cfg, enforce_region=False), 0.0)
+
+    def test_maintenance_reward_uses_fixed_action_cost_and_unrestricted_prior(self):
+        cfg = SimConfig()
+        reward_inside = maintenance_reward(
+            1,
+            12.0,
+            0.5,
+            0.0,
+            False,
+            cfg,
+            h_for_prior=0.2,
+            enforce_region=False,
+        )
+        reward_early = maintenance_reward(
+            1,
+            12.0,
+            0.5,
+            0.0,
+            False,
+            cfg,
+            h_for_prior=0.8,
+            enforce_region=False,
+        )
+        reward_restricted = maintenance_reward(
+            1,
+            12.0,
+            0.5,
+            0.0,
+            False,
+            cfg,
+            h_for_prior=0.8,
+            enforce_region=True,
+        )
+
+        self.assertAlmostEqual(reward_inside, -(12.0 * 0.5 + cfg.IM_COST))
+        self.assertLess(reward_early, reward_inside)
+        self.assertAlmostEqual(reward_restricted, -(12.0 * 0.5 + cfg.IM_COST))
+
+    def test_compute_costs_uses_fixed_im_cm_action_costs(self):
+        cfg = SimConfig()
+        env = _CostEnvStub(cfg)
+
+        tard, maint = EventDrivenShopEnv.compute_costs(env)
+
+        self.assertEqual(tard, 0.0)
+        self.assertAlmostEqual(
+            maint,
+            cfg.IM_COST + cfg.CM_COST + cfg.FAIL_COST_MULT * 10.0 + cfg.SCRAP_COST * 10.0 + 77.0,
+        )
+
+    def test_fast_iteration_defaults_disable_maint_only_and_use_single_seed(self):
+        cfg = SimConfig()
+
+        self.assertEqual(cfg.EXPERIMENT_SEEDS, (42,))
+        self.assertFalse(cfg.ENABLE_MAINT_ONLY_COMPARE)
+        self.assertFalse(cfg.FAIL_STOCHASTIC)
+
     def test_breakdown_recovery_clears_pending_maintenance(self):
         pending_maint = {2: {"action": 1, "t_e": 10.0, "t_l": 20.0}}
         last_h = {2: 0.22}

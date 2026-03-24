@@ -125,18 +125,31 @@ def compute_window(risk_t: float, local_urgency: float, t_now: float, cfg: SimCo
         t_l = t_e
     return t_e, t_l
 
+def maintenance_prior_penalty(action: int, h_for_prior: float, cfg: SimConfig, enforce_region: bool) -> float:
+    if enforce_region or int(action) not in (1, 2):
+        return 0.0
+    h = float(max(0.0, min(1.0, h_for_prior)))
+    eps = max(float(getattr(cfg, "PRIOR_EPS", 1e-6)), 1e-9)
+    if h > float(cfg.Hx):
+        return float(cfg.PRIOR_EARLY_W) * (h - float(cfg.Hx)) / max(1.0 - float(cfg.Hx), eps)
+    if h < float(cfg.Hy):
+        return float(cfg.PRIOR_LATE_W) * (float(cfg.Hy) - h) / max(float(cfg.Hy), eps)
+    return 0.0
+
 def maintenance_reward(action: int, dur: float, local_urgency: float,
                        expected_breakdown_loss: float, window_violation: bool,
-                       cfg: SimConfig) -> float:
+                       cfg: SimConfig, *, h_for_prior: float,
+                       enforce_region: bool) -> float:
     downtime_cost = float(dur) * float(local_urgency)
     maint_cost = 0.0
     if action == 1:
-        maint_cost = float(cfg.IM_COST) * float(dur)
+        maint_cost = float(cfg.IM_COST)
     elif action == 2:
-        maint_cost = float(cfg.CM_COST) * float(dur)
+        maint_cost = float(cfg.CM_COST)
     dn_breakdown_cost = float(expected_breakdown_loss) if int(action) == 0 else 0.0
     violation = cfg.W_WINDOW_VIOLATION if window_violation else 0.0
-    return -(downtime_cost + maint_cost + dn_breakdown_cost + violation)
+    prior_penalty = maintenance_prior_penalty(action, h_for_prior, cfg, enforce_region)
+    return -(downtime_cost + maint_cost + dn_breakdown_cost + violation + prior_penalty)
 
 def scheduling_reward(goal: int, tard, maint, prev_tard, prev_maint):
     # incremental rewards, 4 goals
@@ -1160,7 +1173,16 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
                 )
                 expected_breakdown_loss = breakdown_terms["expected_breakdown_loss"]
             next_state, obs, info = env.generative_step(mid, state_p, a, state_stress, rng)
-            reward = maintenance_reward(a, info.get("dur", 0.0), local_urgency, expected_breakdown_loss, False, cfg)
+            reward = maintenance_reward(
+                a,
+                info.get("dur", 0.0),
+                local_urgency,
+                expected_breakdown_loss,
+                False,
+                cfg,
+                h_for_prior=h_state,
+                enforce_region=enforce_region,
+            )
             return next_state, obs, reward
 
         action = int(pomcp.plan(belief, model, cfg.POMCP_NUM_SIMS, cfg.POMCP_HORIZON))
@@ -1485,7 +1507,16 @@ def train_one_mode(
                             else:
                                 dur, kind, post_rul = env.apply_maintenance(mid, action_now, h=h_now)
                             expected_breakdown_loss = breakdown_terms["expected_breakdown_loss"] if action_now == 0 else 0.0
-                            r = maintenance_reward(action_now, dur, local_urgency, expected_breakdown_loss, window_violation, cfg)
+                            r = maintenance_reward(
+                                action_now,
+                                dur,
+                                local_urgency,
+                                expected_breakdown_loss,
+                                window_violation,
+                                cfg,
+                                h_for_prior=h_now,
+                                enforce_region=enforce_region_train,
+                            )
                             slack_samples.append(avg_slack)
                             pressure_samples.append(slack_pressure)
                             maint_counts[action_now] = maint_counts.get(action_now, 0) + 1
@@ -1605,7 +1636,16 @@ def train_one_mode(
                             breakdown_terms = compute_breakdown_reward_terms(
                                 env, mid, local_urgency, slack_pressure, h_true=env.peek_rul_true(mid)
                             )
-                            r = maintenance_reward(a, 0.0, local_urgency, breakdown_terms["expected_breakdown_loss"], False, cfg)
+                            r = maintenance_reward(
+                                a,
+                                0.0,
+                                local_urgency,
+                                breakdown_terms["expected_breakdown_loss"],
+                                False,
+                                cfg,
+                                h_for_prior=h,
+                                enforce_region=enforce_region_train,
+                            )
                             sp = build_maintenance_state(h, 0.0, eta, slack_pressure, local_urgency, avg_slack,
                                                         lambda_hat, ddt_hat, risk_t, win_e, win_l,
                                                         rul_mu, rul_sigma, env.time, m.last_maint_end,
@@ -1634,7 +1674,16 @@ def train_one_mode(
                                 )
                                 dur, kind, post_rul = env.apply_maintenance(mid, action_now, h=h_now)
                                 expected_breakdown_loss = breakdown_terms["expected_breakdown_loss"] if action_now == 0 else 0.0
-                                r = maintenance_reward(action_now, dur, local_urgency, expected_breakdown_loss, window_violation, cfg)
+                                r = maintenance_reward(
+                                    action_now,
+                                    dur,
+                                    local_urgency,
+                                    expected_breakdown_loss,
+                                    window_violation,
+                                    cfg,
+                                    h_for_prior=h_now,
+                                    enforce_region=enforce_region_train,
+                                )
                                 slack_samples.append(avg_slack)
                                 pressure_samples.append(slack_pressure)
                                 maint_counts[action_now] = maint_counts.get(action_now, 0) + 1
@@ -2039,6 +2088,8 @@ def main():
     all_result_rows: List[Dict[str, Any]] = []
     all_compare_rows: List[Dict[str, Any]] = []
 
+    enable_maint_only_compare = bool(getattr(cfg, "ENABLE_MAINT_ONLY_COMPARE", True))
+
     for seed in experiment_seeds:
         print(f"paired experiment seed={seed}")
         scenario_bank = build_scenario_bank(seed, cfg, degr, machine_curve_ids=base_machine_curve_ids)
@@ -2113,55 +2164,56 @@ def main():
                     policy_label=f"{train_policy_label} | Compare: full_system | Maintenance: DQN vs POMCP",
                 )
 
-                maint_only_results = evaluate_maint_only_results(
-                    cfg,
-                    seed,
-                    degr,
-                    rul,
-                    scenario_bank,
-                    train_policy_tag,
-                    train_enforce_region,
-                    route_results[train_policy_tag]["DQN"]["sched_agent"],
-                    route_results[train_policy_tag]["DQN"]["maint_agent"],
-                )
-                route_maint_only_results[train_policy_tag] = maint_only_results
-                for eval_mode, result in maint_only_results.items():
-                    all_result_rows.append(
-                        _build_run_record(
-                            seed,
-                            eval_mode,
-                            train_policy_tag,
-                            train_policy_tag,
-                            result,
+                if enable_maint_only_compare:
+                    maint_only_results = evaluate_maint_only_results(
+                        cfg,
+                        seed,
+                        degr,
+                        rul,
+                        scenario_bank,
+                        train_policy_tag,
+                        train_enforce_region,
+                        route_results[train_policy_tag]["DQN"]["sched_agent"],
+                        route_results[train_policy_tag]["DQN"]["maint_agent"],
+                    )
+                    route_maint_only_results[train_policy_tag] = maint_only_results
+                    for eval_mode, result in maint_only_results.items():
+                        all_result_rows.append(
+                            _build_run_record(
+                                seed,
+                                eval_mode,
+                                train_policy_tag,
+                                train_policy_tag,
+                                result,
+                                compare_type="maint_only",
+                                scheduler_anchor="DQN",
+                            )
+                        )
+                    if "DQN" in maint_only_results and "POMCP" in maint_only_results:
+                        maint_only_summary, maint_only_rows = compare_mode_results(
+                            maint_only_results["DQN"],
+                            maint_only_results["POMCP"],
+                            "DQN",
+                            "POMCP",
                             compare_type="maint_only",
+                            train_policy_tag=train_policy_tag,
+                            eval_policy_tag=train_policy_tag,
                             scheduler_anchor="DQN",
                         )
-                    )
-                if "DQN" in maint_only_results and "POMCP" in maint_only_results:
-                    maint_only_summary, maint_only_rows = compare_mode_results(
-                        maint_only_results["DQN"],
-                        maint_only_results["POMCP"],
-                        "DQN",
-                        "POMCP",
-                        compare_type="maint_only",
-                        train_policy_tag=train_policy_tag,
-                        eval_policy_tag=train_policy_tag,
-                        scheduler_anchor="DQN",
-                    )
-                    maint_only_summary = _finalize_compare_summary(
-                        maint_only_summary,
-                        seed=int(seed),
-                        policy_tag=train_policy_tag,
-                        policy_label=train_policy_label,
-                    )
-                    all_compare_rows.append(dict(maint_only_summary))
-                    write_mode_comparison_outputs(
-                        compare_dir,
-                        f"compare_maint_only_anchor_dqn_{train_policy_tag}",
-                        maint_only_summary,
-                        maint_only_rows,
-                        policy_label=f"{train_policy_label} | Compare: maint_only | Scheduler anchor: DQN | Maintenance: DQN vs POMCP",
-                    )
+                        maint_only_summary = _finalize_compare_summary(
+                            maint_only_summary,
+                            seed=int(seed),
+                            policy_tag=train_policy_tag,
+                            policy_label=train_policy_label,
+                        )
+                        all_compare_rows.append(dict(maint_only_summary))
+                        write_mode_comparison_outputs(
+                            compare_dir,
+                            f"compare_maint_only_anchor_dqn_{train_policy_tag}",
+                            maint_only_summary,
+                            maint_only_rows,
+                            policy_label=f"{train_policy_label} | Compare: maint_only | Scheduler anchor: DQN | Maintenance: DQN vs POMCP",
+                        )
 
         if len(route_specs) >= 2:
             constrained_tag = build_policy_tag(cfg, True)
@@ -2201,36 +2253,37 @@ def main():
                         policy_label=f"Route compare | Full system | Maintenance: {mode}",
                     )
 
-                constrained_anchor = route_maint_only_results.get(constrained_tag, {}).get(mode)
-                unrestricted_anchor = route_maint_only_results.get(unrestricted_tag, {}).get(mode)
-                if constrained_anchor is not None and unrestricted_anchor is not None:
-                    route_summary, route_rows = compare_mode_results(
-                        constrained_anchor,
-                        unrestricted_anchor,
-                        "CONSTRAINED",
-                        "UNRESTRICTED",
-                        compare_type="maint_only_route_compare",
-                        train_policy_tag=constrained_tag,
-                        eval_policy_tag=unrestricted_tag,
-                        scheduler_anchor="DQN",
-                    )
-                    route_summary = _finalize_compare_summary(
-                        route_summary,
-                        seed=int(seed),
-                        policy_tag=f"{constrained_tag}__to__{unrestricted_tag}",
-                        policy_label="Route delta: unrestricted - constrained",
-                        maint_mode=str(mode),
-                        maint_mode_tag=build_maint_mode_tag(mode),
-                        route_delta_direction="unrestricted_minus_constrained",
-                    )
-                    all_compare_rows.append(dict(route_summary))
-                    write_mode_comparison_outputs(
-                        route_compare_dir,
-                        f"route_compare_maint_only_anchor_dqn_{build_maint_mode_tag(mode)}",
-                        route_summary,
-                        route_rows,
-                        policy_label=f"Route compare | Maint-only anchor DQN | Maintenance: {mode}",
-                    )
+                if enable_maint_only_compare:
+                    constrained_anchor = route_maint_only_results.get(constrained_tag, {}).get(mode)
+                    unrestricted_anchor = route_maint_only_results.get(unrestricted_tag, {}).get(mode)
+                    if constrained_anchor is not None and unrestricted_anchor is not None:
+                        route_summary, route_rows = compare_mode_results(
+                            constrained_anchor,
+                            unrestricted_anchor,
+                            "CONSTRAINED",
+                            "UNRESTRICTED",
+                            compare_type="maint_only_route_compare",
+                            train_policy_tag=constrained_tag,
+                            eval_policy_tag=unrestricted_tag,
+                            scheduler_anchor="DQN",
+                        )
+                        route_summary = _finalize_compare_summary(
+                            route_summary,
+                            seed=int(seed),
+                            policy_tag=f"{constrained_tag}__to__{unrestricted_tag}",
+                            policy_label="Route delta: unrestricted - constrained",
+                            maint_mode=str(mode),
+                            maint_mode_tag=build_maint_mode_tag(mode),
+                            route_delta_direction="unrestricted_minus_constrained",
+                        )
+                        all_compare_rows.append(dict(route_summary))
+                        write_mode_comparison_outputs(
+                            route_compare_dir,
+                            f"route_compare_maint_only_anchor_dqn_{build_maint_mode_tag(mode)}",
+                            route_summary,
+                            route_rows,
+                            policy_label=f"Route compare | Maint-only anchor DQN | Maintenance: {mode}",
+                        )
 
     paired_results_csv = output_root / "paired_eval_rows.csv"
     paired_results_json = output_root / "paired_eval_rows.json"

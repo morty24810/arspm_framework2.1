@@ -1154,9 +1154,9 @@ class EventDrivenShopEnv:
         maint = 0.0
         for _, t0, t1, kind in self.timeline_maint:
             if kind == "CM":
-                maint += self.cfg.CM_COST * (t1 - t0)
+                maint += self.cfg.CM_COST
             elif kind == "IM":
-                maint += self.cfg.IM_COST * (t1 - t0)
+                maint += self.cfg.IM_COST
             elif kind == "SCRAP":
                 maint += self.cfg.SCRAP_COST * (t1 - t0)
             elif kind == "FAIL_CM":
