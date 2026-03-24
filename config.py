@@ -139,7 +139,7 @@ class SimConfig:
     FAIL_COST: float = 8.0              # legacy / unused
     FAIL_EXTRA_DUR: float = 120.0
     FAIL_PENALTY: float = 12.0
-    FAIL_STOCHASTIC: bool = True
+    FAIL_STOCHASTIC: bool = False
     FAIL_COST_MULT: float = 9.0
     RISK_BASE: float = 0.2
     RISK_SCALE: float = 5.0
@@ -211,7 +211,7 @@ class SimConfig:
     TARGET_MAINT_DECISIONS_PER_MACHINE: int = 6
 
     # paired experiment runner
-    EXPERIMENT_SEEDS: tuple = (42,)
+    EXPERIMENT_SEEDS: tuple = (41, 42, 43, 44, 45)
     TRAIN_MAINT_MODES: tuple = ("DQN", "POMCP")
     TRAIN_POLICY_ROUTES: tuple = ("region_on", "region_off")
     SCENARIO_LOCK_SCOPE: str = "full"
