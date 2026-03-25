@@ -33,9 +33,9 @@ from run_experiment import (
 def parse_args():
     parser = argparse.ArgumentParser(description="Run inference/demo from a saved checkpoint.")
     parser.add_argument("--ckpt", default="checkpoints/latest.pt", help="Checkpoint path (.pt)")
-    parser.add_argument("--seed", type=int, default=0) # random seed
+    parser.add_argument("--seed", type=int, default=None) # random seed
     parser.add_argument("--episodes", type=int, default=1) # number of episodes to run
-    parser.add_argument("--jobs_target", type=int, default=50) # how many jobs to schedule in each episode
+    parser.add_argument("--jobs_target", type=int, default=None) # how many jobs to schedule in each episode
     parser.add_argument("--machines", type=int, default=None) # override number of machines
     parser.add_argument("--randomize_combos", type=int, default=1) # randomize lambda/DDT combos
     parser.add_argument("--segment_jobs", type=int, default=None) # jobs per combo segment
@@ -106,7 +106,7 @@ def main():
         raise FileNotFoundError(f"checkpoint not found: {ckpt_path}")
     cfg = SimConfig()
     validate_region_thresholds(cfg)
-    cfg.SEED = int(args.seed)
+    cfg.SEED = int(cfg.SEED if args.seed is None else args.seed)
     if args.machines is not None:
         cfg.NUM_MACHINES = int(args.machines)
     cfg.MAINT_MODE = str(args.maint_mode).upper()
@@ -114,6 +114,7 @@ def main():
     cfg.COMBO_RANDOMIZE = bool(int(args.randomize_combos))
     if args.segment_jobs is not None:
         cfg.COMBO_SEGMENT_JOBS = max(1, int(args.segment_jobs))
+    jobs_target = int(cfg.EVAL_JOBS_TARGET * 2 if args.jobs_target is None else args.jobs_target)
 
     if torch.backends.mps.is_available():
         device = torch.device("mps")
@@ -180,25 +181,25 @@ def main():
     combo_plan = args.combo_plan.strip()
 
     for ep in range(int(args.episodes)):
-        seed = int(args.seed) + ep
+        seed = int(cfg.SEED) + ep
         set_seed(seed)
         combo_rng = random.Random(seed)
         cfg_eval_base = copy.deepcopy(cfg)
         cfg_eval_base.SEED = seed
         if combo_plan:
             combos, seq = parse_combo_plan(combo_plan)
-            target_segments = max(1, int(math.ceil(int(args.jobs_target) / cfg_eval_base.COMBO_SEGMENT_JOBS)))
+            target_segments = max(1, int(math.ceil(int(jobs_target) / cfg_eval_base.COMBO_SEGMENT_JOBS)))
             if len(seq) < target_segments:
                 seq.extend([seq[-1]] * (target_segments - len(seq)))
             elif len(seq) > target_segments:
                 seq = seq[:target_segments]
             cfg_eval_base.COMBO_RANDOMIZE = False
         else:
-            combos, seq = build_episode_combos(cfg_eval_base, combo_rng, int(args.jobs_target))
+            combos, seq = build_episode_combos(cfg_eval_base, combo_rng, int(jobs_target))
         scenario = build_episode_scenario(
             cfg_eval_base,
             degr,
-            jobs_target=int(args.jobs_target),
+            jobs_target=int(jobs_target),
             scenario_rng=make_rng(seed, "infer", ep + 1, "scenario"),
             degradation_rate=float(cfg_eval_base.BASE_DEGRADATION_RATE),
             episode_combos=combos,
@@ -245,7 +246,7 @@ def main():
                         maint_mode,
                         pomcp_ep,
                         machine_curve_ids,
-                        jobs_target=int(args.jobs_target),
+                        jobs_target=int(jobs_target),
                         episode_combos=combos,
                         episode_combo_seq=seq,
                         generate_outputs=True,
@@ -280,7 +281,7 @@ def main():
                     "hx": float(cfg_eval.Hx),
                     "hy": float(cfg_eval.Hy),
                     "seed": int(seed),
-                    "jobs_target": int(args.jobs_target),
+                    "jobs_target": int(jobs_target),
                     "tard": float(metrics["tard"]),
                     "maint": float(metrics["maint"]),
                     "total": float(metrics["total"]),
@@ -345,6 +346,34 @@ def main():
                     f"maint={u['metrics']['maint'] - c['metrics']['maint']:.3f}, "
                     f"total={u['metrics']['total'] - c['metrics']['total']:.3f}, "
                     f"overdue_ratio={u['overdue']['ratio_ops'] - c['overdue']['ratio_ops']:.3f}"
+                )
+                route_summary, route_rows = compare_mode_results(
+                    c,
+                    u,
+                    "CONSTRAINED",
+                    "UNRESTRICTED",
+                    compare_type="full_system_route_compare",
+                    train_policy_tag=constrained_tag,
+                    eval_policy_tag=unrestricted_tag,
+                    scheduler_anchor="none",
+                )
+                route_summary["policy_tag"] = f"{constrained_tag}__to__{unrestricted_tag}"
+                route_summary["policy_label"] = "Route delta: unrestricted - constrained"
+                route_summary["maint_mode"] = str(maint_mode)
+                route_summary["maint_mode_tag"] = build_maint_mode_tag(maint_mode)
+                route_summary["route_delta_direction"] = "unrestricted_minus_constrained"
+                route_summary["seed"] = int(seed)
+                route_dir = outdir / "route_compare"
+                route_dir.mkdir(parents=True, exist_ok=True)
+                route_stem_parts = ["route_compare", "full_system", build_maint_mode_tag(maint_mode), ts]
+                if args.episodes != 1:
+                    route_stem_parts.append(f"{ep+1:03d}")
+                write_mode_comparison_outputs(
+                    route_dir,
+                    "_".join(route_stem_parts),
+                    route_summary,
+                    route_rows,
+                    policy_label=f"Route compare | Full system | Maintenance: {maint_mode}",
                 )
         print(f"outputs saved to: {outdir}")
 
