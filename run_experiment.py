@@ -669,13 +669,14 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         rec = pending_maint[mid]
                         m = env.machines[mid]
                         h_now = env.maintenance_decision_point(mid)
+                        h_true_now = env.peek_rul_true(mid)
                         avg_slack, _, _, slack_pressure = env.compute_slack_stats()
                         local_urgency = env.get_local_urgency(mid)
                         arrivals, lambda_hat, _, _, ddt_hat, rush = env.get_obs_estimates(avg_slack, slack_pressure)
                         risk_now = env.failure_prob(h_now)
                         action_now = enforce_action_by_region(rec["action"], h_now, cfg, enforce_region)
                         dn_terms = compute_breakdown_reward_terms(
-                            env, mid, local_urgency, slack_pressure, h_true=env.peek_rul_true(mid)
+                            env, mid, local_urgency, slack_pressure, h_true=h_true_now
                         )
                         execute_now = env.time >= rec["t_e"] or (enforce_region and h_now < cfg.Hy)
                         if action_now == 0:
@@ -693,6 +694,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "kind": "DN",
                                     "duration": 0.0,
                                     "h": float(h_now),
+                                    "h_true": float(h_true_now),
                                     "dh": float(0.0),
                                     "eta": float(0.0),
                                     "slack_pressure": float(slack_pressure),
@@ -744,6 +746,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "kind": kind,
                                     "duration": float(dur),
                                     "h": float(h_now),
+                                    "h_true": float(h_true_now),
                                     "dh": float(0.0),
                                     "eta": float(0.0),
                                     "slack_pressure": float(slack_pressure),
@@ -778,6 +781,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                     elif mid not in pending_maint:
                         m = env.machines[mid]
                         h = env.maintenance_decision_point(mid)
+                        h_true = env.peek_rul_true(mid)
                         avg_slack, _, _, slack_pressure = env.compute_slack_stats()
                         local_urgency = env.get_local_urgency(mid)
                         arrivals, lambda_hat, _, _, ddt_hat, rush = env.get_obs_estimates(avg_slack, slack_pressure)
@@ -819,7 +823,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         pf_im = max(0.0, min(1.0, pf_im))
                         pf_cm = max(0.0, min(1.0, pf_cm))
                         dn_terms = compute_breakdown_reward_terms(
-                            env, mid, local_urgency, slack_pressure, h_true=env.peek_rul_true(mid)
+                            env, mid, local_urgency, slack_pressure, h_true=h_true
                         )
                         s = build_maintenance_state(h, dh, eta, slack_pressure, local_urgency, avg_slack,
                                                     lambda_hat, ddt_hat, risk_t, win_e, win_l,
@@ -844,6 +848,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "kind": "DN",
                                     "duration": 0.0,
                                     "h": float(h),
+                                    "h_true": float(h_true),
                                     "dh": float(dh),
                                     "eta": float(eta),
                                     "slack_pressure": float(slack_pressure),
@@ -904,6 +909,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                         "kind": kind,
                                         "duration": float(dur),
                                         "h": float(h),
+                                        "h_true": float(h_true),
                                         "dh": float(dh),
                                         "eta": float(eta),
                                         "slack_pressure": float(slack_pressure),
@@ -971,6 +977,10 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                     append_decision_log({
                         "time": env.time,
                         "event": "scheduling",
+                        "h": dispatch_info.get("h_obs"),
+                        "h_true": dispatch_info.get("h_true"),
+                        "h_end_true": dispatch_info.get("h_end_true"),
+                        "hard_breakdown_threshold": float(getattr(cfg, "HARD_BREAKDOWN_RUL", 0.05)),
                         "state": S.tolist(),
                         "goal": int(g),
                         "rule": int(rule),
@@ -1029,9 +1039,11 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                 cfg.Hx,
                 cfg.Hy,
                 str(outdir / f"rul_curves{suffix}.png"),
-                p_fail_log=p_fail_plot or [],
+                p_fail_log=None,
                 policy_label=policy_text,
                 threshold_enforced=enforce_region,
+                rul_obs_log=None,
+                hard_threshold=float(getattr(cfg, "HARD_BREAKDOWN_RUL", 0.05)),
             )
             plot_rule_vs_features(env.rule_log, str(outdir / f"rule_vs_features{suffix}.png"), policy_label=policy_text)
             plot_maint_vs_slack(maint_scatter or [], str(outdir / f"maint_vs_slack{suffix}.png"), policy_label=policy_text)
@@ -1041,7 +1053,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                 with csv_path.open("w", newline="") as f:
                     writer = csv.writer(f)
                     writer.writerow([
-                        "time", "event", "maint_mode", "maint_seq_global", "maint_seq_machine", "mid", "state", "action", "kind", "duration", "h", "dh", "eta", "slack_pressure",
+                        "time", "event", "maint_mode", "maint_seq_global", "maint_seq_machine", "mid", "state", "action", "kind", "duration", "h", "h_true", "h_end_true", "hard_breakdown_threshold", "dh", "eta", "slack_pressure",
                         "im_count", "im_damage", "risk_h", "risk_trend", "im_longterm_penalty", "opportunity_cost",
                         "p_fail", "expected_fail_cost", "downtime_cost", "delta_t_since_last_maint",
                         "lambda_hat", "ddt_hat",
@@ -1055,7 +1067,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                             row.get("time"), row.get("event"), row.get("maint_mode"), row.get("maint_seq_global"), row.get("maint_seq_machine"), row.get("mid"),
                             json.dumps(row.get("state"), separators=(",", ":"), ensure_ascii=True) if row.get("state") is not None else "",
                             row.get("action"), row.get("kind"), row.get("duration"),
-                            row.get("h"), row.get("dh"), row.get("eta"), row.get("slack_pressure"),
+                            row.get("h"), row.get("h_true"), row.get("h_end_true"), row.get("hard_breakdown_threshold"), row.get("dh"), row.get("eta"), row.get("slack_pressure"),
                             row.get("im_count"), row.get("im_damage"), row.get("risk_h"), row.get("risk_trend"),
                             row.get("im_longterm_penalty"), row.get("opportunity_cost"),
                             row.get("p_fail"), row.get("expected_fail_cost"),

@@ -142,16 +142,26 @@ def plot_gantt(timeline_ops, timeline_maint, jobs, out_path: str,
 
 def plot_rul_curves(rul_log: Dict[int, List[Tuple[float,float]]], maint: List[Tuple[int,float,float,str]],
                     Hx: float, Hy: float, out_path: str, p_fail_log: Optional[List[Tuple[float, float]]] = None,
-                    policy_label: Optional[str] = None, threshold_enforced: bool = True):
+                    policy_label: Optional[str] = None, threshold_enforced: bool = True,
+                    rul_obs_log: Optional[Dict[int, List[Tuple[float, float]]]] = None,
+                    hard_threshold: Optional[float] = None):
     fig, ax = plt.subplots(figsize=(12,4))
     for mid, pts in rul_log.items():
         if not pts:
             continue
         t = [p[0] for p in pts]
         h = [p[1] for p in pts]
-        ax.plot(t, h, label=f"M{mid}")
+        line, = ax.plot(t, h, label=f"M{mid} true")
+        if rul_obs_log is not None:
+            obs_pts = rul_obs_log.get(mid) or []
+            if obs_pts:
+                tobs = [p[0] for p in obs_pts]
+                hobs = [p[1] for p in obs_pts]
+                ax.plot(tobs, hobs, linestyle="--", linewidth=1.0, alpha=0.5, color=line.get_color())
     ax.axhline(Hx, linestyle="--")
     ax.axhline(Hy, linestyle="--")
+    if hard_threshold is not None:
+        ax.axhline(float(hard_threshold), linestyle="-.", color="#d62728", linewidth=1.0, alpha=0.85)
 
     # mark maintenance
     for mid, t0, t1, kind in maint:
@@ -167,9 +177,14 @@ def plot_rul_curves(rul_log: Dict[int, List[Tuple[float,float]]], maint: List[Tu
     ax.set_ylabel("RUL_norm")
     ax.set_title("RUL curves with maintenance windows")
     ax.grid(True, alpha=0.3)
-    extra_note = None if threshold_enforced else "Hx/Hy lines shown as reference only (not enforced)."
+    note_parts = []
+    if rul_obs_log is not None:
+        note_parts.append("Solid=canonical RUL; dashed=secondary debug trace.")
+    if not threshold_enforced:
+        note_parts.append("Hx/Hy lines shown as reference only (not enforced).")
+    extra_note = " ".join(note_parts) if note_parts else None
     _annotate_policy(ax, policy_label, extra_note=extra_note)
-    ax.legend()
+    ax.legend(ncol=2)
     if p_fail_log:
         ax2 = ax.twinx()
         tpf = [x[0] for x in p_fail_log]

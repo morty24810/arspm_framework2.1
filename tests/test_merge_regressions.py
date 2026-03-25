@@ -3,6 +3,7 @@ import unittest
 from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 
 from config import SimConfig
 from infer_demo import build_infer_route_result
@@ -99,7 +100,58 @@ class _CostEnvStub:
         return 77.0
 
 
+class _RULCacheStub:
+    def __init__(self, values):
+        self.values = np.asarray(values, dtype=np.float32)
+        self.cache = {0: self.values}
+
+    def get_h(self, mid: int, idx: int) -> float:
+        i = min(max(int(idx), 0), int(self.values.size - 1))
+        return float(self.values[i])
+
+    def get_h_obs(self, mid: int, idx: int) -> float:
+        return self.get_h(mid, idx)
+
+
+class _PredictorStub:
+    def __init__(self, values):
+        self.values = list(values)
+
+    def predict(self, data_no: int, window_array, t_idx: int, lifespan: int) -> float:
+        i = min(max(int(t_idx), 0), len(self.values) - 1)
+        return float(self.values[i])
+
+
+class _BankStub:
+    def __init__(self, life: int):
+        self.machine_curve = {0: 4}
+        self._life = int(life)
+
+    def lifespan(self, mid: int) -> int:
+        return self._life
+
+    def data_no(self, mid: int) -> int:
+        return 4
+
+    def window(self, mid: int, end_idx: int, W: int):
+        return np.zeros((W, 1), dtype=np.float32)
+
+
 class MergeRegressionTests(unittest.TestCase):
+    def test_test_dataset_is_right_censored_with_linear_rul_labels(self):
+        df = pd.read_csv("Test_Data_CSV.csv")
+
+        terminal_rul = []
+        for _, group in df.groupby("Data_No"):
+            group = group.sort_values("Time").reset_index(drop=True)
+            total_life = group["Time"] + group["RUL"]
+            self.assertLess(float((total_life.max() - total_life.min())), 1e-10)
+            diffs = group["RUL"].diff().dropna().round(10).unique().tolist()
+            self.assertEqual(diffs, [-0.1])
+            terminal_rul.append(float(group["RUL"].iloc[-1]))
+
+        self.assertTrue(all(rul > 0.0 for rul in terminal_rul))
+
     def test_unrestricted_maintenance_prior_penalty_matches_health_range(self):
         cfg = SimConfig()
 
@@ -165,6 +217,8 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(cfg.EXPERIMENT_SEEDS, (42,))
         self.assertFalse(cfg.ENABLE_MAINT_ONLY_COMPARE)
         self.assertFalse(cfg.FAIL_STOCHASTIC)
+        self.assertTrue(cfg.RUL_LINEAR_TAIL_ENABLE)
+        self.assertIsNone(cfg.RUL_LINEAR_TAIL_STEP)
 
     def test_breakdown_recovery_clears_pending_maintenance(self):
         pending_maint = {2: {"action": 1, "t_e": 10.0, "t_l": 20.0}}
@@ -242,6 +296,52 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(summary["compare_metrics"]["breakdown_cost"], 30.0)
         self.assertEqual(summary["primary_schedule_summary"]["makespan"], 11.0)
         self.assertEqual(summary["compare_schedule_summary"]["makespan"], 13.0)
+
+    def test_single_rul_uses_observed_segment_plus_linear_tail(self):
+        cfg = SimConfig()
+        cfg.RUL_LINEAR_TAIL_ENABLE = True
+        env = EventDrivenShopEnv.__new__(EventDrivenShopEnv)
+        env.cfg = cfg
+        env.machine_lifespan = {0: 10}
+        env.machine_observed_life = {0: 5}
+        env.machine_curve = {0: 4}
+        env.rul_cache = _RULCacheStub([1.0, 0.9, 0.8, 0.7, 0.6])
+        env.degr = None
+        env.rul = None
+        env.machine_operating_idx = {0: 6}
+        env.machine_operating_frac = {0: 0.0}
+
+        self.assertAlmostEqual(env.rul_from_operating_index(0, 3.5), 0.65)
+        self.assertAlmostEqual(env.rul_from_operating_index(0, 6.0), 0.4)
+        self.assertAlmostEqual(env.rul_from_operating_index(0, 9.5), 0.05)
+        self.assertAlmostEqual(env.operating_index_from_rul(0, 0.05), 9.5)
+        self.assertAlmostEqual(env.peek_rul_true(0), 0.4)
+        self.assertAlmostEqual(env._peek_rul(0), 0.4)
+
+    def test_true_rul_tail_can_be_disabled_for_plateau_ablation(self):
+        cfg = SimConfig()
+        cfg.RUL_LINEAR_TAIL_ENABLE = False
+        env = EventDrivenShopEnv.__new__(EventDrivenShopEnv)
+        env.cfg = cfg
+        env.machine_lifespan = {0: 10}
+        env.machine_observed_life = {0: 5}
+        env.machine_curve = {0: 4}
+        env.rul_cache = _RULCacheStub([1.0, 0.9, 0.8, 0.7, 0.6])
+        env.degr = None
+        env.rul = None
+
+        self.assertAlmostEqual(env.rul_from_operating_index(0, 6.0), 0.6)
+        self.assertAlmostEqual(env.rul_from_operating_index(0, 20.0), 0.6)
+        self.assertAlmostEqual(env.operating_index_from_rul(0, 0.05), 4.0)
+
+    def test_gru_cache_is_monotone_non_increasing(self):
+        from src.sensor_bank import GRUCache
+
+        cache = GRUCache(_PredictorStub([0.9, 0.95, 0.7, 0.72, 0.4]), _BankStub(5), 3)
+        cache.build()
+
+        vals = cache.cache[0]
+        self.assertTrue(np.allclose(vals, np.array([0.9, 0.9, 0.7, 0.7, 0.4], dtype=np.float32)))
 
 
 if __name__ == "__main__":

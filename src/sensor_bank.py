@@ -42,6 +42,10 @@ class GRUCache:
             for idx in range(life):
                 Xw = self.bank.window(mid, idx, self.window)
                 vals[idx] = self.rul.predict(data_no, Xw, t_idx=idx, lifespan=life)
+            # The paper uses a single degrading RUL signal. Enforce monotone
+            # non-increasing cached predictions so the simulator cannot bounce
+            # upward near the failure threshold.
+            vals = np.minimum.accumulate(np.clip(vals, 0.0, 1.0))
             self.cache[mid] = vals
 
     def get_h(self, mid: int, idx: int) -> float:

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 @dataclass
 class SimConfig:
@@ -63,6 +64,11 @@ class SimConfig:
     RUL_GRU_EPOCHS: int = 30
     RUL_GRU_BATCH_SIZE: int = 128
     RUL_GRU_LR: float = 1e-3
+    # The public dataset is right-censored rather than run-to-failure.
+    # Keep replay/GRU predictions on the observed segment, then optionally
+    # extend latent true RUL linearly after the last observed sample.
+    RUL_LINEAR_TAIL_ENABLE: bool = True
+    RUL_LINEAR_TAIL_STEP: Optional[float] = None
     DEGRAD_NOISE_STD: float = 0.02
     BASE_DEGRADATION_RATE: float = 56.0
     DEGRAD_ALPHA: float = 1.0
@@ -71,7 +77,9 @@ class SimConfig:
     OBS_WINDOW: float = 200.0
     OBS_PROC_DEFAULT: float = 30.0
     OBS_EPS: float = 1e-6
-    RUL_OBS_NOISE: float = 0.01
+    # Paper-style RUL is treated as the single deterministic health signal seen by
+    # the maintenance logic; POMCP keeps its own observation noise model.
+    RUL_OBS_NOISE: float = 0.0
     SLACK_REF: float = 150.0
     SLACK_SCALE_ALPHA: float = 0.05
     SLACK_SCALE_MIN: float = 80.0

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 import heapq, math, random
 import numpy as np
@@ -92,7 +93,8 @@ class EventDrivenShopEnv:
         # logs for visualization
         self.timeline_ops = []     # (mid, t0, t1, job_id, op_id, status)
         self.timeline_maint = []   # (mid, t0, t1, kind)
-        self.rul_log = { }         # mid -> list[(t, h)]
+        self.rul_log = { }         # mid -> list[(t, canonical_h)]
+        self.rul_obs_log = { }     # legacy mirror of canonical_h for compatibility
         self.im_damage_log = { }   # mid -> list[(t, im_damage)]
         self.rule_log = []         # (t, state_vec, goal, rule)
         self.arrival_times: List[float] = []
@@ -125,7 +127,8 @@ class EventDrivenShopEnv:
         self.machine_curve: Dict[int, int] = {}
         self.machine_operating_idx: Dict[int, int] = {}  # increments when processing (not idle/maint)
         self.machine_operating_frac: Dict[int, float] = {}
-        self.machine_lifespan: Dict[int, int] = {}
+        self.machine_lifespan: Dict[int, int] = {}       # paper-aligned true life (RUL label steps)
+        self.machine_observed_life: Dict[int, int] = {}  # replay-observed sequence length
         self.machine_time_scale: Dict[int, float] = {}
         self.machine_pt_sum: Dict[int, float] = {}
         self.machine_pt_count: Dict[int, int] = {}
@@ -133,6 +136,7 @@ class EventDrivenShopEnv:
         self.episode_scenario: Optional[EpisodeScenario] = None
         self._scenario_arrival_times: Dict[int, float] = {}
         self._scenario_job_templates: Dict[int, JobTemplate] = {}
+        self._test_rul_meta: Optional[Dict[int, Dict[str, float]]] = None
 
     # ------------------- scenario sampling -------------------
     def _build_combo_plan(self):
@@ -194,6 +198,43 @@ class EventDrivenShopEnv:
 
     def _event_priority(self, etype: str) -> int:
         return 0 if etype == "MACHINE_IDLE" else 1
+
+    def _load_test_rul_meta(self) -> Dict[int, Dict[str, float]]:
+        if self._test_rul_meta is not None:
+            return self._test_rul_meta
+        meta: Dict[int, Dict[str, float]] = {}
+        test_csv = Path(getattr(self.cfg, "TEST_CSV", "Test_Data_CSV.csv"))
+        if test_csv.exists():
+            import pandas as pd
+
+            df = pd.read_csv(test_csv)
+            if {"Data_No", "Time", "RUL"}.issubset(df.columns):
+                for data_no, group in df.groupby("Data_No"):
+                    group = group.sort_values("Time").reset_index(drop=True)
+                    if group.empty:
+                        continue
+                    diffs = group["RUL"].diff().dropna().to_numpy(dtype=np.float64)
+                    step = float(np.median(np.abs(diffs))) if diffs.size else 0.1
+                    if not np.isfinite(step) or step <= 0.0:
+                        step = 0.1
+                    first_rul = float(group["RUL"].iloc[0])
+                    life_steps = max(int(round(first_rul / step)), 1)
+                    meta[int(data_no)] = {
+                        "first_rul": first_rul,
+                        "rul_step": step,
+                        "life_steps": float(life_steps),
+                        "first_time": float(group["Time"].iloc[0]),
+                        "last_rul": float(group["RUL"].iloc[-1]),
+                    }
+        self._test_rul_meta = meta
+        return meta
+
+    def _paper_life_steps(self, data_no: int, fallback_steps: int) -> int:
+        meta = self._load_test_rul_meta()
+        rec = meta.get(int(data_no))
+        if rec is None:
+            return max(int(fallback_steps), 1)
+        return max(int(round(float(rec.get("life_steps", fallback_steps)))), 1)
 
     def _push_event(self, t: float, etype: str, payload: Any):
         heapq.heappush(self.event_q, (t, self._event_priority(etype), self._event_seq, etype, payload))
@@ -332,15 +373,19 @@ class EventDrivenShopEnv:
         self.machine_curve = {i: int(machine_curve_ids[i % len(machine_curve_ids)]) for i in range(self.cfg.NUM_MACHINES)}
         self.machine_operating_idx = {i: 0 for i in range(self.cfg.NUM_MACHINES)}
         self.machine_operating_frac = {i: 0.0 for i in range(self.cfg.NUM_MACHINES)}
-        lifespans = [self.degr.lifespan(self.machine_curve[i]) for i in range(self.cfg.NUM_MACHINES)]
-        avg_life = float(np.mean(lifespans)) if lifespans else 1.0
-        self.machine_lifespan = {i: int(lifespans[i]) for i in range(self.cfg.NUM_MACHINES)}
+        observed_lifespans = [self.degr.lifespan(self.machine_curve[i]) for i in range(self.cfg.NUM_MACHINES)]
+        avg_life = float(np.mean(observed_lifespans)) if observed_lifespans else 1.0
+        self.machine_observed_life = {i: int(observed_lifespans[i]) for i in range(self.cfg.NUM_MACHINES)}
+        self.machine_lifespan = {
+            i: self._paper_life_steps(self.machine_curve[i], observed_lifespans[i])
+            for i in range(self.cfg.NUM_MACHINES)
+        }
         self.machine_time_scale = {}
         self.machine_pt_sum = {i: 0.0 for i in range(self.cfg.NUM_MACHINES)}
         self.machine_pt_count = {i: 0 for i in range(self.cfg.NUM_MACHINES)}
         self.machine_pt_base = {}
         for i in range(self.cfg.NUM_MACHINES):
-            scale = lifespans[i] / max(avg_life, 1e-6)
+            scale = observed_lifespans[i] / max(avg_life, 1e-6)
             scale = min(max(scale, self.cfg.MACHINE_PT_SCALE_MIN), self.cfg.MACHINE_PT_SCALE_MAX)
             self.machine_time_scale[i] = float(scale)
             base_mean = 0.5 * (self.cfg.PT_MIN + self.cfg.PT_MAX) * scale
@@ -353,6 +398,7 @@ class EventDrivenShopEnv:
         self.timeline_ops.clear()
         self.timeline_maint.clear()
         self.rul_log = {i: [] for i in range(self.cfg.NUM_MACHINES)}
+        self.rul_obs_log = {i: [] for i in range(self.cfg.NUM_MACHINES)}
         self.im_damage_log = {i: [] for i in range(self.cfg.NUM_MACHINES)}
         self.rule_log.clear()
 
@@ -614,8 +660,8 @@ class EventDrivenShopEnv:
         return self._region_b_elapsed(mid, h=h)
 
     # ------------------- maintenance routing -------------------
-    def rul_from_operating_index(self, mid: int, idx_float: float) -> float:
-        life = max(int(self.machine_lifespan.get(mid, 1)), 1)
+    def _observed_rul_from_index(self, mid: int, idx_float: float) -> float:
+        life = max(int(self.machine_observed_life.get(mid, 1)), 1)
         idx_float = max(0.0, min(float(idx_float), float(life - 1)))
         lo = int(math.floor(idx_float))
         hi = int(math.ceil(idx_float))
@@ -632,39 +678,85 @@ class EventDrivenShopEnv:
             h_hi = float(self.rul.predict(curve, xw_hi, t_idx=hi, lifespan=lifespan))
         return float(max(0.0, min(1.0, h_lo + frac * (h_hi - h_lo))))
 
+    def _tail_end_index(self, mid: int) -> float:
+        observed_life = max(int(self.machine_observed_life.get(mid, 1)), 1)
+        observed_end = float(max(observed_life - 1, 0))
+        life_steps = max(int(self.machine_lifespan.get(mid, observed_life)), 1)
+        return max(float(life_steps), observed_end)
+
+    def _tail_anchor_rul(self, mid: int) -> float:
+        observed_life = max(int(self.machine_observed_life.get(mid, 1)), 1)
+        observed_end = float(max(observed_life - 1, 0))
+        return self._observed_rul_from_index(mid, observed_end)
+
+    def _observed_index_from_rul(self, mid: int, target: float) -> float:
+        if self.rul_cache is not None:
+            arr = self.rul_cache.cache.get(mid)
+            if arr is not None and len(arr) > 0:
+                arr_desc = np.asarray(arr, dtype=np.float64)
+                if arr_desc.size == 1:
+                    return 0.0
+                target_clip = float(max(float(arr_desc[-1]), min(float(arr_desc[0]), target)))
+                if target_clip >= float(arr_desc[0]):
+                    return 0.0
+                for idx in range(1, arr_desc.size):
+                    hi = float(arr_desc[idx - 1])
+                    lo = float(arr_desc[idx])
+                    if target_clip >= lo:
+                        span = hi - lo
+                        if span <= 1e-9:
+                            return float(idx)
+                        frac = (hi - target_clip) / span
+                        return float((idx - 1) + frac)
+                return float(arr_desc.size - 1)
+        observed_life = max(int(self.machine_observed_life.get(mid, 1)), 1)
+        return float(max(0.0, min(float(observed_life - 1), (1.0 - target) * max(observed_life - 1, 0))))
+
+    def rul_from_operating_index(self, mid: int, idx_float: float) -> float:
+        idx_float = max(0.0, float(idx_float))
+        observed_life = max(int(self.machine_observed_life.get(mid, 1)), 1)
+        observed_end = float(max(observed_life - 1, 0))
+        if idx_float <= observed_end or not bool(getattr(self.cfg, "RUL_LINEAR_TAIL_ENABLE", True)):
+            return self._observed_rul_from_index(mid, min(idx_float, observed_end))
+
+        tail_end = self._tail_end_index(mid)
+        anchor_h = self._tail_anchor_rul(mid)
+        if tail_end <= observed_end + 1e-9 or anchor_h <= 0.0:
+            return float(max(0.0, min(1.0, anchor_h)))
+        remaining = max(tail_end - idx_float, 0.0)
+        tail_span = max(tail_end - observed_end, 1e-9)
+        h = anchor_h * (remaining / tail_span)
+        return float(max(0.0, min(1.0, h)))
+
     def operating_index_from_rul(self, mid: int, h: float) -> float:
         target = max(0.0, min(1.0, float(h)))
-        if self.rul_cache is not None:
-            curve_vals = self.rul_cache.cache.get(mid)
-            if curve_vals is not None and len(curve_vals) > 0:
-                diffs = np.abs(curve_vals.astype(np.float64) - target)
-                return float(int(np.argmin(diffs)))
-        life = max(int(self.machine_lifespan.get(mid, 1)), 1)
-        return float(max(0.0, min(float(life - 1), (1.0 - target) * max(life - 1, 0))))
+        if not bool(getattr(self.cfg, "RUL_LINEAR_TAIL_ENABLE", True)):
+            return self._observed_index_from_rul(mid, target)
+        anchor_h = self._tail_anchor_rul(mid)
+        observed_life = max(int(self.machine_observed_life.get(mid, 1)), 1)
+        observed_end = float(max(observed_life - 1, 0))
+        tail_end = self._tail_end_index(mid)
+        if target >= anchor_h or anchor_h <= 1e-9:
+            return self._observed_index_from_rul(mid, target)
+        tail_span = max(tail_end - observed_end, 1e-9)
+        idx = tail_end - (target / anchor_h) * tail_span
+        return float(max(observed_end, min(tail_end, idx)))
 
     def _query_rul(self, mid: int) -> float:
-        idx = self.machine_operating_idx[mid]
-        if self.rul_cache is not None:
-            h = self.rul_cache.get_h_obs(mid, idx)
-        else:
-            curve = self.machine_curve[mid]
-            lifespan = self.degr.lifespan(curve)
-            Xw = self.degr.window(curve, end_idx=idx, W=self.cfg.RUL_WINDOW)
-            h = self.rul.predict(curve, Xw, t_idx=idx, lifespan=lifespan)
+        idx_float = float(self.machine_operating_idx.get(mid, 0)) + float(self.machine_operating_frac.get(mid, 0.0))
+        h = self.rul_from_operating_index(mid, idx_float)
         self.rul_log[mid].append((self.time, float(h)))
+        self.rul_obs_log[mid].append((self.time, float(h)))
         return float(h)
 
-    def _log_rul(self, mid: int, t: float, h: float):
-        self.rul_log[mid].append((float(t), float(h)))
+    def _log_rul(self, mid: int, t: float, h_obs: float, h_true: Optional[float] = None):
+        h = float(h_obs if h_true is None else h_true)
+        self.rul_log[mid].append((float(t), h))
+        self.rul_obs_log[mid].append((float(t), h))
 
     def _peek_rul(self, mid: int) -> float:
-        idx = self.machine_operating_idx[mid]
-        if self.rul_cache is not None:
-            return float(self.rul_cache.get_h_obs(mid, idx))
-        curve = self.machine_curve[mid]
-        lifespan = self.degr.lifespan(curve)
-        Xw = self.degr.window(curve, end_idx=idx, W=self.cfg.RUL_WINDOW)
-        return float(self.rul.predict(curve, Xw, t_idx=idx, lifespan=lifespan))
+        idx_float = float(self.machine_operating_idx.get(mid, 0)) + float(self.machine_operating_frac.get(mid, 0.0))
+        return float(self.rul_from_operating_index(mid, idx_float))
 
     def maintenance_decision_point(self, mid: int):
         # called when machine becomes IDLE after completing an operation
@@ -950,8 +1042,8 @@ class EventDrivenShopEnv:
         t0 = self.time
         t1 = self.time + pt
         h_obs = self._peek_rul(mid)
-        h_true = self.peek_rul_true(mid)
-        self._log_rul(mid, t0, h_obs)
+        h_true = h_obs
+        self._log_rul(mid, t0, h_obs, h_true)
         idx_before = float(self.machine_operating_idx.get(mid, 0)) + float(self.machine_operating_frac.get(mid, 0.0))
         preview = self._project_process_outcome(mid, pt, stress=stress, h_true=h_true, idx_before=idx_before)
         hard_breakdown = bool(preview["hard_breakdown_flag"] >= 0.5)
@@ -1013,6 +1105,10 @@ class EventDrivenShopEnv:
                 "interrupted_proc_time": float(fail_proc_time),
                 "segment_t0": float(t0),
                 "segment_t1": float(t_fail),
+                "h_obs": float(h_obs),
+                "h_start_true": float(h_true),
+                "h_end_true": float(preview["h_end_true"]),
+                "hard_breakdown_threshold": float(getattr(self.cfg, "HARD_BREAKDOWN_RUL", 0.05)),
             }
             self.last_dispatch_info = {
                 "mid": int(mid),
@@ -1026,6 +1122,7 @@ class EventDrivenShopEnv:
                 "breakdown": dict(self.last_breakdown),
                 "h_obs": float(h_obs),
                 "h_true": float(h_true),
+                "h_end_true": float(preview["h_end_true"]),
             }
             return True
         self.machine_pt_sum[mid] += pt
@@ -1057,6 +1154,7 @@ class EventDrivenShopEnv:
             "breakdown": None,
             "h_obs": float(h_obs),
             "h_true": float(h_true),
+            "h_end_true": float(preview["h_end_true"]),
         }
         return True
 
