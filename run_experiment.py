@@ -108,6 +108,12 @@ def allowed_actions_by_region(h_obs: float, cfg: SimConfig, enforce_region: bool
         return [2]
     return [0, 1, 2]
 
+def filter_non_improving_im(env, mid: int, h_obs: float, allowed_actions: List[int]) -> List[int]:
+    if 1 in allowed_actions and hasattr(env, "im_has_positive_gain"):
+        if not bool(env.im_has_positive_gain(mid, h_obs)):
+            return [a for a in allowed_actions if a != 1]
+    return list(allowed_actions)
+
 def enforce_action_by_region(action: int, h_obs: float, cfg: SimConfig, enforce_region: bool) -> int:
     if not enforce_region:
         return int(action)
@@ -130,11 +136,15 @@ def maintenance_prior_penalty(action: int, h_for_prior: float, cfg: SimConfig, e
         return 0.0
     h = float(max(0.0, min(1.0, h_for_prior)))
     eps = max(float(getattr(cfg, "PRIOR_EPS", 1e-6)), 1e-9)
+    penalty = 0.0
     if h > float(cfg.Hx):
-        return float(cfg.PRIOR_EARLY_W) * (h - float(cfg.Hx)) / max(1.0 - float(cfg.Hx), eps)
-    if h < float(cfg.Hy):
-        return float(cfg.PRIOR_LATE_W) * (float(cfg.Hy) - h) / max(float(cfg.Hy), eps)
-    return 0.0
+        gap = (h - float(cfg.Hx)) / max(1.0 - float(cfg.Hx), eps)
+        penalty += float(cfg.PRIOR_EARLY_W) * gap
+        if int(action) == 2:
+            penalty += float(getattr(cfg, "PRIOR_CM_EARLY_W", 0.0)) * gap
+    elif h < float(cfg.Hy):
+        penalty += float(cfg.PRIOR_LATE_W) * (float(cfg.Hy) - h) / max(float(cfg.Hy), eps)
+    return float(penalty)
 
 def maintenance_reward(action: int, dur: float, local_urgency: float,
                        expected_breakdown_loss: float, window_violation: bool,
@@ -730,19 +740,20 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         elif execute_now:
                             window_violation = env.time > rec["t_l"]
                             dur, kind, post_rul = env.apply_maintenance(mid, action_now, h=h_now)
+                            executed_action = 0 if kind == "DN" else int(action_now)
                             if p_fail_plot is not None:
                                 p_fail_plot.append((env.time, risk_now))
-                            h2 = post_rul if action_now != 0 else h_now
+                            h2 = post_rul if executed_action != 0 else h_now
                             last_h[mid] = h2
                             if maint_scatter is not None:
-                                maint_scatter.append((slack_pressure, action_now))
+                                maint_scatter.append((slack_pressure, executed_action))
                             if decision_log is not None:
                                 append_decision_log({
                                     "time": env.time,
                                     "event": "maintenance",
                                     "mid": m.mid,
                                     "state": rec["state"].tolist(),
-                                    "action": int(action_now),
+                                    "action": int(executed_action),
                                     "kind": kind,
                                     "duration": float(dur),
                                     "h": float(h_now),
@@ -757,7 +768,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "risk_trend": 0.0,
                                     "im_longterm_penalty": 0.0,
                                     "opportunity_cost": 0.0,
-                                    "p_fail": float(dn_terms["p_fail_exec"] if action_now == 0 else risk_now),
+                                    "p_fail": float(dn_terms["p_fail_exec"] if executed_action == 0 else risk_now),
                                     "expected_fail_cost": 0.0,
                                     "downtime_cost": float(dur * local_urgency),
                                     "delta_t_since_last_maint": float(env.time - m.last_maint_end),
@@ -774,7 +785,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "t_l": float(rec["t_l"]),
                                     "window_violation": bool(window_violation),
                                     "risk_t": float(risk_now),
-                                    "mat_cost": float(material_cost(action_now, cfg)),
+                                    "mat_cost": float(material_cost(executed_action, cfg)),
                                     "scrap_part_cost": 0.0,
                                 })
                             del pending_maint[mid]
@@ -893,19 +904,20 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                 window_violation = env.time > rec["t_l"]
                                 action_now = enforce_action_by_region(rec["action"], h, cfg, enforce_region)
                                 dur, kind, post_rul = env.apply_maintenance(mid, action_now, h=h)
+                                executed_action = 0 if kind == "DN" else int(action_now)
                                 if p_fail_plot is not None:
                                     p_fail_plot.append((env.time, risk_t))
-                                h2 = post_rul if action_now != 0 else h
+                                h2 = post_rul if executed_action != 0 else h
                                 last_h[mid] = h2
                                 if maint_scatter is not None:
-                                    maint_scatter.append((slack_pressure, action_now))
+                                    maint_scatter.append((slack_pressure, executed_action))
                                 if decision_log is not None:
                                     append_decision_log({
                                         "time": env.time,
                                         "event": "maintenance",
                                         "mid": m.mid,
                                         "state": rec["state"].tolist(),
-                                        "action": int(action_now),
+                                        "action": int(executed_action),
                                         "kind": kind,
                                         "duration": float(dur),
                                         "h": float(h),
@@ -920,7 +932,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                         "risk_trend": 0.0,
                                         "im_longterm_penalty": 0.0,
                                         "opportunity_cost": 0.0,
-                                        "p_fail": float(dn_terms["p_fail_exec"] if action_now == 0 else risk_t),
+                                        "p_fail": float(dn_terms["p_fail_exec"] if executed_action == 0 else risk_t),
                                         "expected_fail_cost": 0.0,
                                         "downtime_cost": float(dur * local_urgency),
                                         "delta_t_since_last_maint": float(env.time - m.last_maint_end),
@@ -937,7 +949,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                         "t_l": float(rec["t_l"]),
                                         "window_violation": bool(window_violation),
                                         "risk_t": float(risk_t),
-                                        "mat_cost": float(material_cost(action_now, cfg)),
+                                        "mat_cost": float(material_cost(executed_action, cfg)),
                                         "scrap_part_cost": 0.0,
                                     })
                                 del pending_maint[mid]
@@ -1138,7 +1150,7 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
                               explore: bool) -> int:
     mode = mode.upper()
     enforce_region = bool(getattr(cfg, "ENFORCE_REGION_POLICY", True))
-    allowed_actions = allowed_actions_by_region(h_obs, cfg, enforce_region)
+    allowed_actions = filter_non_improving_im(env, mid, h_obs, allowed_actions_by_region(h_obs, cfg, enforce_region))
     if mode == "OFF":
         return int(allowed_actions[0]) if len(allowed_actions) == 1 else 0
     if mode == "DQN":
@@ -1171,7 +1183,11 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
         def model(state_p, action):
             h_state = float(state_p.get("h_true", 1.0))
             state_stress = float(state_p.get("stress", slack_pressure))
+            baseline_state = float(state_p.get("baseline_rul", baseline_rul))
             a = enforce_action_by_region(int(action), h_state, cfg, enforce_region)
+            useless_im = bool(a == 1 and not env.im_has_positive_gain(mid, h_state, baseline_rul=baseline_state))
+            if useless_im:
+                a = 0
             expected_breakdown_loss = 0.0
             if a == 0:
                 idx_before = env.operating_index_from_rul(mid, h_state)
@@ -1195,9 +1211,13 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
                 h_for_prior=h_state,
                 enforce_region=enforce_region,
             )
+            if useless_im:
+                reward -= float(getattr(cfg, "IM_USELESS_PENALTY", 0.0))
             return next_state, obs, reward
 
         action = int(pomcp.plan(belief, model, cfg.POMCP_NUM_SIMS, cfg.POMCP_HORIZON))
+        if action == 1 and not env.im_has_positive_gain(mid, h_obs, baseline_rul=baseline_rul):
+            return int(enforce_action_by_region(0, h_obs, cfg, enforce_region))
         return int(enforce_action_by_region(action, h_obs, cfg, enforce_region))
 
     # fallback: conservative threshold rule
@@ -1518,9 +1538,10 @@ def train_one_mode(
                                 dur, kind, post_rul = 0.0, "DN", None
                             else:
                                 dur, kind, post_rul = env.apply_maintenance(mid, action_now, h=h_now)
-                            expected_breakdown_loss = breakdown_terms["expected_breakdown_loss"] if action_now == 0 else 0.0
+                            executed_action = 0 if kind == "DN" else int(action_now)
+                            expected_breakdown_loss = breakdown_terms["expected_breakdown_loss"] if executed_action == 0 else 0.0
                             r = maintenance_reward(
-                                action_now,
+                                executed_action,
                                 dur,
                                 local_urgency,
                                 expected_breakdown_loss,
@@ -1531,14 +1552,14 @@ def train_one_mode(
                             )
                             slack_samples.append(avg_slack)
                             pressure_samples.append(slack_pressure)
-                            maint_counts[action_now] = maint_counts.get(action_now, 0) + 1
-                            urgency_action_vals[action_now].append(local_urgency)
-                            if action_now in (1, 2):
+                            maint_counts[executed_action] = maint_counts.get(executed_action, 0) + 1
+                            urgency_action_vals[executed_action].append(local_urgency)
+                            if executed_action in (1, 2):
                                 if last_maint_time is not None:
                                     maint_intervals.append(env.time - last_maint_time)
                                 last_maint_time = env.time
 
-                            h2 = post_rul if action_now != 0 else h_now
+                            h2 = post_rul if executed_action != 0 else h_now
                             dh2 = h2 - h_now
                             if dh2 < -cfg.ETA_EPS:
                                 eta2 = max(0.0, (h2 - cfg.Hy) / (-dh2))
@@ -1685,9 +1706,10 @@ def train_one_mode(
                                     env, mid, local_urgency, slack_pressure, h_true=env.peek_rul_true(mid)
                                 )
                                 dur, kind, post_rul = env.apply_maintenance(mid, action_now, h=h_now)
-                                expected_breakdown_loss = breakdown_terms["expected_breakdown_loss"] if action_now == 0 else 0.0
+                                executed_action = 0 if kind == "DN" else int(action_now)
+                                expected_breakdown_loss = breakdown_terms["expected_breakdown_loss"] if executed_action == 0 else 0.0
                                 r = maintenance_reward(
-                                    action_now,
+                                    executed_action,
                                     dur,
                                     local_urgency,
                                     expected_breakdown_loss,
@@ -1698,14 +1720,14 @@ def train_one_mode(
                                 )
                                 slack_samples.append(avg_slack)
                                 pressure_samples.append(slack_pressure)
-                                maint_counts[action_now] = maint_counts.get(action_now, 0) + 1
-                                urgency_action_vals[action_now].append(local_urgency)
-                                if action_now in (1, 2):
+                                maint_counts[executed_action] = maint_counts.get(executed_action, 0) + 1
+                                urgency_action_vals[executed_action].append(local_urgency)
+                                if executed_action in (1, 2):
                                     if last_maint_time is not None:
                                         maint_intervals.append(env.time - last_maint_time)
                                     last_maint_time = env.time
 
-                                h2 = post_rul if action_now != 0 else h_now
+                                h2 = post_rul if executed_action != 0 else h_now
                                 dh2 = h2 - h_now
                                 if dh2 < -cfg.ETA_EPS:
                                     eta2 = max(0.0, (h2 - cfg.Hy) / (-dh2))

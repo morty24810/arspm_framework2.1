@@ -659,6 +659,15 @@ class EventDrivenShopEnv:
     def get_region_b_elapsed(self, mid: int, h: Optional[float] = None) -> float:
         return self._region_b_elapsed(mid, h=h)
 
+    def im_target_rul(self, mid: int, baseline_rul: Optional[float] = None) -> float:
+        baseline = float(self.machines[mid].maint_rul_baseline) if baseline_rul is None else float(baseline_rul)
+        return max(0.0, min(1.0, 0.8 * baseline))
+
+    def im_has_positive_gain(self, mid: int, h: float, baseline_rul: Optional[float] = None) -> bool:
+        target_rul = self.im_target_rul(mid, baseline_rul=baseline_rul)
+        min_gain = float(getattr(self.cfg, "IM_MIN_GAIN", 1e-3))
+        return bool(target_rul > float(h) + min_gain)
+
     # ------------------- maintenance routing -------------------
     def _observed_rul_from_index(self, mid: int, idx_float: float) -> float:
         life = max(int(self.machine_observed_life.get(mid, 1)), 1)
@@ -669,14 +678,19 @@ class EventDrivenShopEnv:
         if self.rul_cache is not None:
             h_lo = float(self.rul_cache.get_h(mid, lo))
             h_hi = float(self.rul_cache.get_h(mid, hi))
+            h_ref = float(self.rul_cache.get_h(mid, 0))
         else:
             curve = self.machine_curve[mid]
             lifespan = self.degr.lifespan(curve)
             xw_lo = self.degr.window(curve, end_idx=lo, W=self.cfg.RUL_WINDOW)
             xw_hi = self.degr.window(curve, end_idx=hi, W=self.cfg.RUL_WINDOW)
+            xw_ref = self.degr.window(curve, end_idx=0, W=self.cfg.RUL_WINDOW)
             h_lo = float(self.rul.predict(curve, xw_lo, t_idx=lo, lifespan=lifespan))
             h_hi = float(self.rul.predict(curve, xw_hi, t_idx=hi, lifespan=lifespan))
-        return float(max(0.0, min(1.0, h_lo + frac * (h_hi - h_lo))))
+            h_ref = float(self.rul.predict(curve, xw_ref, t_idx=0, lifespan=lifespan))
+        h_ref = max(h_ref, 1e-9)
+        h = (h_lo + frac * (h_hi - h_lo)) / h_ref
+        return float(max(0.0, min(1.0, h)))
 
     def _tail_end_index(self, mid: int) -> float:
         observed_life = max(int(self.machine_observed_life.get(mid, 1)), 1)
@@ -694,6 +708,8 @@ class EventDrivenShopEnv:
             arr = self.rul_cache.cache.get(mid)
             if arr is not None and len(arr) > 0:
                 arr_desc = np.asarray(arr, dtype=np.float64)
+                arr_ref = max(float(arr_desc[0]), 1e-9)
+                arr_desc = np.clip(arr_desc / arr_ref, 0.0, 1.0)
                 if arr_desc.size == 1:
                     return 0.0
                 target_clip = float(max(float(arr_desc[-1]), min(float(arr_desc[0]), target)))
@@ -849,6 +865,9 @@ class EventDrivenShopEnv:
 
         h_pre = h_now if h_now is not None else self._query_rul(mid)
         dur = self._maintenance_duration(mid, action=1, h=h_pre)
+        if not self.im_has_positive_gain(mid, h_pre):
+            log_damage()
+            return 0.0, "DN", None
         if bool(getattr(self.cfg, "ENFORCE_REGION_POLICY", True)) and h_pre < self.cfg.Hy:
             # IM invalid below Hy; fall back to CM to preserve feasibility.
             dur = self._maintenance_duration(mid, action=2)
@@ -903,14 +922,17 @@ class EventDrivenShopEnv:
             region_b_elapsed = 0.0
             h = 1.0
         elif action == 1:
-            kind = "IM"
-            dur = self._maintenance_duration(mid, action=1, region_b_elapsed=region_b_elapsed)
-            # legacy behavior (commented): fixed-target repair.
-            # h = max(0.0, min(1.0, float(self.cfg.IM_TARGET_RUL)))
-            # new behavior: geometric maintenance baseline, L_k = 0.8 * L_{k-1}.
-            baseline_rul = max(0.0, min(1.0, 0.8 * baseline_rul))
-            region_b_elapsed = 0.0
-            h = baseline_rul
+            if not self.im_has_positive_gain(mid, h, baseline_rul=baseline_rul):
+                action = 0
+            else:
+                kind = "IM"
+                dur = self._maintenance_duration(mid, action=1, region_b_elapsed=region_b_elapsed)
+                # legacy behavior (commented): fixed-target repair.
+                # h = max(0.0, min(1.0, float(self.cfg.IM_TARGET_RUL)))
+                # new behavior: geometric maintenance baseline, L_k = 0.8 * L_{k-1}.
+                baseline_rul = self.im_target_rul(mid, baseline_rul=baseline_rul)
+                region_b_elapsed = 0.0
+                h = baseline_rul
 
         breakdown_flag = False
         hard_breakdown = False

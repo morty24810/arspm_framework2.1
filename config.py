@@ -170,10 +170,13 @@ class SimConfig:
     IM_UNDER_HY_PENALTY: float = 4.0
     IM_COST: float = 1.0
     IM_TIME_WEIGHT: float = 0.02
+    IM_MIN_GAIN: float = 1e-3
+    IM_USELESS_PENALTY: float = 4.0
     CM_COST: float = 5.0
     CM_TIME_WEIGHT: float = 0.02
     PRIOR_EARLY_W: float = 4.0
     PRIOR_LATE_W: float = 4.0
+    PRIOR_CM_EARLY_W: float = 8.0
     PRIOR_EPS: float = 1e-6
     ETA_EPS: float = 1e-6
     ETA_CAP: float = 100.0

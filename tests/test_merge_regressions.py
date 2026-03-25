@@ -9,6 +9,7 @@ from config import SimConfig
 from infer_demo import build_infer_route_result
 from run_experiment import (
     _sync_idle_after_maintenance,
+    filter_non_improving_im,
     maintenance_prior_penalty,
     maintenance_reward,
     select_maintenance_action,
@@ -81,6 +82,15 @@ class _CompareEnvStub:
         self.timeline_ops = [(0, 0.0, makespan - 1.0, 0, 0, "DONE")]
         self.timeline_maint = [(0, makespan - 1.0, makespan, "CM")]
         self.last_decision_log = []
+
+
+class _ImGainEnvStub(_RolloutEnvStub):
+    def __init__(self, allow_im: bool):
+        super().__init__()
+        self.allow_im = bool(allow_im)
+
+    def im_has_positive_gain(self, mid: int, h: float, baseline_rul=None) -> bool:
+        return self.allow_im
 
 
 class _CostEnvStub:
@@ -159,6 +169,10 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(maintenance_prior_penalty(2, 0.3, cfg, enforce_region=False), 0.0)
         self.assertGreater(maintenance_prior_penalty(1, 0.8, cfg, enforce_region=False), 0.0)
         self.assertGreater(maintenance_prior_penalty(2, 0.05, cfg, enforce_region=False), 0.0)
+        self.assertGreater(
+            maintenance_prior_penalty(2, 0.8, cfg, enforce_region=False),
+            maintenance_prior_penalty(1, 0.8, cfg, enforce_region=False),
+        )
         self.assertEqual(maintenance_prior_penalty(1, 0.8, cfg, enforce_region=True), 0.0)
         self.assertEqual(maintenance_prior_penalty(0, 0.8, cfg, enforce_region=False), 0.0)
 
@@ -271,6 +285,41 @@ class MergeRegressionTests(unittest.TestCase):
         )
         self.assertLess(planner.last_reward, 0.0)
 
+    def test_non_improving_im_is_removed_from_allowed_actions(self):
+        cfg = SimConfig()
+        allowed = filter_non_improving_im(_ImGainEnvStub(False), 0, 0.9, [0, 1, 2])
+        self.assertEqual(allowed, [0, 2])
+
+    def test_pomcp_downgrades_non_improving_im_to_dn(self):
+        cfg = SimConfig()
+        cfg.ENFORCE_REGION_POLICY = False
+        env = _ImGainEnvStub(False)
+        planner = _SingleStepPOMCP()
+        particle = {
+            "h_true": 0.9,
+            "stress": 0.5,
+            "baseline_rul": 1.0,
+            "region_b_elapsed": 0.0,
+        }
+
+        action = select_maintenance_action(
+            "POMCP",
+            None,
+            planner,
+            {0: [particle]},
+            env,
+            0,
+            0.9,
+            np.zeros(17, dtype=np.float32),
+            0.1,
+            0.8,
+            cfg,
+            random.Random(0),
+            explore=False,
+        )
+
+        self.assertEqual(action, 0)
+
     def test_infer_route_results_keep_env_for_compare_metrics(self):
         primary_env = _CompareEnvStub(2, 18.0, 3, 4.5, 11.0)
         compare_env = _CompareEnvStub(5, 30.0, 7, 9.0, 13.0)
@@ -317,6 +366,23 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(env.operating_index_from_rul(0, 0.05), 9.5)
         self.assertAlmostEqual(env.peek_rul_true(0), 0.4)
         self.assertAlmostEqual(env._peek_rul(0), 0.4)
+
+    def test_canonical_rul_is_renormalized_to_one_after_reset(self):
+        cfg = SimConfig()
+        cfg.RUL_LINEAR_TAIL_ENABLE = True
+        env = EventDrivenShopEnv.__new__(EventDrivenShopEnv)
+        env.cfg = cfg
+        env.machine_lifespan = {0: 10}
+        env.machine_observed_life = {0: 5}
+        env.machine_curve = {0: 4}
+        env.rul_cache = _RULCacheStub([0.97, 0.90, 0.80, 0.70, 0.60])
+        env.degr = None
+        env.rul = None
+        env.machine_operating_idx = {0: 0}
+        env.machine_operating_frac = {0: 0.0}
+
+        self.assertAlmostEqual(env.rul_from_operating_index(0, 0.0), 1.0)
+        self.assertAlmostEqual(env._peek_rul(0), 1.0)
 
     def test_true_rul_tail_can_be_disabled_for_plateau_ablation(self):
         cfg = SimConfig()
