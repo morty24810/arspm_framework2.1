@@ -3,6 +3,7 @@ import math, random
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.distributions import Categorical
 
 from .rl import MLP, ReplayBuffer, ddqn_update
 
@@ -151,3 +152,133 @@ class THDQNAgent:
             self.q_high_t.load_state_dict(self.q_high.state_dict())
             self.q_low_t.load_state_dict(self.q_low.state_dict())
         return losses if losses else None
+
+
+class PPOSchedulerAgent:
+    """
+    Flat PPO scheduler:
+    - choose dispatch rule r in {0..5}
+    - no explicit high-level goal head
+    """
+    def __init__(self, state_dim: int, cfg, rng: random.Random, device):
+        self.cfg = cfg
+        self.rng = rng
+        self.device = device
+        self.state_dim = int(state_dim)
+        self.actor = MLP(self.state_dim, 6).to(device)
+        self.critic = MLP(self.state_dim, 1).to(device)
+        self.opt = torch.optim.Adam(
+            list(self.actor.parameters()) + list(self.critic.parameters()),
+            lr=float(getattr(cfg, "PPO_LR", 3e-4)),
+        )
+        self.steps = 0
+        self._rollout = []
+
+    def _match_state_dim(self, s: np.ndarray) -> np.ndarray:
+        arr = np.asarray(s, dtype=np.float32)
+        if arr.shape[0] == self.state_dim:
+            return arr
+        if arr.shape[0] > self.state_dim:
+            return arr[:self.state_dim]
+        padded = np.zeros(self.state_dim, dtype=np.float32)
+        padded[:arr.shape[0]] = arr
+        return padded
+
+    def act_with_info(self, s: np.ndarray, explore: bool = True):
+        s = self._match_state_dim(s)
+        self.steps += 1
+        with torch.no_grad():
+            x = torch.tensor(s[None], dtype=torch.float32, device=self.device)
+            logits = self.actor(x)
+            value = float(self.critic(x).squeeze(1).item())
+            dist = Categorical(logits=logits)
+            if explore:
+                action = int(dist.sample().item())
+            else:
+                action = int(torch.argmax(logits, dim=1).item())
+            logprob = float(dist.log_prob(torch.tensor(action, device=self.device)).item())
+        return None, action, logprob, value
+
+    def act(self, s: np.ndarray, explore: bool = True):
+        goal, action, _, _ = self.act_with_info(s, explore=explore)
+        return goal, action
+
+    def store(self, state: np.ndarray, action: int, logprob: float, reward: float, value: float, done: float):
+        self._rollout.append({
+            "state": self._match_state_dim(state),
+            "action": int(action),
+            "logprob": float(logprob),
+            "reward": float(reward),
+            "value": float(value),
+            "done": float(done),
+        })
+
+    def finish_episode(self):
+        if not self._rollout:
+            return None
+        gamma = float(getattr(self.cfg, "PPO_GAMMA", 0.99))
+        gae_lambda = float(getattr(self.cfg, "PPO_GAE_LAMBDA", 0.95))
+        clip_eps = float(getattr(self.cfg, "PPO_CLIP", 0.2))
+        entropy_coef = float(getattr(self.cfg, "PPO_ENTROPY_COEF", 0.01))
+        value_coef = float(getattr(self.cfg, "PPO_VALUE_COEF", 0.5))
+        ppo_epochs = max(1, int(getattr(self.cfg, "PPO_EPOCHS", 4)))
+        minibatch = max(1, int(getattr(self.cfg, "PPO_MINIBATCH", 64)))
+
+        rewards = [step["reward"] for step in self._rollout]
+        values = [step["value"] for step in self._rollout] + [0.0]
+        dones = [step["done"] for step in self._rollout]
+        advantages = [0.0] * len(self._rollout)
+        gae = 0.0
+        for t in reversed(range(len(self._rollout))):
+            delta = rewards[t] + gamma * values[t + 1] * (1.0 - dones[t]) - values[t]
+            gae = delta + gamma * gae_lambda * (1.0 - dones[t]) * gae
+            advantages[t] = gae
+        returns = [adv + val for adv, val in zip(advantages, values[:-1])]
+
+        states = torch.tensor(
+            np.stack([step["state"] for step in self._rollout]),
+            dtype=torch.float32,
+            device=self.device,
+        )
+        actions = torch.tensor([step["action"] for step in self._rollout], dtype=torch.long, device=self.device)
+        old_logprobs = torch.tensor([step["logprob"] for step in self._rollout], dtype=torch.float32, device=self.device)
+        returns_t = torch.tensor(returns, dtype=torch.float32, device=self.device)
+        adv_t = torch.tensor(advantages, dtype=torch.float32, device=self.device)
+        if adv_t.numel() > 1:
+            adv_t = (adv_t - adv_t.mean()) / (adv_t.std(unbiased=False) + 1e-8)
+
+        losses = []
+        indices = list(range(int(states.shape[0])))
+        for _ in range(ppo_epochs):
+            self.rng.shuffle(indices)
+            for start in range(0, len(indices), minibatch):
+                batch_idx = indices[start:start + minibatch]
+                b_states = states[batch_idx]
+                b_actions = actions[batch_idx]
+                b_old_logprobs = old_logprobs[batch_idx]
+                b_returns = returns_t[batch_idx]
+                b_adv = adv_t[batch_idx]
+
+                logits = self.actor(b_states)
+                dist = Categorical(logits=logits)
+                new_logprobs = dist.log_prob(b_actions)
+                entropy = dist.entropy().mean()
+                values_pred = self.critic(b_states).squeeze(1)
+
+                ratio = torch.exp(new_logprobs - b_old_logprobs)
+                surr1 = ratio * b_adv
+                surr2 = torch.clamp(ratio, 1.0 - clip_eps, 1.0 + clip_eps) * b_adv
+                actor_loss = -torch.min(surr1, surr2).mean()
+                critic_loss = torch.mean((b_returns - values_pred) ** 2)
+                loss = actor_loss + value_coef * critic_loss - entropy_coef * entropy
+
+                self.opt.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(list(self.actor.parameters()) + list(self.critic.parameters()), 1.0)
+                self.opt.step()
+                losses.append(float(loss.item()))
+
+        self._rollout.clear()
+        if not losses:
+            return None
+        return {"ppo_loss": float(np.mean(losses))}

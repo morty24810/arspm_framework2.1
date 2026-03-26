@@ -11,7 +11,7 @@ import torch
 
 from config import SimConfig
 from src.utils import set_seed
-from src.agents import MaintenanceAgentDDQN, THDQNAgent
+from src.agents import MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
 from src.pomcp import POMCPPlanner
 from src.compare import compare_mode_results, write_mode_comparison_outputs
 from checkpointing import load_checkpoint, load_maintenance_only
@@ -75,7 +75,10 @@ def make_maint_agent(cfg: SimConfig, seed: int, device: torch.device) -> Mainten
     return MaintenanceAgentDDQN(state_dim=17, cfg=cfg, rng=random.Random(seed), device=device)
 
 
-def make_sched_agent(cfg: SimConfig, seed: int, device: torch.device, state_dim: int = 14) -> THDQNAgent:
+def make_sched_agent(cfg: SimConfig, seed: int, device: torch.device, state_dim: int = 14):
+    scheduler_mode = str(getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
+    if scheduler_mode == "PPO":
+        return PPOSchedulerAgent(state_dim=int(state_dim), cfg=cfg, rng=random.Random(seed), device=device)
     return THDQNAgent(state_dim=int(state_dim), cfg=cfg, rng=random.Random(seed), device=device)
 
 
@@ -88,15 +91,33 @@ def build_infer_route_result(metrics: Dict[str, Any], env: Any, overdue_stats: D
         "policy_label": policy_label,
         "decision_log": list(getattr(env, "last_decision_log", [])),
         "maint_mode_tag": maint_mode_tag,
+        "scheduler_mode": str(getattr(env, "last_scheduler_mode", "THDQN")).upper(),
+        "scheduler_mode_tag": f"sched_{str(getattr(env, 'last_scheduler_mode', 'THDQN')).lower()}",
     }
 
 
 def infer_scheduler_state_dim(ckpt_path: Path, map_location: torch.device) -> int:
     ckpt = torch.load(str(ckpt_path), map_location=map_location)
-    weight = ckpt.get("models", {}).get("high_q", {}).get("net.0.weight")
+    models = ckpt.get("models", {})
+    weight = models.get("high_q", {}).get("net.0.weight")
+    if hasattr(weight, "shape") and len(weight.shape) >= 2:
+        return int(weight.shape[1])
+    weight = models.get("sched_actor", {}).get("net.0.weight")
     if hasattr(weight, "shape") and len(weight.shape) >= 2:
         return int(weight.shape[1])
     return 14
+
+
+def infer_scheduler_mode(ckpt_path: Path, map_location: torch.device) -> str:
+    ckpt = torch.load(str(ckpt_path), map_location=map_location)
+    meta_cfg = ckpt.get("meta", {}).get("config", {}) or {}
+    scheduler_mode = str(meta_cfg.get("SCHEDULER_MODE", "")).upper()
+    if scheduler_mode in ("THDQN", "PPO"):
+        return scheduler_mode
+    models = ckpt.get("models", {})
+    if "sched_actor" in models or "sched_critic" in models:
+        return "PPO"
+    return "THDQN"
 
 
 def main():
@@ -145,6 +166,7 @@ def main():
     _, degr, rul = build_degradation_and_rul(cfg, machine_curve_ids)
 
     maint_agent = make_maint_agent(cfg, cfg.SEED, device)
+    cfg.SCHEDULER_MODE = infer_scheduler_mode(ckpt_path, device)
     sched_state_dim = infer_scheduler_state_dim(ckpt_path, device)
     sched_agent = make_sched_agent(cfg, cfg.SEED, device, state_dim=sched_state_dim)
 
@@ -161,10 +183,14 @@ def main():
     observer_state = ckpt_states.get("observer")
     env_state = ckpt_states.get("env_state")
 
-    sched_agent.q_high.eval()
-    sched_agent.q_high_t.eval()
-    sched_agent.q_low.eval()
-    sched_agent.q_low_t.eval()
+    if isinstance(sched_agent, THDQNAgent):
+        sched_agent.q_high.eval()
+        sched_agent.q_high_t.eval()
+        sched_agent.q_low.eval()
+        sched_agent.q_low_t.eval()
+    else:
+        sched_agent.actor.eval()
+        sched_agent.critic.eval()
     maint_agent.q.eval()
     maint_agent.qt.eval()
 
@@ -277,6 +303,8 @@ def main():
                     "policy_label": policy_label,
                     "maint_mode": str(maint_mode),
                     "maint_mode_tag": maint_mode_tag,
+                    "scheduler_mode": str(cfg_eval.SCHEDULER_MODE).upper(),
+                    "scheduler_mode_tag": f"sched_{str(cfg_eval.SCHEDULER_MODE).lower()}",
                     "enforce_region_policy": int(enforce_region),
                     "hx": float(cfg_eval.Hx),
                     "hy": float(cfg_eval.Hy),

@@ -1,11 +1,14 @@
 import random
+import tempfile
 import unittest
 from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import torch
 
 from config import SimConfig
+from checkpointing import CheckpointManager, load_checkpoint
 from infer_demo import build_infer_route_result
 from run_experiment import (
     _sync_idle_after_maintenance,
@@ -14,7 +17,8 @@ from run_experiment import (
     maintenance_reward,
     select_maintenance_action,
 )
-from src.compare import compare_mode_results
+from src.agents import PPOSchedulerAgent
+from src.compare import compare_mode_results, summarize_scheduling_strategy
 from src.env import EventDrivenShopEnv
 
 
@@ -82,6 +86,16 @@ class _CompareEnvStub:
         self.timeline_ops = [(0, 0.0, makespan - 1.0, 0, 0, "DONE")]
         self.timeline_maint = [(0, makespan - 1.0, makespan, "CM")]
         self.last_decision_log = []
+
+
+class _ObserverStub:
+    def __init__(self):
+        self.arrivals = []
+        self.op_times = []
+
+    def reset(self):
+        self.arrivals.clear()
+        self.op_times.clear()
 
 
 class _ImGainEnvStub(_RolloutEnvStub):
@@ -408,6 +422,39 @@ class MergeRegressionTests(unittest.TestCase):
 
         vals = cache.cache[0]
         self.assertTrue(np.allclose(vals, np.array([0.9, 0.9, 0.7, 0.7, 0.4], dtype=np.float32)))
+
+    def test_ppo_scheduler_checkpoint_roundtrip(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "PPO"
+        agent = PPOSchedulerAgent(state_dim=14, cfg=cfg, rng=random.Random(0), device=torch.device("cpu"))
+        with torch.no_grad():
+            for p in agent.actor.parameters():
+                p.add_(0.123)
+            for p in agent.critic.parameters():
+                p.add_(0.321)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_mgr = CheckpointManager(tmpdir, cfg, torch.device("cpu"))
+            ckpt_mgr.save_latest(agent, None, _ObserverStub(), None, {"tard": 1.0, "maint": 2.0, "total": 3.0})
+            loaded = PPOSchedulerAgent(state_dim=14, cfg=cfg, rng=random.Random(1), device=torch.device("cpu"))
+            load_checkpoint(str(ckpt_mgr.latest_path), sched_agent=loaded, maint_agent=None, observer=None, map_location="cpu")
+
+            actor_key = next(iter(agent.actor.state_dict().keys()))
+            critic_key = next(iter(agent.critic.state_dict().keys()))
+            self.assertTrue(torch.allclose(agent.actor.state_dict()[actor_key], loaded.actor.state_dict()[actor_key]))
+            self.assertTrue(torch.allclose(agent.critic.state_dict()[critic_key], loaded.critic.state_dict()[critic_key]))
+
+    def test_scheduler_summary_tolerates_goal_less_ppo_logs(self):
+        decision_log = [
+            {"event": "scheduling", "goal": None, "rule": 3, "dispatched": True},
+            {"event": "scheduling", "goal": None, "rule": 3, "dispatched": False},
+            {"event": "scheduling", "goal": None, "rule": 1, "dispatched": True},
+        ]
+        summary = summarize_scheduling_strategy(decision_log, env=None)
+
+        self.assertEqual(summary["goal_counts"], {"0": 0, "1": 0, "2": 0, "3": 0})
+        self.assertEqual(summary["rule_counts"]["3"], 2)
+        self.assertEqual(summary["dispatch_count"], 2)
 
 
 if __name__ == "__main__":

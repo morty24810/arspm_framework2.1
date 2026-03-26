@@ -224,10 +224,25 @@ class SimConfig:
     MAX_EVENTS: int = 20000
     TARGET_MAINT_DECISIONS_PER_MACHINE: int = 6
 
+    # scheduler algorithm
+    SCHEDULER_MODE: str = "THDQN"
+    TRAIN_SCHEDULER_MODES: tuple = ("THDQN",)
+    PPO_SCHED_REWARD_GOAL: int = 2
+    PPO_LR: float = 3e-4
+    PPO_GAMMA: float = 0.99
+    PPO_GAE_LAMBDA: float = 0.95
+    PPO_CLIP: float = 0.2
+    PPO_ENTROPY_COEF: float = 0.01
+    PPO_VALUE_COEF: float = 0.5
+    PPO_EPOCHS: int = 4
+    PPO_MINIBATCH: int = 64
+    PPO_ROLLOUT_STEPS: int = 0
+
     # paired experiment runner
     EXPERIMENT_SEEDS: tuple = (42,)
-    TRAIN_MAINT_MODES: tuple = ("DQN", "POMCP")
+    TRAIN_MAINT_MODES: tuple = ("DQN",)
     TRAIN_POLICY_ROUTES: tuple = ("region_on", "region_off")
+    TRAIN_SCHEDULER_MODES: tuple = ("PPO",)
     SCENARIO_LOCK_SCOPE: str = "full"
     ENABLE_OOD_DIAGNOSTIC_EVAL: bool = False
     ENABLE_MAINT_ONLY_COMPARE: bool = False

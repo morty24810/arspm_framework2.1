@@ -427,8 +427,12 @@ def plot_rule_vs_features(rule_log, out_path: str, policy_label: Optional[str] =
     if not rule_log:
         return
     S = np.stack([x[1] for x in rule_log])
-    goals = np.array([x[2] for x in rule_log], dtype=np.int64)
     rules = np.array([x[3] for x in rule_log], dtype=np.int64)
+    raw_goals = [x[2] for x in rule_log]
+    valid_goal_mask = np.array(
+        [isinstance(g, (int, np.integer)) and 0 <= int(g) <= 3 for g in raw_goals],
+        dtype=bool,
+    )
     arrivals = S[:, 3]
     avg_slack = S[:, 6]
     out_path = Path(out_path)
@@ -461,22 +465,24 @@ def plot_rule_vs_features(rule_log, out_path: str, policy_label: Optional[str] =
         legend_title="Dispatch Rule",
     )
 
-    suffix = out_path.suffix or ".png"
-    goal_name = "goal_vs_features" + out_path.name[len("rule_vs_features"):] if out_path.name.startswith("rule_vs_features") else f"goal_vs_features{suffix}"
-    goal_path = out_path.with_name(goal_name)
-    _plot_categorical_scatter(
-        arrivals,
-        avg_slack,
-        goals,
-        goal_colors,
-        {i: f"Goal {i}" for i in range(4)},
-        goal_path,
-        xlabel="Arrivals in Window",
-        ylabel="Average Slack",
-        title="Scheduler Goal by Load and Slack",
-        policy_label=policy_label,
-        legend_title="Goal",
-    )
+    if np.any(valid_goal_mask):
+        goals = np.array([int(raw_goals[i]) for i in range(len(raw_goals)) if valid_goal_mask[i]], dtype=np.int64)
+        suffix = out_path.suffix or ".png"
+        goal_name = "goal_vs_features" + out_path.name[len("rule_vs_features"):] if out_path.name.startswith("rule_vs_features") else f"goal_vs_features{suffix}"
+        goal_path = out_path.with_name(goal_name)
+        _plot_categorical_scatter(
+            arrivals[valid_goal_mask],
+            avg_slack[valid_goal_mask],
+            goals,
+            goal_colors,
+            {i: f"Goal {i}" for i in range(4)},
+            goal_path,
+            xlabel="Arrivals in Window",
+            ylabel="Average Slack",
+            title="Scheduler Goal by Load and Slack",
+            policy_label=policy_label,
+            legend_title="Goal",
+        )
 
 
 def plot_training_curves(tard_list, maint_list, out_path: str, smooth_window: int = 10, stop_ep: Optional[int] = None):

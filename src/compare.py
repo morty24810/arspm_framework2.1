@@ -193,6 +193,8 @@ def compare_mode_results(
 
     primary_schedule_summary = summarize_scheduling_strategy(primary_result.get("decision_log", []), env=primary_result.get("env"))
     compare_schedule_summary = summarize_scheduling_strategy(compare_result.get("decision_log", []), env=compare_result.get("env"))
+    primary_scheduler_mode = str(primary_result.get("scheduler_mode", getattr(primary_result.get("env"), "last_scheduler_mode", "THDQN"))).upper()
+    compare_scheduler_mode = str(compare_result.get("scheduler_mode", getattr(compare_result.get("env"), "last_scheduler_mode", "THDQN"))).upper()
     primary_metrics = primary_result["metrics"]
     compare_metrics = compare_result["metrics"]
     primary_overdue = primary_result["overdue"]
@@ -205,6 +207,8 @@ def compare_mode_results(
         "train_policy_tag": train_policy_tag,
         "eval_policy_tag": eval_policy_tag,
         "scheduler_anchor": scheduler_anchor,
+        "primary_scheduler_mode": primary_scheduler_mode,
+        "compare_scheduler_mode": compare_scheduler_mode,
         "primary_action_counts": summarize_action_counts(primary_rows, key="kind", values=["DN", "IM", "CM"]),
         "compare_action_counts": summarize_action_counts(compare_rows, key="kind", values=["DN", "IM", "CM"]),
         "decision_union_count": int(union_count),
@@ -305,6 +309,8 @@ def write_mode_comparison_outputs(
         "train_policy_tag": summary.get("train_policy_tag"),
         "eval_policy_tag": summary.get("eval_policy_tag"),
         "scheduler_anchor": summary.get("scheduler_anchor"),
+        "primary_scheduler_mode": summary.get("primary_scheduler_mode"),
+        "compare_scheduler_mode": summary.get("compare_scheduler_mode"),
         "divergence_count": summary.get("divergence_count"),
         "decision_union_count": summary.get("decision_union_count"),
         "divergence_rate": summary.get("divergence_rate"),

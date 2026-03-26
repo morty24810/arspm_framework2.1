@@ -17,7 +17,7 @@ from src.utils import set_seed
 from src.degradation import DegradationReplay
 from src.rul_predictor import RULPredictorWrapper
 from src.env import EventDrivenShopEnv, EpisodeScenario, JobTemplate, OperationTemplate
-from src.agents import MaintenanceAgentDDQN, THDQNAgent
+from src.agents import MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
 from src.compare import (
     compare_mode_results,
     write_mode_comparison_outputs,
@@ -96,8 +96,35 @@ def build_maint_mode_tag(maint_mode: str) -> str:
 def build_maint_mode_label(maint_mode: str) -> str:
     return f"Maintenance: {str(maint_mode).upper()}"
 
-def build_policy_context_label(cfg: SimConfig, enforce_region: bool, maint_mode: str) -> str:
-    return f"{build_policy_label(cfg, enforce_region)} | {build_maint_mode_label(maint_mode)}"
+def build_scheduler_mode_tag(scheduler_mode: str) -> str:
+    return f"sched_{str(scheduler_mode).lower()}"
+
+def build_scheduler_mode_label(scheduler_mode: str) -> str:
+    return f"Scheduler: {str(scheduler_mode).upper()}"
+
+def build_policy_context_label(cfg: SimConfig, enforce_region: bool, maint_mode: str,
+                               scheduler_mode: Optional[str] = None) -> str:
+    sched_mode = scheduler_mode or str(getattr(cfg, "SCHEDULER_MODE", "THDQN"))
+    return (
+        f"{build_policy_label(cfg, enforce_region)} | "
+        f"{build_scheduler_mode_label(sched_mode)} | "
+        f"{build_maint_mode_label(maint_mode)}"
+    )
+
+def scheduler_has_goal_head(sched_agent) -> bool:
+    return isinstance(sched_agent, THDQNAgent)
+
+def scheduler_reward_goal(cfg: SimConfig, goal: Optional[int]) -> int:
+    if goal is not None:
+        return int(goal)
+    return int(getattr(cfg, "PPO_SCHED_REWARD_GOAL", 2))
+
+def scheduler_act(sched_agent, state: np.ndarray, *, explore: bool):
+    if isinstance(sched_agent, PPOSchedulerAgent):
+        goal, rule, logprob, value = sched_agent.act_with_info(state, explore=explore)
+        return goal, int(rule), {"logprob": float(logprob), "value": float(value)}
+    goal, rule = sched_agent.act(state, explore=explore)
+    return int(goal), int(rule), {}
 
 def allowed_actions_by_region(h_obs: float, cfg: SimConfig, enforce_region: bool) -> List[int]:
     if not enforce_region:
@@ -958,8 +985,8 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                 S = env.get_global_features()
                 avg_slack, _, _, slack_pressure = env.compute_slack_stats()
                 _, lambda_hat, _, _, ddt_hat, _ = env.get_obs_estimates(avg_slack, slack_pressure)
-                g, rule = sched_agent.act(S, explore=False)
-                env.rule_log.append((env.time, S.copy(), int(g), int(rule)))
+                g, rule, _ = scheduler_act(sched_agent, S, explore=False)
+                env.rule_log.append((env.time, S.copy(), None if g is None else int(g), int(rule)))
                 dispatched = env.dispatch(rule)
                 if decision_log is not None:
                     op_info = None
@@ -994,7 +1021,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         "h_end_true": dispatch_info.get("h_end_true"),
                         "hard_breakdown_threshold": float(getattr(cfg, "HARD_BREAKDOWN_RUL", 0.05)),
                         "state": S.tolist(),
-                        "goal": int(g),
+                        "goal": None if g is None else int(g),
                         "rule": int(rule),
                         "dispatched": bool(dispatched),
                         "op": op_info,
@@ -1025,6 +1052,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
         env.last_decision_log = list(decision_log or [])
         env.last_policy_label = policy_label
         env.last_maint_mode = str(maint_mode).upper()
+        env.last_scheduler_mode = str(getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
 
         if generate_outputs:
             outdir = Path(outdir or "outputs")
@@ -1224,7 +1252,15 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
     fallback_action = 2 if h_obs < cfg.Hy else 0
     return int(enforce_action_by_region(fallback_action, h_obs, cfg, enforce_region))
 
-def _make_scheduler_agent(cfg: SimConfig, seed: int, device) -> THDQNAgent:
+def _make_scheduler_agent(cfg: SimConfig, seed: int, device):
+    scheduler_mode = str(getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
+    if scheduler_mode == "PPO":
+        return PPOSchedulerAgent(
+            state_dim=14,
+            cfg=cfg,
+            rng=make_rng(seed, "ppo", "sched_agent"),
+            device=device,
+        )
     return THDQNAgent(state_dim=14, cfg=cfg, rng=make_rng(seed, "sched_agent"), device=device)
 
 
@@ -1243,6 +1279,8 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "seed": int(seed),
         "maint_mode": str(mode),
         "maint_mode_tag": build_maint_mode_tag(mode),
+        "scheduler_mode": str(final_result.get("scheduler_mode", "THDQN")).upper(),
+        "scheduler_mode_tag": build_scheduler_mode_tag(final_result.get("scheduler_mode", "THDQN")),
         "policy_tag": eval_policy_tag,
         "train_policy_tag": train_policy_tag,
         "eval_policy_tag": eval_policy_tag,
@@ -1277,20 +1315,31 @@ def _calc_mean_std(values: List[float]) -> Dict[str, float]:
 
 
 def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
+                                    scheduler_mode: str,
                                     result_rows: List[Dict[str, Any]],
                                     compare_rows: List[Dict[str, Any]]):
     outdir.mkdir(parents=True, exist_ok=True)
     policy_rows = [
         row for row in result_rows
         if row["policy_tag"] == policy_tag and row.get("compare_type") == "full_system"
+        and str(row.get("scheduler_mode", "THDQN")).upper() == str(scheduler_mode).upper()
     ]
     compare_policy_rows = [
         row for row in compare_rows
         if row["policy_tag"] == policy_tag and row.get("compare_type") == "full_system"
+        and str(row.get("scheduler_mode", "THDQN")).upper() == str(scheduler_mode).upper()
     ]
     if not policy_rows and not compare_policy_rows:
         return
-    payload: Dict[str, Any] = {"policy_tag": policy_tag, "modes": {}, "delta_pomcp_minus_dqn": {}}
+    if not compare_policy_rows:
+        return
+    payload: Dict[str, Any] = {
+        "policy_tag": policy_tag,
+        "scheduler_mode": str(scheduler_mode).upper(),
+        "scheduler_mode_tag": build_scheduler_mode_tag(scheduler_mode),
+        "modes": {},
+        "delta_pomcp_minus_dqn": {},
+    }
     csv_rows: List[Dict[str, Any]] = []
     metrics = [
         "tard", "maint", "total", "overdue_ratio_ops",
@@ -1326,8 +1375,8 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
         delta_summary[f"{out_metric}_std"] = stats["std"]
     payload["delta_pomcp_minus_dqn"] = delta_summary
     csv_rows.append(delta_summary)
-    json_path = outdir / f"aggregate_compare_{policy_tag}.json"
-    csv_path = outdir / f"aggregate_compare_{policy_tag}.csv"
+    json_path = outdir / f"aggregate_compare_{policy_tag}_{build_scheduler_mode_tag(scheduler_mode)}.json"
+    csv_path = outdir / f"aggregate_compare_{policy_tag}_{build_scheduler_mode_tag(scheduler_mode)}.csv"
     with json_path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=True, indent=2)
     fieldnames = sorted({key for row in csv_rows for key in row.keys()})
@@ -1352,6 +1401,8 @@ def _make_eval_result(metrics: Dict[str, Any], env, overdue_stats: Dict[str, Any
         "eval_policy_tag": eval_policy_tag,
         "compare_type": compare_type,
         "scheduler_anchor": scheduler_anchor,
+        "scheduler_mode": str(getattr(env, "last_scheduler_mode", "THDQN")).upper(),
+        "scheduler_mode_tag": build_scheduler_mode_tag(getattr(env, "last_scheduler_mode", "THDQN")),
         "decision_log": list(getattr(env, "last_decision_log", [])),
     }
 
@@ -1438,6 +1489,7 @@ def evaluate_maint_only_results(base_cfg: SimConfig, seed: int, degr: Degradatio
 
 def train_one_mode(
     base_cfg: SimConfig,
+    scheduler_mode: str,
     mode: str,
     seed: int,
     device,
@@ -1452,10 +1504,11 @@ def train_one_mode(
 ) -> Dict[str, Any]:
     cfg = copy.deepcopy(base_cfg)
     cfg.SEED = int(seed)
+    cfg.SCHEDULER_MODE = str(scheduler_mode).upper()
     cfg.MAINT_MODE = str(mode).upper()
     cfg.CKPT_DIR = str(ckpt_dir)
     cfg.ENFORCE_REGION_POLICY = bool(train_enforce_region)
-    set_seed(derive_seed(seed, train_policy_tag, mode, "global_init"))
+    set_seed(derive_seed(seed, train_policy_tag, cfg.SCHEDULER_MODE, mode, "global_init"))
 
     sched_agent = _make_scheduler_agent(cfg, seed, device)
     maint_agent = _make_maint_agent(cfg, seed, device) if cfg.MAINT_MODE == "DQN" else None
@@ -1475,9 +1528,9 @@ def train_one_mode(
     for ep, scenario in enumerate(scenario_bank.train_scenarios):
         ep_num = ep + 1
         cfg.BASE_DEGRADATION_RATE = float(scenario.degradation_rate)
-        env_breakdown_rng = make_rng(seed, train_policy_tag, mode, "train", ep_num, "env_breakdown")
-        env_obs_rng = make_rng(seed, train_policy_tag, mode, "train", ep_num, "env_obs")
-        belief_rng = make_rng(seed, train_policy_tag, mode, "train", ep_num, "belief")
+        env_breakdown_rng = make_rng(seed, train_policy_tag, cfg.SCHEDULER_MODE, mode, "train", ep_num, "env_breakdown")
+        env_obs_rng = make_rng(seed, train_policy_tag, cfg.SCHEDULER_MODE, mode, "train", ep_num, "env_obs")
+        belief_rng = make_rng(seed, train_policy_tag, cfg.SCHEDULER_MODE, mode, "train", ep_num, "belief")
         env = EventDrivenShopEnv(cfg, env_breakdown_rng, degr, rul, breakdown_rng=env_breakdown_rng, obs_rng=env_obs_rng)
         env.reset(machine_curve_ids=scenario.machine_curve_ids, scenario=scenario)
         episode_pomcp = (
@@ -1777,18 +1830,24 @@ def train_one_mode(
                 S = env.get_global_features()
                 slack_samples.append(float(S[6]))
                 pressure_samples.append(float(S[8]))
-                g, rule = sched_agent.act(S, explore=True)
-                env.rule_log.append((env.time, S.copy(), int(g), int(rule)))
+                g, rule, sched_info = scheduler_act(sched_agent, S, explore=True)
+                env.rule_log.append((env.time, S.copy(), None if g is None else int(g), int(rule)))
                 dispatched = env.dispatch(rule)
                 tard, maint = env.compute_costs()
-                r_s = scheduling_reward(g, tard, maint, prev_tard, prev_maint)
+                r_s = scheduling_reward(scheduler_reward_goal(cfg, g), tard, maint, prev_tard, prev_maint)
                 prev_tard, prev_maint = tard, maint
                 S2 = env.get_global_features()
-                sched_agent.buf_h.add(S, g, r_s, S2, 0.0)
-                sg = np.concatenate([S, sched_agent._onehot_goal(g)], axis=0).astype(np.float32)
-                sg2 = np.concatenate([S2, sched_agent._onehot_goal(g)], axis=0).astype(np.float32)
-                sched_agent.buf_l.add(sg, rule, r_s, sg2, 0.0)
-                sched_agent.learn()
+                if scheduler_has_goal_head(sched_agent):
+                    sched_agent.buf_h.add(S, int(g), r_s, S2, 0.0)
+                    sg = np.concatenate([S, sched_agent._onehot_goal(int(g))], axis=0).astype(np.float32)
+                    sg2 = np.concatenate([S2, sched_agent._onehot_goal(int(g))], axis=0).astype(np.float32)
+                    sched_agent.buf_l.add(sg, rule, r_s, sg2, 0.0)
+                    sched_agent.learn()
+                else:
+                    sched_agent.store(S, rule, sched_info["logprob"], r_s, sched_info["value"], 0.0)
+
+        if isinstance(sched_agent, PPOSchedulerAgent):
+            sched_agent.finish_episode()
 
         tard, maint = env.compute_costs()
         ep_tard.append(float(tard))
@@ -1798,7 +1857,11 @@ def train_one_mode(
         ep_im_rate.append(maint_counts.get(1, 0) / total_maint)
         ep_cm_rate.append(maint_counts.get(2, 0) / total_maint)
         ep_avg_im.append(np.mean([m.total_im_count for m in env.machines]))
-        print(f"[seed {seed}][{train_policy_tag}][{build_maint_mode_tag(mode)}] ep {ep_num}/{cfg.TRAIN_EPISODES} tard={tard:.1f} maint={maint:.1f} events={len(env.timeline_ops)}")
+        print(
+            f"[seed {seed}][{train_policy_tag}][{build_scheduler_mode_tag(cfg.SCHEDULER_MODE)}]"
+            f"[{build_maint_mode_tag(mode)}] ep {ep_num}/{cfg.TRAIN_EPISODES} "
+            f"tard={tard:.1f} maint={maint:.1f} events={len(env.timeline_ops)}"
+        )
 
         if cfg.DIAG_EVERY > 0 and ep_num % cfg.DIAG_EVERY == 0:
             if slack_samples:
@@ -2082,6 +2145,8 @@ def train_one_mode(
 
     return {
         "seed": int(seed),
+        "scheduler_mode": cfg.SCHEDULER_MODE,
+        "scheduler_mode_tag": build_scheduler_mode_tag(cfg.SCHEDULER_MODE),
         "maint_mode": cfg.MAINT_MODE,
         "maint_mode_tag": maint_mode_tag,
         "train_policy_tag": train_policy_tag,
@@ -2118,6 +2183,7 @@ def main():
 
     experiment_seeds = [int(s) for s in getattr(cfg, "EXPERIMENT_SEEDS", (cfg.SEED,))]
     maint_modes = [str(m).upper() for m in getattr(cfg, "TRAIN_MAINT_MODES", ("DQN", "POMCP"))]
+    scheduler_modes = [str(m).upper() for m in getattr(cfg, "TRAIN_SCHEDULER_MODES", ("THDQN",))]
     route_specs = [resolve_train_policy_route(route_name, cfg) for route_name in getattr(cfg, "TRAIN_POLICY_ROUTES", ("region_on", "region_off"))]
     all_result_rows: List[Dict[str, Any]] = []
     all_compare_rows: List[Dict[str, Any]] = []
@@ -2129,7 +2195,7 @@ def main():
         scenario_bank = build_scenario_bank(seed, cfg, degr, machine_curve_ids=base_machine_curve_ids)
         seed_root = output_root / f"seed_{seed:04d}"
         seed_root.mkdir(parents=True, exist_ok=True)
-        route_results: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        route_results: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {}
         route_maint_only_results: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
         for route_name, train_enforce_region, train_policy_tag, train_policy_label in route_specs:
@@ -2137,117 +2203,167 @@ def main():
             route_root.mkdir(parents=True, exist_ok=True)
             route_results[train_policy_tag] = {}
 
-            for mode in maint_modes:
-                mode_tag = build_maint_mode_tag(mode)
-                mode_outdir = route_root / mode_tag
-                mode_ckpt_dir = ckpt_root / f"seed_{seed:04d}" / f"train_{train_policy_tag}" / mode_tag
-                mode_outdir.mkdir(parents=True, exist_ok=True)
-                mode_ckpt_dir.mkdir(parents=True, exist_ok=True)
-                run_result = train_one_mode(
-                    cfg,
-                    mode,
-                    seed,
-                    device,
-                    degr,
-                    rul,
-                    scenario_bank,
-                    mode_outdir,
-                    mode_ckpt_dir,
-                    ts,
-                    train_enforce_region=train_enforce_region,
-                    train_policy_tag=train_policy_tag,
-                )
-                route_results[train_policy_tag][mode] = run_result
-                all_result_rows.append(
-                    _build_run_record(
-                        seed,
-                        mode,
-                        train_policy_tag,
-                        train_policy_tag,
-                        run_result["official_result"],
-                        compare_type="full_system",
-                        scheduler_anchor="none",
-                    )
-                )
+            for scheduler_mode in scheduler_modes:
+                scheduler_tag = build_scheduler_mode_tag(scheduler_mode)
+                scheduler_root = route_root / scheduler_tag
+                scheduler_root.mkdir(parents=True, exist_ok=True)
+                route_results[train_policy_tag][scheduler_mode] = {}
+                active_maint_modes = ["DQN"] if scheduler_mode == "PPO" else list(maint_modes)
 
-            compare_dir = route_root / "compare"
-            compare_dir.mkdir(parents=True, exist_ok=True)
-            if "DQN" in route_results[train_policy_tag] and "POMCP" in route_results[train_policy_tag]:
-                full_compare_summary, full_compare_rows = compare_mode_results(
-                    route_results[train_policy_tag]["DQN"]["official_result"],
-                    route_results[train_policy_tag]["POMCP"]["official_result"],
-                    "DQN",
-                    "POMCP",
-                    compare_type="full_system",
-                    train_policy_tag=train_policy_tag,
-                    eval_policy_tag=train_policy_tag,
-                    scheduler_anchor="none",
-                )
-                full_compare_summary = _finalize_compare_summary(
-                    full_compare_summary,
-                    seed=int(seed),
-                    policy_tag=train_policy_tag,
-                    policy_label=train_policy_label,
-                )
-                all_compare_rows.append(dict(full_compare_summary))
-                write_mode_comparison_outputs(
-                    compare_dir,
-                    f"compare_full_system_dqn_vs_pomcp_{train_policy_tag}",
-                    full_compare_summary,
-                    full_compare_rows,
-                    policy_label=f"{train_policy_label} | Compare: full_system | Maintenance: DQN vs POMCP",
-                )
-
-                if enable_maint_only_compare:
-                    maint_only_results = evaluate_maint_only_results(
+                for mode in active_maint_modes:
+                    mode_tag = build_maint_mode_tag(mode)
+                    mode_outdir = scheduler_root / mode_tag
+                    mode_ckpt_dir = ckpt_root / f"seed_{seed:04d}" / f"train_{train_policy_tag}" / scheduler_tag / mode_tag
+                    mode_outdir.mkdir(parents=True, exist_ok=True)
+                    mode_ckpt_dir.mkdir(parents=True, exist_ok=True)
+                    run_result = train_one_mode(
                         cfg,
+                        scheduler_mode,
+                        mode,
                         seed,
+                        device,
                         degr,
                         rul,
                         scenario_bank,
-                        train_policy_tag,
-                        train_enforce_region,
-                        route_results[train_policy_tag]["DQN"]["sched_agent"],
-                        route_results[train_policy_tag]["DQN"]["maint_agent"],
+                        mode_outdir,
+                        mode_ckpt_dir,
+                        ts,
+                        train_enforce_region=train_enforce_region,
+                        train_policy_tag=train_policy_tag,
                     )
-                    route_maint_only_results[train_policy_tag] = maint_only_results
-                    for eval_mode, result in maint_only_results.items():
-                        all_result_rows.append(
-                            _build_run_record(
-                                seed,
-                                eval_mode,
-                                train_policy_tag,
-                                train_policy_tag,
-                                result,
+                    route_results[train_policy_tag][scheduler_mode][mode] = run_result
+                    all_result_rows.append(
+                        _build_run_record(
+                            seed,
+                            mode,
+                            train_policy_tag,
+                            train_policy_tag,
+                            run_result["official_result"],
+                            compare_type="full_system",
+                            scheduler_anchor="none",
+                        )
+                    )
+
+                compare_dir = scheduler_root / "compare"
+                compare_dir.mkdir(parents=True, exist_ok=True)
+                if "DQN" in route_results[train_policy_tag][scheduler_mode] and "POMCP" in route_results[train_policy_tag][scheduler_mode]:
+                    full_compare_summary, full_compare_rows = compare_mode_results(
+                        route_results[train_policy_tag][scheduler_mode]["DQN"]["official_result"],
+                        route_results[train_policy_tag][scheduler_mode]["POMCP"]["official_result"],
+                        "DQN",
+                        "POMCP",
+                        compare_type="full_system",
+                        train_policy_tag=train_policy_tag,
+                        eval_policy_tag=train_policy_tag,
+                        scheduler_anchor=scheduler_mode,
+                    )
+                    full_compare_summary = _finalize_compare_summary(
+                        full_compare_summary,
+                        seed=int(seed),
+                        policy_tag=train_policy_tag,
+                        policy_label=train_policy_label,
+                        scheduler_mode=scheduler_mode,
+                        scheduler_mode_tag=scheduler_tag,
+                    )
+                    all_compare_rows.append(dict(full_compare_summary))
+                    write_mode_comparison_outputs(
+                        compare_dir,
+                        f"compare_full_system_dqn_vs_pomcp_{train_policy_tag}",
+                        full_compare_summary,
+                        full_compare_rows,
+                        policy_label=(
+                            f"{train_policy_label} | {build_scheduler_mode_label(scheduler_mode)} | "
+                            "Compare: full_system | Maintenance: DQN vs POMCP"
+                        ),
+                    )
+
+                    if enable_maint_only_compare and scheduler_mode == "THDQN":
+                        maint_only_results = evaluate_maint_only_results(
+                            cfg,
+                            seed,
+                            degr,
+                            rul,
+                            scenario_bank,
+                            train_policy_tag,
+                            train_enforce_region,
+                            route_results[train_policy_tag][scheduler_mode]["DQN"]["sched_agent"],
+                            route_results[train_policy_tag][scheduler_mode]["DQN"]["maint_agent"],
+                        )
+                        route_maint_only_results[train_policy_tag] = maint_only_results
+                        for eval_mode, result in maint_only_results.items():
+                            all_result_rows.append(
+                                _build_run_record(
+                                    seed,
+                                    eval_mode,
+                                    train_policy_tag,
+                                    train_policy_tag,
+                                    result,
+                                    compare_type="maint_only",
+                                    scheduler_anchor="DQN",
+                                )
+                            )
+                        if "DQN" in maint_only_results and "POMCP" in maint_only_results:
+                            maint_only_summary, maint_only_rows = compare_mode_results(
+                                maint_only_results["DQN"],
+                                maint_only_results["POMCP"],
+                                "DQN",
+                                "POMCP",
                                 compare_type="maint_only",
+                                train_policy_tag=train_policy_tag,
+                                eval_policy_tag=train_policy_tag,
                                 scheduler_anchor="DQN",
                             )
-                        )
-                    if "DQN" in maint_only_results and "POMCP" in maint_only_results:
-                        maint_only_summary, maint_only_rows = compare_mode_results(
-                            maint_only_results["DQN"],
-                            maint_only_results["POMCP"],
-                            "DQN",
-                            "POMCP",
-                            compare_type="maint_only",
-                            train_policy_tag=train_policy_tag,
-                            eval_policy_tag=train_policy_tag,
-                            scheduler_anchor="DQN",
-                        )
-                        maint_only_summary = _finalize_compare_summary(
-                            maint_only_summary,
-                            seed=int(seed),
-                            policy_tag=train_policy_tag,
-                            policy_label=train_policy_label,
-                        )
-                        all_compare_rows.append(dict(maint_only_summary))
-                        write_mode_comparison_outputs(
-                            compare_dir,
-                            f"compare_maint_only_anchor_dqn_{train_policy_tag}",
-                            maint_only_summary,
-                            maint_only_rows,
-                            policy_label=f"{train_policy_label} | Compare: maint_only | Scheduler anchor: DQN | Maintenance: DQN vs POMCP",
-                        )
+                            maint_only_summary = _finalize_compare_summary(
+                                maint_only_summary,
+                                seed=int(seed),
+                                policy_tag=train_policy_tag,
+                                policy_label=train_policy_label,
+                                scheduler_mode=scheduler_mode,
+                                scheduler_mode_tag=scheduler_tag,
+                            )
+                            all_compare_rows.append(dict(maint_only_summary))
+                            write_mode_comparison_outputs(
+                                compare_dir,
+                                f"compare_maint_only_anchor_dqn_{train_policy_tag}",
+                                maint_only_summary,
+                                maint_only_rows,
+                                policy_label=f"{train_policy_label} | Compare: maint_only | Scheduler anchor: DQN | Maintenance: DQN vs POMCP",
+                            )
+
+            if "THDQN" in route_results[train_policy_tag] and "PPO" in route_results[train_policy_tag]:
+                thdqn_run = route_results[train_policy_tag]["THDQN"].get("DQN")
+                ppo_run = route_results[train_policy_tag]["PPO"].get("DQN")
+                if thdqn_run is not None and ppo_run is not None:
+                    scheduler_compare_dir = route_root / "scheduler_compare"
+                    scheduler_compare_dir.mkdir(parents=True, exist_ok=True)
+                    scheduler_summary, scheduler_rows = compare_mode_results(
+                        thdqn_run["official_result"],
+                        ppo_run["official_result"],
+                        "THDQN",
+                        "PPO",
+                        compare_type="scheduler_full_system",
+                        train_policy_tag=train_policy_tag,
+                        eval_policy_tag=train_policy_tag,
+                        scheduler_anchor="DQN",
+                    )
+                    scheduler_summary = _finalize_compare_summary(
+                        scheduler_summary,
+                        seed=int(seed),
+                        policy_tag=train_policy_tag,
+                        policy_label=train_policy_label,
+                        maint_mode="DQN",
+                        maint_mode_tag=build_maint_mode_tag("DQN"),
+                        primary_scheduler_mode="THDQN",
+                        compare_scheduler_mode="PPO",
+                    )
+                    all_compare_rows.append(dict(scheduler_summary))
+                    write_mode_comparison_outputs(
+                        scheduler_compare_dir,
+                        f"compare_scheduler_thdqn_vs_ppo_{train_policy_tag}",
+                        scheduler_summary,
+                        scheduler_rows,
+                        policy_label=f"{train_policy_label} | Compare: full_system | Scheduler: THDQN vs PPO | Maintenance: DQN",
+                    )
 
         if len(route_specs) >= 2:
             constrained_tag = build_policy_tag(cfg, True)
@@ -2255,10 +2371,14 @@ def main():
             route_compare_dir = seed_root / "route_compare"
             route_compare_dir.mkdir(parents=True, exist_ok=True)
 
-            for mode in maint_modes:
-                constrained_run = route_results.get(constrained_tag, {}).get(mode)
-                unrestricted_run = route_results.get(unrestricted_tag, {}).get(mode)
-                if constrained_run is not None and unrestricted_run is not None:
+            for scheduler_mode in scheduler_modes:
+                scheduler_tag = build_scheduler_mode_tag(scheduler_mode)
+                active_maint_modes = ["DQN"] if scheduler_mode == "PPO" else list(maint_modes)
+                for mode in active_maint_modes:
+                    constrained_run = route_results.get(constrained_tag, {}).get(scheduler_mode, {}).get(mode)
+                    unrestricted_run = route_results.get(unrestricted_tag, {}).get(scheduler_mode, {}).get(mode)
+                    if constrained_run is None or unrestricted_run is None:
+                        continue
                     route_summary, route_rows = compare_mode_results(
                         constrained_run["official_result"],
                         unrestricted_run["official_result"],
@@ -2274,6 +2394,8 @@ def main():
                         seed=int(seed),
                         policy_tag=f"{constrained_tag}__to__{unrestricted_tag}",
                         policy_label="Route delta: unrestricted - constrained",
+                        scheduler_mode=scheduler_mode,
+                        scheduler_mode_tag=build_scheduler_mode_tag(scheduler_mode),
                         maint_mode=str(mode),
                         maint_mode_tag=build_maint_mode_tag(mode),
                         route_delta_direction="unrestricted_minus_constrained",
@@ -2281,13 +2403,13 @@ def main():
                     all_compare_rows.append(dict(route_summary))
                     write_mode_comparison_outputs(
                         route_compare_dir,
-                        f"route_compare_full_system_{build_maint_mode_tag(mode)}",
+                        f"route_compare_full_system_{build_scheduler_mode_tag(scheduler_mode)}_{build_maint_mode_tag(mode)}",
                         route_summary,
                         route_rows,
-                        policy_label=f"Route compare | Full system | Maintenance: {mode}",
+                        policy_label=f"Route compare | Full system | {build_scheduler_mode_label(scheduler_mode)} | Maintenance: {mode}",
                     )
 
-                if enable_maint_only_compare:
+                if enable_maint_only_compare and scheduler_mode == "THDQN":
                     constrained_anchor = route_maint_only_results.get(constrained_tag, {}).get(mode)
                     unrestricted_anchor = route_maint_only_results.get(unrestricted_tag, {}).get(mode)
                     if constrained_anchor is not None and unrestricted_anchor is not None:
@@ -2306,6 +2428,8 @@ def main():
                             seed=int(seed),
                             policy_tag=f"{constrained_tag}__to__{unrestricted_tag}",
                             policy_label="Route delta: unrestricted - constrained",
+                            scheduler_mode=scheduler_mode,
+                            scheduler_mode_tag=build_scheduler_mode_tag(scheduler_mode),
                             maint_mode=str(mode),
                             maint_mode_tag=build_maint_mode_tag(mode),
                             route_delta_direction="unrestricted_minus_constrained",
@@ -2342,7 +2466,8 @@ def main():
             writer.writerows(all_compare_rows)
 
     for _, _, policy_tag, _ in route_specs:
-        write_aggregate_compare_outputs(output_root, policy_tag, all_result_rows, all_compare_rows)
+        for scheduler_mode in scheduler_modes:
+            write_aggregate_compare_outputs(output_root, policy_tag, scheduler_mode, all_result_rows, all_compare_rows)
 
     print(f"paired training finished; outputs saved to {output_root}")
 

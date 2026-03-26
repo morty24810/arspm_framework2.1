@@ -96,6 +96,10 @@ def _safe_load_model(model, state: Dict[str, Any], name: str):
     model.load_state_dict(state)
 
 
+def _is_ppo_scheduler(agent) -> bool:
+    return hasattr(agent, "actor") and hasattr(agent, "critic") and not hasattr(agent, "q_high")
+
+
 class CheckpointManager:
     def __init__(self, save_dir: str, cfg, device):
         self.save_dir = Path(save_dir)
@@ -119,19 +123,27 @@ class CheckpointManager:
                        metrics: Dict[str, float], step_info: Optional[Dict[str, Any]]):
         models: Dict[str, Any] = {}
         if sched_agent is not None:
-            models["high_q"] = sched_agent.q_high.state_dict()
-            models["high_target"] = sched_agent.q_high_t.state_dict()
-            models["low_q"] = sched_agent.q_low.state_dict()
-            models["low_target"] = sched_agent.q_low_t.state_dict()
+            if _is_ppo_scheduler(sched_agent):
+                models["sched_actor"] = sched_agent.actor.state_dict()
+                models["sched_critic"] = sched_agent.critic.state_dict()
+            else:
+                models["high_q"] = sched_agent.q_high.state_dict()
+                models["high_target"] = sched_agent.q_high_t.state_dict()
+                models["low_q"] = sched_agent.q_low.state_dict()
+                models["low_target"] = sched_agent.q_low_t.state_dict()
         if maint_agent is not None:
             models["maint_q"] = maint_agent.q.state_dict()
             models["maint_target"] = maint_agent.qt.state_dict()
 
         states: Dict[str, Any] = {}
         if sched_agent is not None:
-            eps_val = float(sched_agent.eps(sched_agent.steps))
-            states["high_extra"] = {"eps": eps_val, "steps": int(sched_agent.steps)}
-            states["low_extra"] = {"eps": eps_val, "steps": int(sched_agent.steps)}
+            states["scheduler_mode"] = str(getattr(self.cfg, "SCHEDULER_MODE", "THDQN")).upper()
+            if _is_ppo_scheduler(sched_agent):
+                states["sched_extra"] = {"steps": int(sched_agent.steps)}
+            else:
+                eps_val = float(sched_agent.eps(sched_agent.steps))
+                states["high_extra"] = {"eps": eps_val, "steps": int(sched_agent.steps)}
+                states["low_extra"] = {"eps": eps_val, "steps": int(sched_agent.steps)}
         if maint_agent is not None:
             eps_val = float(maint_agent.eps(maint_agent.steps))
             states["maint_extra"] = {"eps": eps_val, "steps": int(maint_agent.steps)}
@@ -195,13 +207,17 @@ def load_checkpoint(path: str, sched_agent=None, maint_agent=None, observer=None
     ckpt = torch.load(path, map_location=map_location)
     models = ckpt.get("models", {})
 
-    if sched_agent is None and any(k in models for k in ("high_q", "low_q")):
+    if sched_agent is None and any(k in models for k in ("high_q", "low_q", "sched_actor", "sched_critic")):
         raise ValueError("Checkpoint contains scheduler weights, but sched_agent is None.")
     if sched_agent is not None:
-        _safe_load_model(sched_agent.q_high, models.get("high_q", {}), "high_q")
-        _safe_load_model(sched_agent.q_high_t, models.get("high_target", {}), "high_target")
-        _safe_load_model(sched_agent.q_low, models.get("low_q", {}), "low_q")
-        _safe_load_model(sched_agent.q_low_t, models.get("low_target", {}), "low_target")
+        if _is_ppo_scheduler(sched_agent):
+            _safe_load_model(sched_agent.actor, models.get("sched_actor", {}), "sched_actor")
+            _safe_load_model(sched_agent.critic, models.get("sched_critic", {}), "sched_critic")
+        else:
+            _safe_load_model(sched_agent.q_high, models.get("high_q", {}), "high_q")
+            _safe_load_model(sched_agent.q_high_t, models.get("high_target", {}), "high_target")
+            _safe_load_model(sched_agent.q_low, models.get("low_q", {}), "low_q")
+            _safe_load_model(sched_agent.q_low_t, models.get("low_target", {}), "low_target")
 
     if maint_agent is None and any(k in models for k in ("maint_q", "maint_target")):
         raise ValueError("Checkpoint contains maintenance weights, but maint_agent is None.")
@@ -213,8 +229,11 @@ def load_checkpoint(path: str, sched_agent=None, maint_agent=None, observer=None
             raise ValueError("Checkpoint missing maintenance weights.")
 
     states = ckpt.get("states", {})
-    if sched_agent is not None and "high_extra" in states:
-        sched_agent.steps = int(states["high_extra"].get("steps", sched_agent.steps))
+    if sched_agent is not None:
+        if _is_ppo_scheduler(sched_agent) and "sched_extra" in states:
+            sched_agent.steps = int(states["sched_extra"].get("steps", sched_agent.steps))
+        elif "high_extra" in states:
+            sched_agent.steps = int(states["high_extra"].get("steps", sched_agent.steps))
     if maint_agent is not None and "maint_extra" in states:
         maint_agent.steps = int(states["maint_extra"].get("steps", maint_agent.steps))
     _restore_observer(observer, states.get("observer"))
