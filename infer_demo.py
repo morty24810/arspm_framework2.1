@@ -24,6 +24,7 @@ from run_experiment import (
     build_policy_label,
     build_policy_context_label,
     build_maint_mode_tag,
+    effective_base_degradation_rate,
     make_rng,
     write_summary_files,
     validate_region_thresholds,
@@ -72,11 +73,17 @@ def parse_combo_plan(plan: str):
 
 
 def make_maint_agent(cfg: SimConfig, seed: int, device: torch.device) -> MaintenanceAgentDDQN:
-    return MaintenanceAgentDDQN(state_dim=17, cfg=cfg, rng=random.Random(seed), device=device)
+    return MaintenanceAgentDDQN(
+        state_dim=int(getattr(cfg, "MAINTENANCE_STATE_DIM", 18)),
+        cfg=cfg,
+        rng=random.Random(seed),
+        device=device,
+    )
 
 
-def make_sched_agent(cfg: SimConfig, seed: int, device: torch.device, state_dim: int = 14):
+def make_sched_agent(cfg: SimConfig, seed: int, device: torch.device, state_dim: int | None = None):
     scheduler_mode = str(getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
+    state_dim = int(getattr(cfg, "SCHEDULER_STATE_DIM", 15) if state_dim is None else state_dim)
     if scheduler_mode == "PPO":
         return PPOSchedulerAgent(state_dim=int(state_dim), cfg=cfg, rng=random.Random(seed), device=device)
     return THDQNAgent(state_dim=int(state_dim), cfg=cfg, rng=random.Random(seed), device=device)
@@ -105,7 +112,16 @@ def infer_scheduler_state_dim(ckpt_path: Path, map_location: torch.device) -> in
     weight = models.get("sched_actor", {}).get("net.0.weight")
     if hasattr(weight, "shape") and len(weight.shape) >= 2:
         return int(weight.shape[1])
-    return 14
+    return 15
+
+
+def infer_maint_state_dim(ckpt_path: Path, map_location: torch.device) -> int:
+    ckpt = torch.load(str(ckpt_path), map_location=map_location)
+    models = ckpt.get("models", {})
+    weight = models.get("maint_q", {}).get("net.0.weight")
+    if hasattr(weight, "shape") and len(weight.shape) >= 2:
+        return int(weight.shape[1])
+    return 18
 
 
 def infer_scheduler_mode(ckpt_path: Path, map_location: torch.device) -> str:
@@ -165,9 +181,12 @@ def main():
     machine_curve_ids = list(cfg.MACHINE_CURVE_IDS)
     _, degr, rul = build_degradation_and_rul(cfg, machine_curve_ids)
 
-    maint_agent = make_maint_agent(cfg, cfg.SEED, device)
     cfg.SCHEDULER_MODE = infer_scheduler_mode(ckpt_path, device)
     sched_state_dim = infer_scheduler_state_dim(ckpt_path, device)
+    maint_state_dim = infer_maint_state_dim(ckpt_path, device)
+    cfg.SCHEDULER_STATE_DIM = int(sched_state_dim)
+    cfg.MAINTENANCE_STATE_DIM = int(maint_state_dim)
+    maint_agent = make_maint_agent(cfg, cfg.SEED, device)
     sched_agent = make_sched_agent(cfg, cfg.SEED, device, state_dim=sched_state_dim)
 
     allow_missing_maint = cfg.MAINT_MODE != "DQN" or compare_maint_modes
@@ -196,7 +215,9 @@ def main():
 
     dqn_compare_agent = None
     if compare_maint_modes:
-        dqn_compare_agent = make_maint_agent(cfg, cfg.SEED + 997, device)
+        compare_cfg = copy.deepcopy(cfg)
+        compare_cfg.MAINTENANCE_STATE_DIM = infer_maint_state_dim(dqn_ckpt_path, device)
+        dqn_compare_agent = make_maint_agent(compare_cfg, cfg.SEED + 997, device)
         load_maintenance_only(str(dqn_ckpt_path), dqn_compare_agent, map_location=device, allow_missing_maint=False)
         dqn_compare_agent.q.eval()
         dqn_compare_agent.qt.eval()
@@ -227,7 +248,7 @@ def main():
             degr,
             jobs_target=int(jobs_target),
             scenario_rng=make_rng(seed, "infer", ep + 1, "scenario"),
-            degradation_rate=float(cfg_eval_base.BASE_DEGRADATION_RATE),
+            degradation_rate=float(effective_base_degradation_rate(cfg_eval_base)),
             episode_combos=combos,
             episode_combo_seq=seq,
             machine_curve_ids=machine_curve_ids,

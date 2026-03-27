@@ -12,6 +12,9 @@ from checkpointing import CheckpointManager, load_checkpoint
 from infer_demo import build_infer_route_result
 from run_experiment import (
     _sync_idle_after_maintenance,
+    build_maintenance_state,
+    effective_base_degradation_rate,
+    effective_degradation_bounds,
     filter_non_improving_im,
     maintenance_prior_penalty,
     maintenance_reward,
@@ -62,7 +65,7 @@ class _RolloutEnvStub:
         }
 
     @staticmethod
-    def generative_step(mid: int, particle, action: int, slack_pressure: float, rng: random.Random):
+    def generative_step(mid: int, particle, action: int, current_stress: float, rng: random.Random):
         return dict(particle), float(particle.get("h_true", 1.0)), {"dur": 0.0}
 
 
@@ -239,7 +242,7 @@ class MergeRegressionTests(unittest.TestCase):
             cfg.IM_COST + cfg.CM_COST + cfg.FAIL_COST_MULT * 10.0 + cfg.SCRAP_COST * 10.0 + 77.0,
         )
 
-    def test_fast_iteration_defaults_disable_maint_only_and_use_single_seed(self):
+    def test_stress_enabled_full_matrix_defaults(self):
         cfg = SimConfig()
 
         self.assertEqual(cfg.EXPERIMENT_SEEDS, (42,))
@@ -247,6 +250,56 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertFalse(cfg.FAIL_STOCHASTIC)
         self.assertTrue(cfg.RUL_LINEAR_TAIL_ENABLE)
         self.assertIsNone(cfg.RUL_LINEAR_TAIL_STEP)
+        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("THDQN", "PPO"))
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN", "POMCP"))
+        self.assertAlmostEqual(cfg.DEGRADATION_RATE_SCALE, 1.30)
+        self.assertEqual(cfg.SCHEDULER_STATE_DIM, 15)
+        self.assertEqual(cfg.MAINTENANCE_STATE_DIM, 18)
+
+    def test_effective_degradation_scaling_applies_to_base_and_bounds(self):
+        cfg = SimConfig()
+
+        self.assertAlmostEqual(
+            effective_base_degradation_rate(cfg),
+            cfg.BASE_DEGRADATION_RATE * cfg.DEGRADATION_RATE_SCALE,
+        )
+        low_eff, high_eff = effective_degradation_bounds(cfg)
+        self.assertAlmostEqual(low_eff, cfg.DEGRAD_LOW * cfg.DEGRADATION_RATE_SCALE)
+        self.assertAlmostEqual(high_eff, cfg.DEGRAD_HIGH * cfg.DEGRADATION_RATE_SCALE)
+
+    def test_scheduler_features_include_current_stress_as_15th_dimension(self):
+        cfg = SimConfig()
+        env = EventDrivenShopEnv.__new__(EventDrivenShopEnv)
+        env.cfg = cfg
+        env.machines = [
+            SimpleNamespace(mid=0, status="IDLE"),
+            SimpleNamespace(mid=1, status="PROC"),
+        ]
+        env.jobs = {}
+        env.time = 0.0
+        env.arrival_times = []
+        env.compute_slack_stats = lambda: (10.0, 5.0, 0.0, 0.4)
+        env.get_obs_estimates = lambda avg_slack, slack_pressure: (3.0, 20.0, 0.0, 0.0, 1.5, 0.0)
+        env._ready_ops = lambda: [1, 2]
+        env._peek_rul = lambda mid: 0.6
+        env.failure_prob = lambda h: 1.0 - float(h)
+
+        features = EventDrivenShopEnv.get_global_features(env)
+
+        self.assertEqual(features.shape[0], 15)
+        self.assertAlmostEqual(float(features[-1]), EventDrivenShopEnv.get_current_stress(env, 0.4))
+
+    def test_maintenance_state_includes_current_stress_as_18th_dimension(self):
+        state = build_maintenance_state(
+            0.4, -0.02, 12.0,
+            0.3, 0.1, 15.0,
+            20.0, 1.5, 0.2, 4.0, 8.0,
+            0.4, 0.01, 100.0, 80.0,
+            0.1, 0.2, 0.3, 0.55,
+        )
+
+        self.assertEqual(state.shape[0], 18)
+        self.assertAlmostEqual(float(state[-1]), 0.55)
 
     def test_breakdown_recovery_clears_pending_maintenance(self):
         pending_maint = {2: {"action": 1, "t_e": 10.0, "t_l": 20.0}}
@@ -282,9 +335,10 @@ class MergeRegressionTests(unittest.TestCase):
             env,
             0,
             0.25,
-            np.zeros(17, dtype=np.float32),
+            np.zeros(18, dtype=np.float32),
             0.1,
             0.8,
+            0.2,
             cfg,
             random.Random(0),
             explore=False,
@@ -324,9 +378,10 @@ class MergeRegressionTests(unittest.TestCase):
             env,
             0,
             0.9,
-            np.zeros(17, dtype=np.float32),
+            np.zeros(18, dtype=np.float32),
             0.1,
             0.8,
+            0.2,
             cfg,
             random.Random(0),
             explore=False,
@@ -426,7 +481,7 @@ class MergeRegressionTests(unittest.TestCase):
     def test_ppo_scheduler_checkpoint_roundtrip(self):
         cfg = SimConfig()
         cfg.SCHEDULER_MODE = "PPO"
-        agent = PPOSchedulerAgent(state_dim=14, cfg=cfg, rng=random.Random(0), device=torch.device("cpu"))
+        agent = PPOSchedulerAgent(state_dim=15, cfg=cfg, rng=random.Random(0), device=torch.device("cpu"))
         with torch.no_grad():
             for p in agent.actor.parameters():
                 p.add_(0.123)
@@ -436,7 +491,7 @@ class MergeRegressionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             ckpt_mgr = CheckpointManager(tmpdir, cfg, torch.device("cpu"))
             ckpt_mgr.save_latest(agent, None, _ObserverStub(), None, {"tard": 1.0, "maint": 2.0, "total": 3.0})
-            loaded = PPOSchedulerAgent(state_dim=14, cfg=cfg, rng=random.Random(1), device=torch.device("cpu"))
+            loaded = PPOSchedulerAgent(state_dim=15, cfg=cfg, rng=random.Random(1), device=torch.device("cpu"))
             load_checkpoint(str(ckpt_mgr.latest_path), sched_agent=loaded, maint_agent=None, observer=None, map_location="cpu")
 
             actor_key = next(iter(agent.actor.state_dict().keys()))
@@ -455,6 +510,18 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(summary["goal_counts"], {"0": 0, "1": 0, "2": 0, "3": 0})
         self.assertEqual(summary["rule_counts"]["3"], 2)
         self.assertEqual(summary["dispatch_count"], 2)
+
+    def test_scheduler_summary_includes_current_stress_stats(self):
+        decision_log = [
+            {"event": "scheduling", "goal": None, "rule": 3, "dispatched": True, "current_stress": 0.2},
+            {"event": "scheduling", "goal": None, "rule": 1, "dispatched": True, "current_stress": 0.5},
+            {"event": "scheduling", "goal": None, "rule": 1, "dispatched": False, "current_stress": 0.4},
+        ]
+
+        summary = summarize_scheduling_strategy(decision_log, env=None)
+
+        self.assertAlmostEqual(summary["current_stress_mean"], (0.2 + 0.5 + 0.4) / 3.0)
+        self.assertAlmostEqual(summary["current_stress_max"], 0.5)
 
 
 if __name__ == "__main__":

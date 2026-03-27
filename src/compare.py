@@ -111,6 +111,10 @@ def summarize_scheduling_strategy(decision_log: List[Dict[str, Any]], env: Any =
     requeued_op_count = max((_safe_int(row.get("requeued_op_count")) or 0) for row in sched_rows) if sched_rows else 0
     interrupted_proc_time = max((_safe_float(row.get("interrupted_proc_time")) or 0.0) for row in sched_rows) if sched_rows else 0.0
     breakdown_cost = sum((_safe_float(row.get("breakdown_cost")) or 0.0) for row in sched_rows if bool(row.get("breakdown_flag")))
+    stress_vals = [
+        val for val in (_safe_float(row.get("current_stress")) for row in sched_rows)
+        if val is not None
+    ]
     return {
         "goal_counts": goal_counts,
         "rule_counts": rule_counts,
@@ -122,6 +126,8 @@ def summarize_scheduling_strategy(decision_log: List[Dict[str, Any]], env: Any =
         "requeued_op_count": int(requeued_op_count),
         "interrupted_proc_time": float(interrupted_proc_time),
         "breakdown_cost": float(breakdown_cost),
+        "current_stress_mean": float(sum(stress_vals) / len(stress_vals)) if stress_vals else 0.0,
+        "current_stress_max": float(max(stress_vals)) if stress_vals else 0.0,
         "makespan": _env_makespan(env) if env is not None else compute_decision_log_makespan(decision_log),
     }
 
@@ -260,6 +266,8 @@ def compare_mode_results(
             "requeued_op_count": int(compare_schedule_summary["requeued_op_count"] - primary_schedule_summary["requeued_op_count"]),
             "interrupted_proc_time": float(compare_schedule_summary["interrupted_proc_time"] - primary_schedule_summary["interrupted_proc_time"]),
             "breakdown_cost": float(compare_schedule_summary["breakdown_cost"] - primary_schedule_summary["breakdown_cost"]),
+            "current_stress_mean": float(compare_schedule_summary["current_stress_mean"] - primary_schedule_summary["current_stress_mean"]),
+            "current_stress_max": float(compare_schedule_summary["current_stress_max"] - primary_schedule_summary["current_stress_max"]),
             "makespan": float(compare_schedule_summary["makespan"] - primary_schedule_summary["makespan"]),
         },
     }
@@ -324,6 +332,10 @@ def write_mode_comparison_outputs(
         "compare_overdue_ratio": summary.get("compare_metrics", {}).get("overdue_ratio"),
         "primary_dispatch_count": summary.get("primary_schedule_summary", {}).get("dispatch_count"),
         "compare_dispatch_count": summary.get("compare_schedule_summary", {}).get("dispatch_count"),
+        "primary_current_stress_mean": summary.get("primary_schedule_summary", {}).get("current_stress_mean"),
+        "compare_current_stress_mean": summary.get("compare_schedule_summary", {}).get("current_stress_mean"),
+        "primary_current_stress_max": summary.get("primary_schedule_summary", {}).get("current_stress_max"),
+        "compare_current_stress_max": summary.get("compare_schedule_summary", {}).get("current_stress_max"),
         "primary_makespan": summary.get("primary_schedule_summary", {}).get("makespan"),
         "compare_makespan": summary.get("compare_schedule_summary", {}).get("makespan"),
     }

@@ -39,7 +39,7 @@ from checkpointing import CheckpointManager
 def build_maintenance_state(h, dh, eta, slack_pressure, local_urgency, avg_slack,
                             lambda_hat, ddt_hat, risk_t, win_e, win_l,
                             rul_mu, rul_sigma, t_now, t_last_maint,
-                            pf_dn, pf_im, pf_cm):
+                            pf_dn, pf_im, pf_cm, current_stress):
     dt_last = t_now - t_last_maint
     return np.array([
         h, dh, eta,
@@ -48,7 +48,8 @@ def build_maintenance_state(h, dh, eta, slack_pressure, local_urgency, avg_slack
         risk_t, win_e, win_l,
         rul_mu, rul_sigma,
         dt_last,
-        pf_dn, pf_im, pf_cm
+        pf_dn, pf_im, pf_cm,
+        current_stress,
     ], dtype=np.float32)
 
 def material_cost(action: int, cfg: SimConfig) -> float:
@@ -118,6 +119,23 @@ def scheduler_reward_goal(cfg: SimConfig, goal: Optional[int]) -> int:
     if goal is not None:
         return int(goal)
     return int(getattr(cfg, "PPO_SCHED_REWARD_GOAL", 2))
+
+def effective_degradation_rate_scale(cfg: SimConfig) -> float:
+    return float(getattr(cfg, "DEGRADATION_RATE_SCALE", 1.0))
+
+def effective_base_degradation_rate(cfg: SimConfig) -> float:
+    return float(cfg.BASE_DEGRADATION_RATE) * effective_degradation_rate_scale(cfg)
+
+def effective_degradation_bounds(cfg: SimConfig) -> Tuple[float, float]:
+    scale = effective_degradation_rate_scale(cfg)
+    return float(cfg.DEGRAD_LOW) * scale, float(cfg.DEGRAD_HIGH) * scale
+
+def stamp_effective_degradation_config(cfg: SimConfig):
+    cfg.BASE_DEGRADATION_RATE_EFFECTIVE = effective_base_degradation_rate(cfg)
+    low_eff, high_eff = effective_degradation_bounds(cfg)
+    cfg.DEGRAD_LOW_EFFECTIVE = low_eff
+    cfg.DEGRAD_HIGH_EFFECTIVE = high_eff
+    return cfg
 
 def scheduler_act(sched_agent, state: np.ndarray, *, explore: bool):
     if isinstance(sched_agent, PPOSchedulerAgent):
@@ -237,13 +255,14 @@ def bin_index(x: float, bins) -> int:
     return len(bins) - 2
 
 def sample_degradation_rate(ep: int, cfg: SimConfig, rng: random.Random) -> float:
+    low_bound, high_bound = effective_degradation_bounds(cfg)
     curr_steps = max(1, int(cfg.CURR_FRAC * cfg.TRAIN_EPISODES))
     if ep < curr_steps:
         frac = ep / curr_steps
-        lo = cfg.DEGRAD_HIGH - (cfg.DEGRAD_HIGH - cfg.DEGRAD_LOW) * frac
-        hi = cfg.DEGRAD_HIGH
+        lo = high_bound - (high_bound - low_bound) * frac
+        hi = high_bound
     else:
-        lo, hi = cfg.DEGRAD_LOW, cfg.DEGRAD_HIGH
+        lo, hi = low_bound, high_bound
     return float(rng.uniform(lo, hi))
 
 def build_episode_combos(cfg: SimConfig, rng: random.Random, jobs_target: int):
@@ -397,7 +416,7 @@ def build_scenario_bank(base_seed: int, cfg: SimConfig, degr: DegradationReplay,
     train_scenarios: List[EpisodeScenario] = []
     periodic_eval_scenarios: Dict[int, EpisodeScenario] = {}
     machine_curve_ids = list(machine_curve_ids or list(cfg.MACHINE_CURVE_IDS))
-    base_degrad = float(cfg.BASE_DEGRADATION_RATE)
+    base_degrad = effective_base_degradation_rate(cfg)
 
     for ep in range(cfg.TRAIN_EPISODES):
         ep_num = ep + 1
@@ -439,14 +458,14 @@ def build_scenario_bank(base_seed: int, cfg: SimConfig, degr: DegradationReplay,
         final_eval_scenario=final_eval_scenario,
     )
 
-def init_belief(h_obs: float, slack_pressure: float, cfg: SimConfig, rng: random.Random,
+def init_belief(h_obs: float, current_stress: float, cfg: SimConfig, rng: random.Random,
                 baseline_rul: float = 1.0, region_b_elapsed: float = 0.0):
     particles = []
     baseline_rul = max(0.0, min(1.0, float(baseline_rul)))
     region_b_elapsed = max(0.0, float(region_b_elapsed))
     for _ in range(cfg.POMCP_PARTICLES):
         h = max(0.0, min(1.0, h_obs + rng.normalvariate(0.0, cfg.POMCP_OBS_NOISE)))
-        stress = max(0.0, min(1.0, slack_pressure + rng.normalvariate(0.0, 0.1)))
+        stress = max(0.0, float(current_stress) + rng.normalvariate(0.0, 0.1))
         particles.append({
             "h_true": h,
             "stress": stress,
@@ -481,7 +500,7 @@ def update_belief(particles, h_obs: float, cfg: SimConfig, rng: random.Random):
         resampled.append(dict(particles[idx]))
     return resampled
 
-def refresh_belief(pomcp_beliefs, mid: int, h_obs: float, slack_pressure: float,
+def refresh_belief(pomcp_beliefs, mid: int, h_obs: float, current_stress: float,
                    cfg: SimConfig, rng: random.Random,
                    baseline_rul: Optional[float] = None,
                    region_b_elapsed: Optional[float] = None):
@@ -491,7 +510,7 @@ def refresh_belief(pomcp_beliefs, mid: int, h_obs: float, slack_pressure: float,
     if not belief:
         belief = init_belief(
             h_obs,
-            slack_pressure,
+            current_stress,
             cfg,
             rng,
             baseline_rul=1.0 if baseline_rul is None else baseline_rul,
@@ -500,7 +519,7 @@ def refresh_belief(pomcp_beliefs, mid: int, h_obs: float, slack_pressure: float,
     else:
         belief = update_belief(belief, h_obs, cfg, rng)
     for p in belief:
-        p["stress"] = float(slack_pressure)
+        p["stress"] = float(current_stress)
         if baseline_rul is not None:
             p["baseline_rul"] = max(0.0, min(1.0, float(baseline_rul)))
         if region_b_elapsed is not None:
@@ -564,14 +583,14 @@ def compute_overdue_stats(timeline_ops, jobs) -> Dict[str, float]:
 
 
 def compute_breakdown_reward_terms(env: EventDrivenShopEnv, mid: int, local_urgency: float,
-                                   slack_pressure: float, h_true: Optional[float] = None,
+                                   current_stress: float, h_true: Optional[float] = None,
                                    pt: Optional[float] = None,
                                    idx_before: Optional[float] = None) -> Dict[str, float]:
     details = env.expected_breakdown_loss(
         mid,
         local_urgency,
         pt=pt,
-        stress=float(slack_pressure),
+        stress=float(current_stress),
         h_true=h_true,
         idx_before=idx_before,
     )
@@ -708,12 +727,13 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         h_now = env.maintenance_decision_point(mid)
                         h_true_now = env.peek_rul_true(mid)
                         avg_slack, _, _, slack_pressure = env.compute_slack_stats()
+                        current_stress = env.get_current_stress(slack_pressure)
                         local_urgency = env.get_local_urgency(mid)
                         arrivals, lambda_hat, _, _, ddt_hat, rush = env.get_obs_estimates(avg_slack, slack_pressure)
                         risk_now = env.failure_prob(h_now)
                         action_now = enforce_action_by_region(rec["action"], h_now, cfg, enforce_region)
                         dn_terms = compute_breakdown_reward_terms(
-                            env, mid, local_urgency, slack_pressure, h_true=h_true_now
+                            env, mid, local_urgency, current_stress, h_true=h_true_now
                         )
                         execute_now = env.time >= rec["t_e"] or (enforce_region and h_now < cfg.Hy)
                         if action_now == 0:
@@ -735,6 +755,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "dh": float(0.0),
                                     "eta": float(0.0),
                                     "slack_pressure": float(slack_pressure),
+                                    "current_stress": float(current_stress),
                                     "local_urgency": float(local_urgency),
                                     "im_count": 0,
                                     "im_damage": 0.0,
@@ -788,6 +809,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "dh": float(0.0),
                                     "eta": float(0.0),
                                     "slack_pressure": float(slack_pressure),
+                                    "current_stress": float(current_stress),
                                     "local_urgency": float(local_urgency),
                                     "im_count": 0,
                                     "im_damage": 0.0,
@@ -821,6 +843,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         h = env.maintenance_decision_point(mid)
                         h_true = env.peek_rul_true(mid)
                         avg_slack, _, _, slack_pressure = env.compute_slack_stats()
+                        current_stress = env.get_current_stress(slack_pressure)
                         local_urgency = env.get_local_urgency(mid)
                         arrivals, lambda_hat, _, _, ddt_hat, rush = env.get_obs_estimates(avg_slack, slack_pressure)
                         prev_h = last_h.get(mid)
@@ -839,37 +862,37 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                             pomcp_beliefs,
                             mid,
                             h,
-                            slack_pressure,
+                            current_stress,
                             cfg,
                             belief_rng,
                             baseline_rul=env.machines[mid].maint_rul_baseline,
                             region_b_elapsed=env.get_region_b_elapsed(mid, h),
                         )
                         pf_dn = estimate_p_fail_horizon(
-                            env, mid, belief, slack_pressure, belief_rng, cfg,
+                            env, mid, belief, current_stress, belief_rng, cfg,
                             first_action=0, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                         )
                         pf_im = estimate_p_fail_horizon(
-                            env, mid, belief, slack_pressure, belief_rng, cfg,
+                            env, mid, belief, current_stress, belief_rng, cfg,
                             first_action=1, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                         )
                         pf_cm = estimate_p_fail_horizon(
-                            env, mid, belief, slack_pressure, belief_rng, cfg,
+                            env, mid, belief, current_stress, belief_rng, cfg,
                             first_action=2, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                         )
                         pf_dn = max(0.0, min(1.0, pf_dn))
                         pf_im = max(0.0, min(1.0, pf_im))
                         pf_cm = max(0.0, min(1.0, pf_cm))
                         dn_terms = compute_breakdown_reward_terms(
-                            env, mid, local_urgency, slack_pressure, h_true=h_true
+                            env, mid, local_urgency, current_stress, h_true=h_true
                         )
                         s = build_maintenance_state(h, dh, eta, slack_pressure, local_urgency, avg_slack,
                                                     lambda_hat, ddt_hat, risk_t, win_e, win_l,
                                                     rul_mu, rul_sigma, env.time, m.last_maint_end,
-                                                    pf_dn, pf_im, pf_cm)
+                                                    pf_dn, pf_im, pf_cm, current_stress)
                         a = select_maintenance_action(
                             maint_mode, maint_agent, pomcp, pomcp_beliefs, env, mid, h, s,
-                            slack_pressure, local_urgency, cfg, belief_rng, explore=False
+                            slack_pressure, current_stress, local_urgency, cfg, belief_rng, explore=False
                         )
                         if a == 0:
                             if p_fail_plot is not None:
@@ -890,6 +913,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "dh": float(dh),
                                     "eta": float(eta),
                                     "slack_pressure": float(slack_pressure),
+                                    "current_stress": float(current_stress),
                                     "local_urgency": float(local_urgency),
                                     "im_count": 0,
                                     "im_damage": 0.0,
@@ -952,6 +976,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                         "dh": float(dh),
                                         "eta": float(eta),
                                         "slack_pressure": float(slack_pressure),
+                                        "current_stress": float(current_stress),
                                         "local_urgency": float(local_urgency),
                                         "im_count": 0,
                                         "im_damage": 0.0,
@@ -985,6 +1010,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                 S = env.get_global_features()
                 avg_slack, _, _, slack_pressure = env.compute_slack_stats()
                 _, lambda_hat, _, _, ddt_hat, _ = env.get_obs_estimates(avg_slack, slack_pressure)
+                current_stress = float(S[-1])
                 g, rule, _ = scheduler_act(sched_agent, S, explore=False)
                 env.rule_log.append((env.time, S.copy(), None if g is None else int(g), int(rule)))
                 dispatched = env.dispatch(rule)
@@ -1029,6 +1055,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         "overdue": overdue,
                         "lambda_hat": float(lambda_hat),
                         "ddt_hat": float(ddt_hat),
+                        "current_stress": float(current_stress),
                         "local_urgency": None,
                         "breakdown_flag": breakdown_flag,
                         "breakdown_kind": breakdown_kind,
@@ -1093,7 +1120,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                 with csv_path.open("w", newline="") as f:
                     writer = csv.writer(f)
                     writer.writerow([
-                        "time", "event", "maint_mode", "maint_seq_global", "maint_seq_machine", "mid", "state", "action", "kind", "duration", "h", "h_true", "h_end_true", "hard_breakdown_threshold", "dh", "eta", "slack_pressure",
+                        "time", "event", "maint_mode", "maint_seq_global", "maint_seq_machine", "mid", "state", "action", "kind", "duration", "h", "h_true", "h_end_true", "hard_breakdown_threshold", "dh", "eta", "slack_pressure", "current_stress",
                         "im_count", "im_damage", "risk_h", "risk_trend", "im_longterm_penalty", "opportunity_cost",
                         "p_fail", "expected_fail_cost", "downtime_cost", "delta_t_since_last_maint",
                         "lambda_hat", "ddt_hat",
@@ -1107,7 +1134,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                             row.get("time"), row.get("event"), row.get("maint_mode"), row.get("maint_seq_global"), row.get("maint_seq_machine"), row.get("mid"),
                             json.dumps(row.get("state"), separators=(",", ":"), ensure_ascii=True) if row.get("state") is not None else "",
                             row.get("action"), row.get("kind"), row.get("duration"),
-                            row.get("h"), row.get("h_true"), row.get("h_end_true"), row.get("hard_breakdown_threshold"), row.get("dh"), row.get("eta"), row.get("slack_pressure"),
+                            row.get("h"), row.get("h_true"), row.get("h_end_true"), row.get("hard_breakdown_threshold"), row.get("dh"), row.get("eta"), row.get("slack_pressure"), row.get("current_stress"),
                             row.get("im_count"), row.get("im_damage"), row.get("risk_h"), row.get("risk_trend"),
                             row.get("im_longterm_penalty"), row.get("opportunity_cost"),
                             row.get("p_fail"), row.get("expected_fail_cost"),
@@ -1132,7 +1159,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
             if maint_agent is not None and step_state["maint_steps"] is not None:
                 maint_agent.steps = step_state["maint_steps"]
 
-def estimate_p_fail_horizon(env, mid, belief, slack_pressure, rng, cfg,
+def estimate_p_fail_horizon(env, mid, belief, current_stress, rng, cfg,
                             first_action: int = 0, num_sims: int = 64, horizon: int = 6) -> float:
     """
     估計：如果現在先做 first_action，接著用 DN rollout，
@@ -1149,7 +1176,7 @@ def estimate_p_fail_horizon(env, mid, belief, slack_pressure, rng, cfg,
         p = rng.choice(belief)
         s = {
             "h_true": float(p.get("h_true", 1.0)),
-            "stress": float(slack_pressure),
+            "stress": float(current_stress),
             "baseline_rul": float(p.get("baseline_rul", 1.0)),
             "region_b_elapsed": float(p.get("region_b_elapsed", 0.0)),
         }
@@ -1163,7 +1190,7 @@ def estimate_p_fail_horizon(env, mid, belief, slack_pressure, rng, cfg,
             h_state = float(s.get("h_true", 1.0))
             a = enforce_action_by_region(a, h_state, cfg, bool(getattr(cfg, "ENFORCE_REGION_POLICY", True)))
 
-            s, obs, info = env.generative_step(mid, s, a, slack_pressure, rng)
+            s, obs, info = env.generative_step(mid, s, a, current_stress, rng)
             p_fail_t = float(info.get("p_fail", env.failure_prob(float(s.get("h_true", 1.0)))))
             p_fail_t = max(0.0, min(1.0, p_fail_t))
             surv *= (1.0 - p_fail_t)
@@ -1174,6 +1201,7 @@ def estimate_p_fail_horizon(env, mid, belief, slack_pressure, rng, cfg,
 
 def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env, mid: int,
                               h_obs: float, state: np.ndarray, slack_pressure: float,
+                              current_stress: float,
                               local_urgency: float, cfg: SimConfig, rng: random.Random,
                               explore: bool) -> int:
     mode = mode.upper()
@@ -1196,21 +1224,21 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
         if not belief:
             belief = init_belief(
                 h_obs,
-                slack_pressure,
+                current_stress,
                 cfg,
                 rng,
                 baseline_rul=baseline_rul,
                 region_b_elapsed=region_b_elapsed,
             )
         for p in belief:
-            p["stress"] = float(slack_pressure)
+            p["stress"] = float(current_stress)
             p["baseline_rul"] = baseline_rul
             p["region_b_elapsed"] = region_b_elapsed
         pomcp_beliefs[mid] = belief
 
         def model(state_p, action):
             h_state = float(state_p.get("h_true", 1.0))
-            state_stress = float(state_p.get("stress", slack_pressure))
+            state_stress = float(state_p.get("stress", current_stress))
             baseline_state = float(state_p.get("baseline_rul", baseline_rul))
             a = enforce_action_by_region(int(action), h_state, cfg, enforce_region)
             useless_im = bool(a == 1 and not env.im_has_positive_gain(mid, h_state, baseline_rul=baseline_state))
@@ -1254,18 +1282,24 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
 
 def _make_scheduler_agent(cfg: SimConfig, seed: int, device):
     scheduler_mode = str(getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
+    state_dim = int(getattr(cfg, "SCHEDULER_STATE_DIM", 15))
     if scheduler_mode == "PPO":
         return PPOSchedulerAgent(
-            state_dim=14,
+            state_dim=state_dim,
             cfg=cfg,
             rng=make_rng(seed, "ppo", "sched_agent"),
             device=device,
         )
-    return THDQNAgent(state_dim=14, cfg=cfg, rng=make_rng(seed, "sched_agent"), device=device)
+    return THDQNAgent(state_dim=state_dim, cfg=cfg, rng=make_rng(seed, "sched_agent"), device=device)
 
 
 def _make_maint_agent(cfg: SimConfig, seed: int, device) -> MaintenanceAgentDDQN:
-    return MaintenanceAgentDDQN(state_dim=17, cfg=cfg, rng=make_rng(seed, "maint_agent"), device=device)
+    return MaintenanceAgentDDQN(
+        state_dim=int(getattr(cfg, "MAINTENANCE_STATE_DIM", 18)),
+        cfg=cfg,
+        rng=make_rng(seed, "maint_agent"),
+        device=device,
+    )
 
 
 def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_tag: str,
@@ -1301,6 +1335,10 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "interrupted_proc_time": float(getattr(env, "interrupted_proc_time", 0.0)),
         "hard_breakdown_count": int(getattr(env, "hard_breakdown_count", 0)),
         "stochastic_breakdown_count": int(getattr(env, "stochastic_breakdown_count", 0)),
+        "current_stress_mean": float(schedule_summary.get("current_stress_mean", 0.0)),
+        "current_stress_max": float(schedule_summary.get("current_stress_max", 0.0)),
+        "degradation_rate": float(getattr(getattr(env, "cfg", None), "BASE_DEGRADATION_RATE", 0.0)),
+        "degradation_rate_scale": float(getattr(getattr(env, "cfg", None), "DEGRADATION_RATE_SCALE", 1.0)),
         "maint_dn": int(maint_counts.get("DN", 0)),
         "maint_im": int(maint_counts.get("IM", 0)),
         "maint_cm": int(maint_counts.get("CM", 0)),
@@ -1346,6 +1384,7 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
         "dispatch_count", "makespan",
         "breakdown_count", "breakdown_cost",
         "requeued_op_count", "interrupted_proc_time",
+        "current_stress_mean", "current_stress_max",
     ]
     for mode in ("DQN", "POMCP"):
         mode_rows = [row for row in policy_rows if row["maint_mode"] == mode]
@@ -1368,6 +1407,8 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
         "breakdown_cost": "delta_breakdown_cost",
         "requeued_op_count": "delta_requeued_op_count",
         "interrupted_proc_time": "delta_interrupted_proc_time",
+        "current_stress_mean": "delta_current_stress_mean",
+        "current_stress_max": "delta_current_stress_max",
     }
     for out_metric, source_key in delta_map.items():
         stats = _calc_mean_std([float(row[source_key]) for row in compare_policy_rows])
@@ -1421,6 +1462,8 @@ def _finalize_compare_summary(summary: Dict[str, Any], **extra: Any) -> Dict[str
     finalized["delta_requeued_op_count"] = float(delta_metrics.get("requeued_op_count", 0.0))
     finalized["delta_interrupted_proc_time"] = float(delta_metrics.get("interrupted_proc_time", 0.0))
     finalized["delta_dispatch_count"] = int(delta_schedule.get("dispatch_count", 0))
+    finalized["delta_current_stress_mean"] = float(delta_schedule.get("current_stress_mean", 0.0))
+    finalized["delta_current_stress_max"] = float(delta_schedule.get("current_stress_max", 0.0))
     finalized["delta_makespan"] = float(delta_schedule.get("makespan", 0.0))
     return finalized
 
@@ -1508,13 +1551,14 @@ def train_one_mode(
     cfg.MAINT_MODE = str(mode).upper()
     cfg.CKPT_DIR = str(ckpt_dir)
     cfg.ENFORCE_REGION_POLICY = bool(train_enforce_region)
+    stamp_effective_degradation_config(cfg)
     set_seed(derive_seed(seed, train_policy_tag, cfg.SCHEDULER_MODE, mode, "global_init"))
 
     sched_agent = _make_scheduler_agent(cfg, seed, device)
     maint_agent = _make_maint_agent(cfg, seed, device) if cfg.MAINT_MODE == "DQN" else None
     ckpt_mgr = CheckpointManager(str(ckpt_dir), cfg, device)
 
-    base_degrad = float(base_cfg.BASE_DEGRADATION_RATE)
+    base_degrad = effective_base_degradation_rate(base_cfg)
     ep_tard: List[float] = []
     ep_maint: List[float] = []
     ep_dn_rate: List[float] = []
@@ -1573,6 +1617,7 @@ def train_one_mode(
                         rec = pending_maint[mid]
                         h_now = env.maintenance_decision_point(mid)
                         avg_slack, _, _, slack_pressure = env.compute_slack_stats()
+                        current_stress = env.get_current_stress(slack_pressure)
                         local_urgency = env.get_local_urgency(mid)
                         arrivals, lambda_hat, _, _, ddt_hat, rush = env.get_obs_estimates(avg_slack, slack_pressure)
                         risk_now = env.failure_prob(h_now)
@@ -1585,7 +1630,7 @@ def train_one_mode(
                         if execute_now:
                             window_violation = (env.time > rec["t_l"]) if action_now != 0 else False
                             breakdown_terms = compute_breakdown_reward_terms(
-                                env, mid, local_urgency, slack_pressure, h_true=env.peek_rul_true(mid)
+                                env, mid, local_urgency, current_stress, h_true=env.peek_rul_true(mid)
                             )
                             if action_now == 0:
                                 dur, kind, post_rul = 0.0, "DN", None
@@ -1628,22 +1673,22 @@ def train_one_mode(
                                 pomcp_beliefs,
                                 mid,
                                 h2,
-                                slack_pressure,
+                                current_stress,
                                 cfg,
                                 belief_rng,
                                 baseline_rul=env.machines[mid].maint_rul_baseline,
                                 region_b_elapsed=env.get_region_b_elapsed(mid, h2),
                             )
                             pf_dn2 = estimate_p_fail_horizon(
-                                env, mid, belief, slack_pressure, belief_rng, cfg,
+                                env, mid, belief, current_stress, belief_rng, cfg,
                                 first_action=0, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                             )
                             pf_im2 = estimate_p_fail_horizon(
-                                env, mid, belief, slack_pressure, belief_rng, cfg,
+                                env, mid, belief, current_stress, belief_rng, cfg,
                                 first_action=1, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                             )
                             pf_cm2 = estimate_p_fail_horizon(
-                                env, mid, belief, slack_pressure, belief_rng, cfg,
+                                env, mid, belief, current_stress, belief_rng, cfg,
                                 first_action=2, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                             )
                             pf_dn2 = max(0.0, min(1.0, pf_dn2))
@@ -1652,7 +1697,7 @@ def train_one_mode(
                             sp = build_maintenance_state(h2, dh2, eta2, slack_pressure, local_urgency, avg_slack,
                                                         lambda_hat, ddt_hat, risk2, win_e2, win_l2,
                                                         rul_mu2, rul_sigma, env.time, env.machines[mid].last_maint_end,
-                                                        pf_dn2, pf_im2, pf_cm2)
+                                                        pf_dn2, pf_im2, pf_cm2, current_stress)
                             if maint_agent is not None:
                                 maint_agent.buf.add(rec["state"], action_now, r, sp, 0.0)
                                 maint_agent.learn()
@@ -1662,6 +1707,7 @@ def train_one_mode(
                         m = env.machines[mid]
                         h = env.maintenance_decision_point(mid)
                         avg_slack, _, _, slack_pressure = env.compute_slack_stats()
+                        current_stress = env.get_current_stress(slack_pressure)
                         local_urgency = env.get_local_urgency(mid)
                         arrivals, lambda_hat, _, _, ddt_hat, rush = env.get_obs_estimates(avg_slack, slack_pressure)
                         prev_h = last_h.get(mid)
@@ -1680,22 +1726,22 @@ def train_one_mode(
                             pomcp_beliefs,
                             mid,
                             h,
-                            slack_pressure,
+                            current_stress,
                             cfg,
                             belief_rng,
                             baseline_rul=env.machines[mid].maint_rul_baseline,
                             region_b_elapsed=env.get_region_b_elapsed(mid, h),
                         )
                         pf_dn = estimate_p_fail_horizon(
-                            env, mid, belief, slack_pressure, belief_rng, cfg,
+                            env, mid, belief, current_stress, belief_rng, cfg,
                             first_action=0, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                         )
                         pf_im = estimate_p_fail_horizon(
-                            env, mid, belief, slack_pressure, belief_rng, cfg,
+                            env, mid, belief, current_stress, belief_rng, cfg,
                             first_action=1, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                         )
                         pf_cm = estimate_p_fail_horizon(
-                            env, mid, belief, slack_pressure, belief_rng, cfg,
+                            env, mid, belief, current_stress, belief_rng, cfg,
                             first_action=2, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                         )
                         pf_dn = max(0.0, min(1.0, pf_dn))
@@ -1704,10 +1750,10 @@ def train_one_mode(
                         s = build_maintenance_state(h, dh, eta, slack_pressure, local_urgency, avg_slack,
                                                     lambda_hat, ddt_hat, risk_t, win_e, win_l,
                                                     rul_mu, rul_sigma, env.time, m.last_maint_end,
-                                                    pf_dn, pf_im, pf_cm)
+                                                    pf_dn, pf_im, pf_cm, current_stress)
                         a = select_maintenance_action(
                             cfg.MAINT_MODE, maint_agent, episode_pomcp, pomcp_beliefs, env, mid, h, s,
-                            slack_pressure, local_urgency, cfg, belief_rng, explore=True
+                            slack_pressure, current_stress, local_urgency, cfg, belief_rng, explore=True
                         )
                         sbin = bin_index(slack_pressure, cfg.SLACK_PRESSURE_BINS)
                         ebin = bin_index(eta, cfg.ETA_BINS)
@@ -1720,7 +1766,7 @@ def train_one_mode(
                             h_action_counts[hbin][a] += 1
                         if a == 0:
                             breakdown_terms = compute_breakdown_reward_terms(
-                                env, mid, local_urgency, slack_pressure, h_true=env.peek_rul_true(mid)
+                                env, mid, local_urgency, current_stress, h_true=env.peek_rul_true(mid)
                             )
                             r = maintenance_reward(
                                 a,
@@ -1735,7 +1781,7 @@ def train_one_mode(
                             sp = build_maintenance_state(h, 0.0, eta, slack_pressure, local_urgency, avg_slack,
                                                         lambda_hat, ddt_hat, risk_t, win_e, win_l,
                                                         rul_mu, rul_sigma, env.time, m.last_maint_end,
-                                                        pf_dn, pf_im, pf_cm)
+                                                        pf_dn, pf_im, pf_cm, current_stress)
                             if maint_agent is not None:
                                 maint_agent.buf.add(s, a, r, sp, 0.0)
                                 maint_agent.learn()
@@ -1756,7 +1802,7 @@ def train_one_mode(
                                 window_violation = env.time > rec["t_l"]
                                 action_now = enforce_action_by_region(rec["action"], h_now, cfg, enforce_region_train)
                                 breakdown_terms = compute_breakdown_reward_terms(
-                                    env, mid, local_urgency, slack_pressure, h_true=env.peek_rul_true(mid)
+                                    env, mid, local_urgency, current_stress, h_true=env.peek_rul_true(mid)
                                 )
                                 dur, kind, post_rul = env.apply_maintenance(mid, action_now, h=h_now)
                                 executed_action = 0 if kind == "DN" else int(action_now)
@@ -1795,22 +1841,22 @@ def train_one_mode(
                                     pomcp_beliefs,
                                     mid,
                                     h2,
-                                    slack_pressure,
+                                    current_stress,
                                     cfg,
                                     belief_rng,
                                     baseline_rul=env.machines[mid].maint_rul_baseline,
                                     region_b_elapsed=env.get_region_b_elapsed(mid, h2),
                                 )
                                 pf_dn2 = estimate_p_fail_horizon(
-                                    env, mid, belief, slack_pressure, belief_rng, cfg,
+                                    env, mid, belief, current_stress, belief_rng, cfg,
                                     first_action=0, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                                 )
                                 pf_im2 = estimate_p_fail_horizon(
-                                    env, mid, belief, slack_pressure, belief_rng, cfg,
+                                    env, mid, belief, current_stress, belief_rng, cfg,
                                     first_action=1, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                                 )
                                 pf_cm2 = estimate_p_fail_horizon(
-                                    env, mid, belief, slack_pressure, belief_rng, cfg,
+                                    env, mid, belief, current_stress, belief_rng, cfg,
                                     first_action=2, num_sims=cfg.PFAIL_NUM_SIMS, horizon=cfg.PFAIL_HORIZON
                                 )
                                 pf_dn2 = max(0.0, min(1.0, pf_dn2))
@@ -1819,7 +1865,7 @@ def train_one_mode(
                                 sp = build_maintenance_state(h2, dh2, eta2, slack_pressure, local_urgency, avg_slack,
                                                             lambda_hat, ddt_hat, risk2, win_e2, win_l2,
                                                             rul_mu2, rul_sigma, env.time, m.last_maint_end,
-                                                            pf_dn2, pf_im2, pf_cm2)
+                                                            pf_dn2, pf_im2, pf_cm2, current_stress)
                                 if maint_agent is not None:
                                     maint_agent.buf.add(rec["state"], action_now, r, sp, 0.0)
                                     maint_agent.learn()
@@ -1830,6 +1876,7 @@ def train_one_mode(
                 S = env.get_global_features()
                 slack_samples.append(float(S[6]))
                 pressure_samples.append(float(S[8]))
+                current_stress = float(S[-1])
                 g, rule, sched_info = scheduler_act(sched_agent, S, explore=True)
                 env.rule_log.append((env.time, S.copy(), None if g is None else int(g), int(rule)))
                 dispatched = env.dispatch(rule)
@@ -2045,6 +2092,12 @@ def train_one_mode(
         "interrupted_proc_time": float(eval_env.interrupted_proc_time),
         "hard_breakdown_count": int(eval_env.hard_breakdown_count),
         "stochastic_breakdown_count": int(eval_env.stochastic_breakdown_count),
+        "current_stress_mean": float(summarize_scheduling_strategy(official_result["decision_log"], env=eval_env).get("current_stress_mean", 0.0)),
+        "current_stress_max": float(summarize_scheduling_strategy(official_result["decision_log"], env=eval_env).get("current_stress_max", 0.0)),
+        "scheduler_mode": str(cfg.SCHEDULER_MODE).upper(),
+        "scheduler_mode_tag": build_scheduler_mode_tag(cfg.SCHEDULER_MODE),
+        "degradation_rate": float(final_scenario.degradation_rate),
+        "degradation_rate_scale": effective_degradation_rate_scale(base_cfg),
     }
     write_summary_files(outdir, f"summary_{ts}_{maint_mode_tag}_{train_policy_tag}", summary_row)
 
@@ -2208,7 +2261,7 @@ def main():
                 scheduler_root = route_root / scheduler_tag
                 scheduler_root.mkdir(parents=True, exist_ok=True)
                 route_results[train_policy_tag][scheduler_mode] = {}
-                active_maint_modes = ["DQN"] if scheduler_mode == "PPO" else list(maint_modes)
+                active_maint_modes = list(maint_modes)
 
                 for mode in active_maint_modes:
                     mode_tag = build_maint_mode_tag(mode)
@@ -2331,11 +2384,13 @@ def main():
                             )
 
             if "THDQN" in route_results[train_policy_tag] and "PPO" in route_results[train_policy_tag]:
-                thdqn_run = route_results[train_policy_tag]["THDQN"].get("DQN")
-                ppo_run = route_results[train_policy_tag]["PPO"].get("DQN")
-                if thdqn_run is not None and ppo_run is not None:
-                    scheduler_compare_dir = route_root / "scheduler_compare"
-                    scheduler_compare_dir.mkdir(parents=True, exist_ok=True)
+                scheduler_compare_dir = route_root / "scheduler_compare"
+                scheduler_compare_dir.mkdir(parents=True, exist_ok=True)
+                for mode in maint_modes:
+                    thdqn_run = route_results[train_policy_tag]["THDQN"].get(mode)
+                    ppo_run = route_results[train_policy_tag]["PPO"].get(mode)
+                    if thdqn_run is None or ppo_run is None:
+                        continue
                     scheduler_summary, scheduler_rows = compare_mode_results(
                         thdqn_run["official_result"],
                         ppo_run["official_result"],
@@ -2344,25 +2399,25 @@ def main():
                         compare_type="scheduler_full_system",
                         train_policy_tag=train_policy_tag,
                         eval_policy_tag=train_policy_tag,
-                        scheduler_anchor="DQN",
+                        scheduler_anchor=mode,
                     )
                     scheduler_summary = _finalize_compare_summary(
                         scheduler_summary,
                         seed=int(seed),
                         policy_tag=train_policy_tag,
                         policy_label=train_policy_label,
-                        maint_mode="DQN",
-                        maint_mode_tag=build_maint_mode_tag("DQN"),
+                        maint_mode=str(mode),
+                        maint_mode_tag=build_maint_mode_tag(mode),
                         primary_scheduler_mode="THDQN",
                         compare_scheduler_mode="PPO",
                     )
                     all_compare_rows.append(dict(scheduler_summary))
                     write_mode_comparison_outputs(
                         scheduler_compare_dir,
-                        f"compare_scheduler_thdqn_vs_ppo_{train_policy_tag}",
+                        f"compare_scheduler_thdqn_vs_ppo_{build_maint_mode_tag(mode)}_{train_policy_tag}",
                         scheduler_summary,
                         scheduler_rows,
-                        policy_label=f"{train_policy_label} | Compare: full_system | Scheduler: THDQN vs PPO | Maintenance: DQN",
+                        policy_label=f"{train_policy_label} | Compare: full_system | Scheduler: THDQN vs PPO | Maintenance: {mode}",
                     )
 
         if len(route_specs) >= 2:
@@ -2373,7 +2428,7 @@ def main():
 
             for scheduler_mode in scheduler_modes:
                 scheduler_tag = build_scheduler_mode_tag(scheduler_mode)
-                active_maint_modes = ["DQN"] if scheduler_mode == "PPO" else list(maint_modes)
+                active_maint_modes = list(maint_modes)
                 for mode in active_maint_modes:
                     constrained_run = route_results.get(constrained_tag, {}).get(scheduler_mode, {}).get(mode)
                     unrestricted_run = route_results.get(unrestricted_tag, {}).get(scheduler_mode, {}).get(mode)
@@ -2410,9 +2465,11 @@ def main():
                     )
 
                 if enable_maint_only_compare and scheduler_mode == "THDQN":
-                    constrained_anchor = route_maint_only_results.get(constrained_tag, {}).get(mode)
-                    unrestricted_anchor = route_maint_only_results.get(unrestricted_tag, {}).get(mode)
-                    if constrained_anchor is not None and unrestricted_anchor is not None:
+                    for mode in maint_modes:
+                        constrained_anchor = route_maint_only_results.get(constrained_tag, {}).get(mode)
+                        unrestricted_anchor = route_maint_only_results.get(unrestricted_tag, {}).get(mode)
+                        if constrained_anchor is None or unrestricted_anchor is None:
+                            continue
                         route_summary, route_rows = compare_mode_results(
                             constrained_anchor,
                             unrestricted_anchor,

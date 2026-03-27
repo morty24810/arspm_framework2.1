@@ -412,6 +412,14 @@ class EventDrivenShopEnv:
     def get_obs_estimates(self, avg_slack: float, slack_pressure: float):
         return self.observer.get_features(self.time, avg_slack, slack_pressure)
 
+    def get_current_stress(self, slack_pressure: Optional[float] = None) -> float:
+        if slack_pressure is None:
+            avg_slack, _, _, slack_pressure = self.compute_slack_stats()
+        util = self._utilization()
+        util_ref = max(float(self.cfg.UTIL_REF), 1e-6)
+        util_stress = max(0.0, (util - util_ref) / util_ref)
+        return float(self.cfg.STRESS_W_SLACK * float(slack_pressure) + self.cfg.STRESS_W_UTIL * util_stress)
+
     def get_global_features(self):
         # scheduling features (observable only)
         idle = sum(1 for m in self.machines if m.status == "IDLE")
@@ -420,6 +428,7 @@ class EventDrivenShopEnv:
         avg_slack, slack_q10, overdue_rate, slack_pressure = self.compute_slack_stats()
         arrivals, lam_hat, _, _, ddt_hat, rush = self.get_obs_estimates(avg_slack, slack_pressure)
         u_ave = self._utilization()
+        current_stress = self.get_current_stress(slack_pressure)
         idle_risks = [
             self.failure_prob(self._peek_rul(m.mid))
             for m in self.machines
@@ -433,6 +442,7 @@ class EventDrivenShopEnv:
             avg_slack, slack_q10, slack_pressure,
             u_ave, overdue_rate, rush,
             idle_fail_risk_mean, idle_fail_risk_max,
+            current_stress,
         ], dtype=np.float32)
 
     def _get_global_state(self):
@@ -542,10 +552,7 @@ class EventDrivenShopEnv:
 
     def _current_processing_stress(self) -> float:
         avg_slack, _, _, slack_pressure = self.compute_slack_stats()
-        util = self._utilization()
-        util_ref = max(float(self.cfg.UTIL_REF), 1e-6)
-        util_stress = max(0.0, (util - util_ref) / util_ref)
-        return float(self.cfg.STRESS_W_SLACK * slack_pressure + self.cfg.STRESS_W_UTIL * util_stress)
+        return self.get_current_stress(slack_pressure)
 
     def processing_delta_idx(self, pt: float, stress: float) -> float:
         effective_rate = float(self.cfg.BASE_DEGRADATION_RATE) * (1.0 + float(self.cfg.DEGRAD_ALPHA) * float(stress))
@@ -904,9 +911,9 @@ class EventDrivenShopEnv:
         return dur, kind, post_rul
 
     def generative_step(self, mid: int, particle: Dict[str, float], action: int,
-                        slack_pressure: float, rng: random.Random):
+                        current_stress: float, rng: random.Random):
         h = float(particle.get("h_true", 1.0))
-        stress = float(particle.get("stress", slack_pressure))
+        stress = float(particle.get("stress", current_stress))
         baseline_rul = float(particle.get("baseline_rul", 1.0))
         region_b_elapsed = max(0.0, float(particle.get("region_b_elapsed", 0.0)))
 

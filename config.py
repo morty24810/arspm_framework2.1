@@ -70,6 +70,7 @@ class SimConfig:
     RUL_LINEAR_TAIL_ENABLE: bool = True
     RUL_LINEAR_TAIL_STEP: Optional[float] = None
     DEGRAD_NOISE_STD: float = 0.02
+    DEGRADATION_RATE_SCALE: float = 1.30
     BASE_DEGRADATION_RATE: float = 56.0
     DEGRAD_ALPHA: float = 1.0
     PT_REF: float = 50.0
@@ -226,7 +227,9 @@ class SimConfig:
 
     # scheduler algorithm
     SCHEDULER_MODE: str = "THDQN"
-    TRAIN_SCHEDULER_MODES: tuple = ("THDQN",)
+    TRAIN_SCHEDULER_MODES: tuple = ("THDQN", "PPO")
+    SCHEDULER_STATE_DIM: int = 15
+    MAINTENANCE_STATE_DIM: int = 18
     PPO_SCHED_REWARD_GOAL: int = 2
     PPO_LR: float = 3e-4
     PPO_GAMMA: float = 0.99
@@ -240,9 +243,8 @@ class SimConfig:
 
     # paired experiment runner
     EXPERIMENT_SEEDS: tuple = (42,)
-    TRAIN_MAINT_MODES: tuple = ("DQN",)
+    TRAIN_MAINT_MODES: tuple = ("DQN", "POMCP")
     TRAIN_POLICY_ROUTES: tuple = ("region_on", "region_off")
-    TRAIN_SCHEDULER_MODES: tuple = ("PPO",)
     SCENARIO_LOCK_SCOPE: str = "full"
     ENABLE_OOD_DIAGNOSTIC_EVAL: bool = False
     ENABLE_MAINT_ONLY_COMPARE: bool = False
