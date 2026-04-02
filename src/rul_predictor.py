@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 
 class _PaperGRURegressor(nn.Module):
-    def __init__(self, input_dim: int, hidden_dim: int, num_layers: int):
+    def __init__(self, input_dim: int, hidden_dim: int, num_layers: int, dropout: float):
         super().__init__()
         self.gru = nn.GRU(
             input_size=int(input_dim),
@@ -20,6 +20,7 @@ class _PaperGRURegressor(nn.Module):
             num_layers=int(num_layers),
             batch_first=True,
         )
+        self.dropout = nn.Dropout(float(dropout))
         self.head = nn.Sequential(
             nn.Linear(int(hidden_dim), int(hidden_dim)),
             nn.ReLU(),
@@ -29,7 +30,7 @@ class _PaperGRURegressor(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out, _ = self.gru(x)
-        return self.head(out[:, -1, :]).squeeze(-1)
+        return self.head(self.dropout(out[:, -1, :])).squeeze(-1)
 
 
 @dataclass
@@ -112,11 +113,12 @@ class RULPredictorWrapper:
 
         train_data_no = int(getattr(self.cfg, "RUL_TRAIN_DATA_NO", 18))
         val_ratio = float(getattr(self.cfg, "RUL_VAL_RATIO", 0.2))
-        batch_size = int(getattr(self.cfg, "RUL_GRU_BATCH_SIZE", 128))
-        epochs = int(getattr(self.cfg, "RUL_GRU_EPOCHS", 30))
+        batch_size = int(getattr(self.cfg, "RUL_GRU_BATCH_SIZE", 1024))
+        epochs = int(getattr(self.cfg, "RUL_GRU_EPOCHS", 250))
         lr = float(getattr(self.cfg, "RUL_GRU_LR", 1e-3))
-        hidden_dim = int(getattr(self.cfg, "RUL_GRU_HIDDEN_DIM", 32))
+        hidden_dim = int(getattr(self.cfg, "RUL_GRU_HIDDEN_DIM", 40))
         num_layers = int(getattr(self.cfg, "RUL_GRU_NUM_LAYERS", 1))
+        dropout = float(getattr(self.cfg, "RUL_GRU_DROPOUT", 0.25))
         seed = int(getattr(self.cfg, "SEED", 42))
 
         df = pd.read_csv(test_csv)
@@ -157,7 +159,7 @@ class RULPredictorWrapper:
         )
 
         torch.manual_seed(seed)
-        model = _PaperGRURegressor(len(self.features), hidden_dim, num_layers)
+        model = _PaperGRURegressor(len(self.features), hidden_dim, num_layers, dropout)
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         criterion = nn.MSELoss()
 

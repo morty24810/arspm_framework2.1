@@ -8,9 +8,13 @@ import numpy as np
 import pandas as pd
 import torch
 
-from config import SimConfig
+from config import SimConfig, resolve_machine_set
 from checkpointing import CheckpointManager, load_checkpoint
-from infer_demo import build_infer_route_result
+from infer_demo import (
+    build_infer_route_result,
+    build_infer_summary_row,
+    should_use_formal_final_eval_scenario,
+)
 from run_experiment import (
     _sync_idle_after_maintenance,
     build_maintenance_state,
@@ -325,6 +329,30 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(cfg.SCHEDULER_STATE_DIM, 15)
         self.assertEqual(cfg.MAINTENANCE_STATE_DIM, 18)
 
+    def test_default_machine_set_and_paper_machine_set_can_be_resolved(self):
+        cfg = SimConfig()
+        mode, ids, num_machines = resolve_machine_set(cfg)
+        self.assertEqual(mode, "current6")
+        self.assertEqual(ids, (4, 8, 11, 17, 18, 23))
+        self.assertEqual(num_machines, 6)
+
+        cfg.MACHINE_SET_MODE = "paper8"
+        mode, ids, num_machines = resolve_machine_set(cfg)
+        self.assertEqual(mode, "paper8")
+        self.assertEqual(ids, (4, 8, 11, 17, 18, 23, 28, 49))
+        self.assertEqual(num_machines, 8)
+
+    def test_paper_gru_defaults_match_paper_profile(self):
+        cfg = SimConfig()
+        self.assertEqual(cfg.RUL_TRAIN_DATA_NO, 18)
+        self.assertEqual(cfg.RUL_VAL_RATIO, 0.2)
+        self.assertEqual(cfg.RUL_WINDOW, 30)
+        self.assertEqual(cfg.RUL_GRU_HIDDEN_DIM, 40)
+        self.assertEqual(cfg.RUL_GRU_BATCH_SIZE, 1024)
+        self.assertEqual(cfg.RUL_GRU_EPOCHS, 250)
+        self.assertAlmostEqual(cfg.RUL_GRU_DROPOUT, 0.25)
+        self.assertAlmostEqual(cfg.RUL_GRU_LR, 1e-3)
+
     def test_effective_degradation_scaling_applies_to_base_and_bounds(self):
         cfg = SimConfig()
 
@@ -521,30 +549,52 @@ class MergeRegressionTests(unittest.TestCase):
         cfg.RUL_LINEAR_TAIL_ENABLE = True
         env = EventDrivenShopEnv.__new__(EventDrivenShopEnv)
         env.cfg = cfg
-        env.machine_lifespan = {0: 10}
+        env.machine_lifespan = {0: 5}
         env.machine_observed_life = {0: 5}
         env.machine_curve = {0: 4}
+        env.machine_label_meta = {
+            0: {
+                "time_rel": np.asarray([0.0, 8.0], dtype=np.float64),
+                "rul_norm": np.asarray([1.0, 0.2], dtype=np.float64),
+                "time_rel_end": 8.0,
+                "replay_to_label_scale": 2.0,
+                "tail_anchor_norm": 0.2,
+                "full_index_span": 5.0,
+            }
+        }
+        env.machine_replay_to_label_scale = {0: 2.0}
         env.rul_cache = _RULCacheStub([1.0, 0.9, 0.8, 0.7, 0.6])
         env.degr = None
         env.rul = None
         env.machine_operating_idx = {0: 6}
         env.machine_operating_frac = {0: 0.0}
 
-        self.assertAlmostEqual(env.rul_from_operating_index(0, 3.5), 0.65)
-        self.assertAlmostEqual(env.rul_from_operating_index(0, 6.0), 0.4)
-        self.assertAlmostEqual(env.rul_from_operating_index(0, 9.5), 0.05)
-        self.assertAlmostEqual(env.operating_index_from_rul(0, 0.05), 9.5)
-        self.assertAlmostEqual(env.peek_rul_true(0), 0.4)
-        self.assertAlmostEqual(env._peek_rul(0), 0.4)
+        self.assertAlmostEqual(env.rul_from_operating_index(0, 3.5), 0.3)
+        self.assertAlmostEqual(env.rul_from_operating_index(0, 4.0), 0.2)
+        self.assertAlmostEqual(env.rul_from_operating_index(0, 4.5), 0.1)
+        self.assertAlmostEqual(env.operating_index_from_rul(0, 0.05), 4.75)
+        self.assertAlmostEqual(env.peek_rul_true(0), 0.0)
+        self.assertAlmostEqual(env._peek_rul(0), 0.0)
 
     def test_canonical_rul_is_renormalized_to_one_after_reset(self):
         cfg = SimConfig()
         cfg.RUL_LINEAR_TAIL_ENABLE = True
         env = EventDrivenShopEnv.__new__(EventDrivenShopEnv)
         env.cfg = cfg
-        env.machine_lifespan = {0: 10}
+        env.machine_lifespan = {0: 5}
         env.machine_observed_life = {0: 5}
         env.machine_curve = {0: 4}
+        env.machine_label_meta = {
+            0: {
+                "time_rel": np.asarray([0.0, 8.0], dtype=np.float64),
+                "rul_norm": np.asarray([1.0, 0.2], dtype=np.float64),
+                "time_rel_end": 8.0,
+                "replay_to_label_scale": 2.0,
+                "tail_anchor_norm": 0.2,
+                "full_index_span": 5.0,
+            }
+        }
+        env.machine_replay_to_label_scale = {0: 2.0}
         env.rul_cache = _RULCacheStub([0.97, 0.90, 0.80, 0.70, 0.60])
         env.degr = None
         env.rul = None
@@ -559,26 +609,66 @@ class MergeRegressionTests(unittest.TestCase):
         cfg.RUL_LINEAR_TAIL_ENABLE = False
         env = EventDrivenShopEnv.__new__(EventDrivenShopEnv)
         env.cfg = cfg
-        env.machine_lifespan = {0: 10}
+        env.machine_lifespan = {0: 5}
         env.machine_observed_life = {0: 5}
         env.machine_curve = {0: 4}
+        env.machine_label_meta = {
+            0: {
+                "time_rel": np.asarray([0.0, 8.0], dtype=np.float64),
+                "rul_norm": np.asarray([1.0, 0.2], dtype=np.float64),
+                "time_rel_end": 8.0,
+                "replay_to_label_scale": 2.0,
+                "tail_anchor_norm": 0.2,
+                "full_index_span": 5.0,
+            }
+        }
+        env.machine_replay_to_label_scale = {0: 2.0}
         env.rul_cache = _RULCacheStub([1.0, 0.9, 0.8, 0.7, 0.6])
         env.degr = None
         env.rul = None
 
-        self.assertAlmostEqual(env.rul_from_operating_index(0, 6.0), 0.6)
-        self.assertAlmostEqual(env.rul_from_operating_index(0, 20.0), 0.6)
+        self.assertAlmostEqual(env.rul_from_operating_index(0, 6.0), 0.2)
+        self.assertAlmostEqual(env.rul_from_operating_index(0, 20.0), 0.2)
         self.assertAlmostEqual(env.operating_index_from_rul(0, 0.05), 4.0)
 
-    def test_gru_cache_is_strictly_smoothed_without_plateaus(self):
+    def test_label_driven_tail_does_not_freeze_when_observed_life_exceeds_label_span(self):
+        cfg = SimConfig()
+        cfg.RUL_LINEAR_TAIL_ENABLE = True
+        env = EventDrivenShopEnv.__new__(EventDrivenShopEnv)
+        env.cfg = cfg
+        env.machine_observed_life = {0: 10}
+        env.machine_lifespan = {0: 13}
+        env.machine_curve = {0: 4}
+        env.machine_label_meta = {
+            0: {
+                "time_rel": np.asarray([0.0, 6.0], dtype=np.float64),
+                "rul_norm": np.asarray([1.0, 0.25], dtype=np.float64),
+                "time_rel_end": 6.0,
+                "replay_to_label_scale": 6.0 / 9.0,
+                "tail_anchor_norm": 0.25,
+                "full_index_span": 12.0,
+            }
+        }
+        env.machine_replay_to_label_scale = {0: 6.0 / 9.0}
+        env.rul_cache = _RULCacheStub([1.0] * 10)
+        env.degr = None
+        env.rul = None
+
+        anchor = env.rul_from_operating_index(0, 9.0)
+        after_tail = env.rul_from_operating_index(0, 10.5)
+        self.assertAlmostEqual(anchor, 0.25)
+        self.assertLess(after_tail, anchor)
+        self.assertAlmostEqual(after_tail, 0.125)
+
+    def test_gru_cache_is_monotone_non_increasing(self):
         from src.sensor_bank import GRUCache
 
-        cache = GRUCache(_PredictorStub([0.9, 0.95, 0.7, 0.72, 0.4]), _BankStub(5), 3, min_drop=1e-4)
+        cache = GRUCache(_PredictorStub([0.9, 0.95, 0.7, 0.72, 0.4]), _BankStub(5), 3)
         cache.build()
 
         vals = cache.cache[0]
-        self.assertTrue(np.all(np.diff(vals) < 0.0))
-        self.assertTrue(np.allclose(vals, np.array([0.9, 0.8999, 0.7, 0.6999, 0.4], dtype=np.float32), atol=1e-6))
+        self.assertTrue(np.all(np.diff(vals) <= 0.0))
+        self.assertTrue(np.allclose(vals, np.array([0.9, 0.9, 0.7, 0.7, 0.4], dtype=np.float32), atol=1e-6))
 
     def test_plot_rul_curves_accepts_segment_log(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -595,6 +685,67 @@ class MergeRegressionTests(unittest.TestCase):
                 rul_segments={0: [(0.0, 10.0, 1.0, 0.8, "PROC"), (12.0, 20.0, 0.95, 0.6, "PROC")]},
             )
             self.assertTrue(Path(out_path).exists())
+
+    def test_infer_summary_row_includes_breakdown_and_stress_fields(self):
+        cfg = SimConfig()
+        env = _CompareEnvStub(
+            breakdown_count=2,
+            breakdown_cost=77.0,
+            requeued_op_count=3,
+            interrupted_proc_time=12.5,
+            makespan=50.0,
+        )
+        env.hard_breakdown_count = 1
+        env.stochastic_breakdown_count = 1
+        env.last_decision_log = [
+            {"event": "scheduling", "goal": None, "rule": 3, "dispatched": True, "current_stress": 0.2},
+            {"event": "scheduling", "goal": None, "rule": 1, "dispatched": True, "current_stress": 0.5},
+        ]
+        summary = build_infer_summary_row(
+            "20260402_000000",
+            1,
+            cfg,
+            42,
+            80,
+            "region_off_unrestricted",
+            "Policy",
+            "DQN",
+            "maint_dqn",
+            {"tard": 1.0, "maint": 2.0, "total": 3.0},
+            env,
+            {"ratio_ops": 0.1, "ratio_time": 0.2, "overdue_ops": 4, "total_ops": 10},
+            degradation_rate=72.8,
+            degradation_rate_scale=1.3,
+        )
+        self.assertEqual(summary["breakdown_count"], 2)
+        self.assertEqual(summary["breakdown_cost"], 77.0)
+        self.assertEqual(summary["requeued_op_count"], 3)
+        self.assertEqual(summary["interrupted_proc_time"], 12.5)
+        self.assertEqual(summary["hard_breakdown_count"], 1)
+        self.assertEqual(summary["stochastic_breakdown_count"], 1)
+        self.assertAlmostEqual(summary["current_stress_mean"], 0.35)
+        self.assertAlmostEqual(summary["current_stress_max"], 0.5)
+        self.assertEqual(summary["degradation_rate"], 72.8)
+        self.assertEqual(summary["degradation_rate_scale"], 1.3)
+        self.assertEqual(summary["machine_set_mode"], "current6")
+        self.assertEqual(summary["machine_curve_ids"], [4, 8, 11, 17, 18, 23])
+        self.assertEqual(summary["rul_life_clock_mode"], "label_driven_scaled")
+
+    def test_infer_demo_defaults_to_formal_final_eval_scenario(self):
+        args = SimpleNamespace(
+            jobs_target=None,
+            segment_jobs=None,
+            randomize_combos=0,
+            combo_plan="",
+        )
+        self.assertTrue(should_use_formal_final_eval_scenario(args))
+
+        args.randomize_combos = 1
+        self.assertFalse(should_use_formal_final_eval_scenario(args))
+
+        args.randomize_combos = 0
+        args.jobs_target = 80
+        self.assertFalse(should_use_formal_final_eval_scenario(args))
 
     def test_ppo_scheduler_checkpoint_roundtrip(self):
         cfg = SimConfig()

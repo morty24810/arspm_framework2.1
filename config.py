@@ -1,6 +1,27 @@
 from dataclasses import dataclass
 from typing import Optional
 
+
+CURRENT6_MACHINE_CURVE_IDS = (4, 8, 11, 17, 18, 23)
+PAPER8_MACHINE_CURVE_IDS = (4, 8, 11, 17, 18, 23, 28, 49)
+
+
+def resolve_machine_set(cfg: "SimConfig") -> tuple[str, tuple[int, ...], int]:
+    mode = str(getattr(cfg, "MACHINE_SET_MODE", "current6")).strip().lower()
+    if mode in {"current6", "legacy6", "default"}:
+        ids = tuple(getattr(cfg, "CURRENT6_MACHINE_CURVE_IDS", CURRENT6_MACHINE_CURVE_IDS))
+        return "current6", ids, len(ids)
+    if mode in {"paper8", "paper", "full8"}:
+        ids = tuple(getattr(cfg, "PAPER8_MACHINE_CURVE_IDS", PAPER8_MACHINE_CURVE_IDS))
+        return "paper8", ids, len(ids)
+    if mode == "custom":
+        ids = tuple(int(x) for x in getattr(cfg, "MACHINE_CURVE_IDS", ()))
+        if not ids:
+            raise ValueError("MACHINE_SET_MODE='custom' requires MACHINE_CURVE_IDS to be non-empty.")
+        num_machines = int(getattr(cfg, "NUM_MACHINES", len(ids)))
+        return "custom", ids, num_machines
+    raise ValueError(f"unsupported MACHINE_SET_MODE: {mode}")
+
 @dataclass
 class SimConfig:
     # --- data / artifact paths ---
@@ -9,10 +30,13 @@ class SimConfig:
     RUL_ARTIFACT_DIR: str = "rul_model_artifact"  # optional
 
     # --- shop / jobs ---
+    MACHINE_SET_MODE: str = "current6"
+    CURRENT6_MACHINE_CURVE_IDS: tuple = CURRENT6_MACHINE_CURVE_IDS
+    PAPER8_MACHINE_CURVE_IDS: tuple = PAPER8_MACHINE_CURVE_IDS
     NUM_MACHINES: int = 6
-    # Align with dataset_analysis.md §4.2 validation matrix:
-    # use the first six machines from Data_No = 4, 8, 11, 17, 18, 23, 28, 49.
-    MACHINE_CURVE_IDS: tuple = (4, 8, 11, 17, 18, 23)
+    # Default remains the current 6-machine experiment. Use MACHINE_SET_MODE to
+    # switch to the paper's full 8-machine set without hand-editing this tuple.
+    MACHINE_CURVE_IDS: tuple = CURRENT6_MACHINE_CURVE_IDS
     JOBS_TARGET: int = 40           # how many jobs arrive in an episode (approx., eval default)
     MAX_TIME: float = 2000.0        # legacy cap (not used when running by job count only)
     TRAIN_JOBS_TARGET: int = 100     # doubled to increase training operations
@@ -59,17 +83,18 @@ class SimConfig:
     RUL_PREDICTOR_MODE: str = "paper_gru"
     RUL_TRAIN_DATA_NO: int = 18
     RUL_VAL_RATIO: float = 0.2
-    RUL_GRU_HIDDEN_DIM: int = 32
+    RUL_GRU_HIDDEN_DIM: int = 40
     RUL_GRU_NUM_LAYERS: int = 1
-    RUL_GRU_EPOCHS: int = 30
-    RUL_GRU_BATCH_SIZE: int = 128
+    RUL_GRU_DROPOUT: float = 0.25
+    RUL_GRU_EPOCHS: int = 250
+    RUL_GRU_BATCH_SIZE: int = 1024
     RUL_GRU_LR: float = 1e-3
     # The public dataset is right-censored rather than run-to-failure.
     # Keep replay/GRU predictions on the observed segment, then optionally
     # extend latent true RUL linearly after the last observed sample.
     RUL_LINEAR_TAIL_ENABLE: bool = True
     RUL_LINEAR_TAIL_STEP: Optional[float] = None
-    RUL_CACHE_MIN_DROP: float = 1e-4
+    RUL_LIFE_CLOCK_MODE: str = "label_driven_scaled"
     DEGRAD_NOISE_STD: float = 0.02
     DEGRADATION_RATE_SCALE: float = 1.30
     BASE_DEGRADATION_RATE: float = 56.0

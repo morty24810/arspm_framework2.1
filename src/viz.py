@@ -353,6 +353,7 @@ def plot_rul_curves(rul_log: Dict[int, List[Tuple[float, float]]], maint: List[T
                     hard_threshold: Optional[float] = None,
                     rul_segments: Optional[Dict[int, List[Tuple[float, float, float, float, str]]]] = None):
     fig, ax = plt.subplots(figsize=(12, 4))
+    has_flat_processing_segments = False
     for mid in sorted(rul_log.keys()):
         pts = rul_log.get(mid) or []
         segs = [] if rul_segments is None else list(rul_segments.get(mid) or [])
@@ -375,6 +376,20 @@ def plot_rul_curves(rul_log: Dict[int, List[Tuple[float, float]]], maint: List[T
                 kwargs = {"color": color} if color is not None else {}
                 line, = ax.plot([t0, t1], [h0, h1], label=f"M{mid}" if idx == 0 else None, **kwargs)
                 color = line.get_color()
+                if abs(float(h1) - float(h0)) <= 1e-9:
+                    has_flat_processing_segments = True
+                    t_mid = 0.5 * (float(t0) + float(t1))
+                    ax.scatter(
+                        [t_mid],
+                        [float(h0)],
+                        marker="o",
+                        s=18,
+                        facecolors="white",
+                        edgecolors=color,
+                        linewidths=0.9,
+                        alpha=0.9,
+                        zorder=4,
+                    )
                 if idx > 0:
                     _, pt1, _, ph1, _ = ordered_segs[idx - 1]
                     gap_maint = [
@@ -437,6 +452,8 @@ def plot_rul_curves(rul_log: Dict[int, List[Tuple[float, float]]], maint: List[T
     notes = []
     if rul_obs_log is not None:
         notes.append("Observed trace shown as dotted overlay.")
+    if has_flat_processing_segments:
+        notes.append("White markers indicate processing with unchanged canonical RUL.")
     if not threshold_enforced:
         notes.append("Hx/Hy shown as reference only.")
     _draw_info_card(fig, policy_label, extra_note="\n".join(notes) if notes else None)

@@ -9,22 +9,25 @@ from typing import Any, Dict
 
 import torch
 
-from config import SimConfig
+from config import SimConfig, resolve_machine_set
 from src.utils import set_seed
 from src.agents import MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
 from src.pomcp import POMCPPlanner
-from src.compare import compare_mode_results, write_mode_comparison_outputs
+from src.compare import compare_mode_results, summarize_scheduling_strategy, write_mode_comparison_outputs
 from checkpointing import load_checkpoint, load_maintenance_only
 from run_experiment import (
+    apply_machine_set_mode,
     build_degradation_and_rul,
     build_episode_combos,
     build_episode_scenario,
+    build_scenario_bank,
     evaluate_once,
     build_policy_tag,
     build_policy_label,
     build_policy_context_label,
     build_maint_mode_tag,
     effective_base_degradation_rate,
+    effective_degradation_rate_scale,
     make_rng,
     write_summary_files,
     validate_region_thresholds,
@@ -38,7 +41,7 @@ def parse_args():
     parser.add_argument("--episodes", type=int, default=1) # number of episodes to run
     parser.add_argument("--jobs_target", type=int, default=None) # how many jobs to schedule in each episode
     parser.add_argument("--machines", type=int, default=None) # override number of machines
-    parser.add_argument("--randomize_combos", type=int, default=1) # randomize lambda/DDT combos
+    parser.add_argument("--randomize_combos", type=int, default=0) # randomize lambda/DDT combos
     parser.add_argument("--segment_jobs", type=int, default=None) # jobs per combo segment
     parser.add_argument("--combo_plan", type=str, default="") # lam:ddt[:segments],lam:ddt[:segments]
     parser.add_argument("--maint_mode", type=str, default="POMCP", choices=["DQN", "POMCP", "OFF"]) # maintenance mode
@@ -103,6 +106,62 @@ def build_infer_route_result(metrics: Dict[str, Any], env: Any, overdue_stats: D
     }
 
 
+def build_infer_summary_row(ts: str, episode_idx: int, cfg_eval: SimConfig, seed: int,
+                            jobs_target: int, policy_tag: str, policy_label: str,
+                            maint_mode: str, maint_mode_tag: str, metrics: Dict[str, Any],
+                            env: Any, overdue_stats: Dict[str, Any], *,
+                            degradation_rate: float, degradation_rate_scale: float) -> Dict[str, Any]:
+    sched_summary = summarize_scheduling_strategy(list(getattr(env, "last_decision_log", [])), env=env)
+    return {
+        "timestamp": ts,
+        "episode": int(episode_idx),
+        "policy_tag": policy_tag,
+        "policy_label": policy_label,
+        "maint_mode": str(maint_mode),
+        "maint_mode_tag": maint_mode_tag,
+        "scheduler_mode": str(cfg_eval.SCHEDULER_MODE).upper(),
+        "scheduler_mode_tag": f"sched_{str(cfg_eval.SCHEDULER_MODE).lower()}",
+        "enforce_region_policy": int(cfg_eval.ENFORCE_REGION_POLICY),
+        "hx": float(cfg_eval.Hx),
+        "hy": float(cfg_eval.Hy),
+        "seed": int(seed),
+        "jobs_target": int(jobs_target),
+        "tard": float(metrics["tard"]),
+        "maint": float(metrics["maint"]),
+        "total": float(metrics["total"]),
+        "overdue_ratio_ops": float(overdue_stats["ratio_ops"]),
+        "overdue_ratio_time": float(overdue_stats["ratio_time"]),
+        "overdue_ops": float(overdue_stats["overdue_ops"]),
+        "total_ops": float(overdue_stats["total_ops"]),
+        "breakdown_count": int(getattr(env, "breakdown_count", 0)),
+        "breakdown_cost": float(getattr(env, "breakdown_cost_total", 0.0)),
+        "requeued_op_count": int(getattr(env, "requeued_op_count", 0)),
+        "interrupted_proc_time": float(getattr(env, "interrupted_proc_time", 0.0)),
+        "hard_breakdown_count": int(getattr(env, "hard_breakdown_count", 0)),
+        "stochastic_breakdown_count": int(getattr(env, "stochastic_breakdown_count", 0)),
+        "current_stress_mean": float(sched_summary.get("current_stress_mean", 0.0)),
+        "current_stress_max": float(sched_summary.get("current_stress_max", 0.0)),
+        "degradation_rate": float(degradation_rate),
+        "degradation_rate_scale": float(degradation_rate_scale),
+        "machine_set_mode": str(getattr(cfg_eval, "MACHINE_SET_MODE", "current6")),
+        "machine_curve_ids": list(getattr(cfg_eval, "MACHINE_CURVE_IDS", ())),
+        "rul_life_clock_mode": str(getattr(cfg_eval, "RUL_LIFE_CLOCK_MODE", "label_driven_scaled")),
+        "machine_replay_to_label_scale": {
+            int(mid): float(scale)
+            for mid, scale in getattr(env, "machine_replay_to_label_scale", {}).items()
+        },
+    }
+
+
+def should_use_formal_final_eval_scenario(args: argparse.Namespace) -> bool:
+    return (
+        args.jobs_target is None
+        and args.segment_jobs is None
+        and not bool(int(args.randomize_combos))
+        and not args.combo_plan.strip()
+    )
+
+
 def infer_scheduler_state_dim(ckpt_path: Path, map_location: torch.device) -> int:
     ckpt = torch.load(str(ckpt_path), map_location=map_location)
     models = ckpt.get("models", {})
@@ -144,6 +203,7 @@ def main():
     cfg = SimConfig()
     validate_region_thresholds(cfg)
     cfg.SEED = int(cfg.SEED if args.seed is None else args.seed)
+    _, resolved_machine_curve_ids = apply_machine_set_mode(cfg)
     if args.machines is not None:
         cfg.NUM_MACHINES = int(args.machines)
     cfg.MAINT_MODE = str(args.maint_mode).upper()
@@ -178,7 +238,7 @@ def main():
         dqn_ckpt_path = None
         maint_modes = [cfg.MAINT_MODE]
 
-    machine_curve_ids = list(cfg.MACHINE_CURVE_IDS)
+    machine_curve_ids = list(resolved_machine_curve_ids)
     _, degr, rul = build_degradation_and_rul(cfg, machine_curve_ids)
 
     cfg.SCHEDULER_MODE = infer_scheduler_mode(ckpt_path, device)
@@ -230,10 +290,13 @@ def main():
     for ep in range(int(args.episodes)):
         seed = int(cfg.SEED) + ep
         set_seed(seed)
-        combo_rng = random.Random(seed)
         cfg_eval_base = copy.deepcopy(cfg)
         cfg_eval_base.SEED = seed
-        if combo_plan:
+        if should_use_formal_final_eval_scenario(args):
+            scenario_bank = build_scenario_bank(seed, cfg_eval_base, degr, machine_curve_ids=machine_curve_ids)
+            scenario = scenario_bank.final_eval_scenario
+            jobs_target = int(scenario.jobs_target)
+        elif combo_plan:
             combos, seq = parse_combo_plan(combo_plan)
             target_segments = max(1, int(math.ceil(int(jobs_target) / cfg_eval_base.COMBO_SEGMENT_JOBS)))
             if len(seq) < target_segments:
@@ -241,18 +304,31 @@ def main():
             elif len(seq) > target_segments:
                 seq = seq[:target_segments]
             cfg_eval_base.COMBO_RANDOMIZE = False
+            scenario = build_episode_scenario(
+                cfg_eval_base,
+                degr,
+                jobs_target=int(jobs_target),
+                scenario_rng=make_rng(seed, "infer", ep + 1, "scenario"),
+                degradation_rate=float(effective_base_degradation_rate(cfg_eval_base)),
+                episode_combos=combos,
+                episode_combo_seq=seq,
+                machine_curve_ids=machine_curve_ids,
+            )
         else:
+            combo_rng = random.Random(seed)
             combos, seq = build_episode_combos(cfg_eval_base, combo_rng, int(jobs_target))
-        scenario = build_episode_scenario(
-            cfg_eval_base,
-            degr,
-            jobs_target=int(jobs_target),
-            scenario_rng=make_rng(seed, "infer", ep + 1, "scenario"),
-            degradation_rate=float(effective_base_degradation_rate(cfg_eval_base)),
-            episode_combos=combos,
-            episode_combo_seq=seq,
-            machine_curve_ids=machine_curve_ids,
-        )
+            scenario = build_episode_scenario(
+                cfg_eval_base,
+                degr,
+                jobs_target=int(jobs_target),
+                scenario_rng=make_rng(seed, "infer", ep + 1, "scenario"),
+                degradation_rate=float(effective_base_degradation_rate(cfg_eval_base)),
+                episode_combos=combos,
+                episode_combo_seq=seq,
+                machine_curve_ids=machine_curve_ids,
+            )
+        scenario_combos = list(getattr(scenario, "combos", []))
+        scenario_combo_seq = list(getattr(scenario, "combo_seq", []))
         outdir = base_outdir if args.episodes == 1 else (base_outdir / f"episode_{ep+1:03d}")
         outdir.mkdir(parents=True, exist_ok=True)
 
@@ -294,8 +370,8 @@ def main():
                         pomcp_ep,
                         machine_curve_ids,
                         jobs_target=int(jobs_target),
-                        episode_combos=combos,
-                        episode_combo_seq=seq,
+                        episode_combos=scenario_combos,
+                        episode_combo_seq=scenario_combo_seq,
                         generate_outputs=True,
                         outdir=outdir,
                         plot_prefix=artifact_stem,
@@ -317,28 +393,22 @@ def main():
                     policy_label,
                     maint_mode_tag,
                 )
-                summary_row = {
-                    "timestamp": ts,
-                    "episode": int(ep + 1),
-                    "policy_tag": policy_tag,
-                    "policy_label": policy_label,
-                    "maint_mode": str(maint_mode),
-                    "maint_mode_tag": maint_mode_tag,
-                    "scheduler_mode": str(cfg_eval.SCHEDULER_MODE).upper(),
-                    "scheduler_mode_tag": f"sched_{str(cfg_eval.SCHEDULER_MODE).lower()}",
-                    "enforce_region_policy": int(enforce_region),
-                    "hx": float(cfg_eval.Hx),
-                    "hy": float(cfg_eval.Hy),
-                    "seed": int(seed),
-                    "jobs_target": int(jobs_target),
-                    "tard": float(metrics["tard"]),
-                    "maint": float(metrics["maint"]),
-                    "total": float(metrics["total"]),
-                    "overdue_ratio_ops": float(overdue_stats["ratio_ops"]),
-                    "overdue_ratio_time": float(overdue_stats["ratio_time"]),
-                    "overdue_ops": float(overdue_stats["overdue_ops"]),
-                    "total_ops": float(overdue_stats["total_ops"]),
-                }
+                summary_row = build_infer_summary_row(
+                    ts,
+                    ep + 1,
+                    cfg_eval,
+                    seed,
+                    jobs_target,
+                    policy_tag,
+                    policy_label,
+                    maint_mode,
+                    maint_mode_tag,
+                    metrics,
+                    env,
+                    overdue_stats,
+                    degradation_rate=float(scenario.degradation_rate),
+                    degradation_rate_scale=float(effective_degradation_rate_scale(cfg_eval_base)),
+                )
                 write_summary_files(outdir, f"summary_{artifact_stem}", summary_row)
                 print(
                     f"episode {ep+1}/{args.episodes} [{policy_tag}][{maint_mode_tag}] "

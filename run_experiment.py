@@ -12,7 +12,7 @@ import time
 import numpy as np
 import torch
 
-from config import SimConfig
+from config import SimConfig, resolve_machine_set
 from src.utils import set_seed
 from src.degradation import DegradationReplay
 from src.rul_predictor import RULPredictorWrapper
@@ -102,6 +102,14 @@ def build_scheduler_mode_tag(scheduler_mode: str) -> str:
 
 def build_scheduler_mode_label(scheduler_mode: str) -> str:
     return f"Scheduler: {str(scheduler_mode).upper()}"
+
+
+def apply_machine_set_mode(cfg: SimConfig) -> tuple[str, list[int]]:
+    mode, machine_curve_ids, num_machines = resolve_machine_set(cfg)
+    cfg.MACHINE_SET_MODE = mode
+    cfg.MACHINE_CURVE_IDS = tuple(machine_curve_ids)
+    cfg.NUM_MACHINES = int(num_machines)
+    return mode, list(machine_curve_ids)
 
 def build_policy_context_label(cfg: SimConfig, enforce_region: bool, maint_mode: str,
                                scheduler_mode: Optional[str] = None) -> str:
@@ -1343,6 +1351,13 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "current_stress_max": float(schedule_summary.get("current_stress_max", 0.0)),
         "degradation_rate": float(getattr(getattr(env, "cfg", None), "BASE_DEGRADATION_RATE", 0.0)),
         "degradation_rate_scale": float(getattr(getattr(env, "cfg", None), "DEGRADATION_RATE_SCALE", 1.0)),
+        "machine_set_mode": str(getattr(getattr(env, "cfg", None), "MACHINE_SET_MODE", "current6")),
+        "machine_curve_ids": list(getattr(getattr(env, "cfg", None), "MACHINE_CURVE_IDS", ())),
+        "rul_life_clock_mode": str(getattr(getattr(env, "cfg", None), "RUL_LIFE_CLOCK_MODE", "label_driven_scaled")),
+        "machine_replay_to_label_scale": {
+            int(mid): float(scale)
+            for mid, scale in getattr(env, "machine_replay_to_label_scale", {}).items()
+        },
         "maint_dn": int(maint_counts.get("DN", 0)),
         "maint_im": int(maint_counts.get("IM", 0)),
         "maint_cm": int(maint_counts.get("CM", 0)),
@@ -2102,6 +2117,13 @@ def train_one_mode(
         "scheduler_mode_tag": build_scheduler_mode_tag(cfg.SCHEDULER_MODE),
         "degradation_rate": float(final_scenario.degradation_rate),
         "degradation_rate_scale": effective_degradation_rate_scale(base_cfg),
+        "machine_set_mode": str(getattr(base_cfg, "MACHINE_SET_MODE", "current6")),
+        "machine_curve_ids": list(getattr(base_cfg, "MACHINE_CURVE_IDS", ())),
+        "rul_life_clock_mode": str(getattr(base_cfg, "RUL_LIFE_CLOCK_MODE", "label_driven_scaled")),
+        "machine_replay_to_label_scale": {
+            int(mid): float(scale)
+            for mid, scale in getattr(eval_env, "machine_replay_to_label_scale", {}).items()
+        },
     }
     write_summary_files(outdir, f"summary_{ts}_{maint_mode_tag}_{train_policy_tag}", summary_row)
 
@@ -2230,7 +2252,7 @@ def main():
         device = torch.device("cpu")
     print("device:", device)
 
-    base_machine_curve_ids = list(cfg.MACHINE_CURVE_IDS)
+    _, base_machine_curve_ids = apply_machine_set_mode(cfg)
     _, degr, rul = build_degradation_and_rul(cfg, base_machine_curve_ids)
     ts = time.strftime("%Y%m%d_%H%M%S")
     output_root = Path("outputs") / f"paired_{ts}"

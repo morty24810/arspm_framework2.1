@@ -128,8 +128,10 @@ class EventDrivenShopEnv:
         self.machine_curve: Dict[int, int] = {}
         self.machine_operating_idx: Dict[int, int] = {}  # increments when processing (not idle/maint)
         self.machine_operating_frac: Dict[int, float] = {}
-        self.machine_lifespan: Dict[int, int] = {}       # paper-aligned true life (RUL label steps)
+        self.machine_lifespan: Dict[int, int] = {}       # full life span in replay-index units
         self.machine_observed_life: Dict[int, int] = {}  # replay-observed sequence length
+        self.machine_label_meta: Dict[int, Dict[str, Any]] = {}
+        self.machine_replay_to_label_scale: Dict[int, float] = {}
         self.machine_time_scale: Dict[int, float] = {}
         self.machine_pt_sum: Dict[int, float] = {}
         self.machine_pt_count: Dict[int, int] = {}
@@ -219,23 +221,66 @@ class EventDrivenShopEnv:
                     if not np.isfinite(step) or step <= 0.0:
                         step = 0.1
                     first_rul = float(group["RUL"].iloc[0])
+                    time_vals = group["Time"].to_numpy(dtype=np.float64)
+                    rul_vals = group["RUL"].to_numpy(dtype=np.float64)
+                    time0 = float(time_vals[0])
+                    time_rel = time_vals - time0
+                    rul_norm = np.clip(rul_vals / max(first_rul, 1e-9), 0.0, 1.0)
                     life_steps = max(int(round(first_rul / step)), 1)
                     meta[int(data_no)] = {
                         "first_rul": first_rul,
                         "rul_step": step,
                         "life_steps": float(life_steps),
-                        "first_time": float(group["Time"].iloc[0]),
-                        "last_rul": float(group["RUL"].iloc[-1]),
+                        "first_time": time0,
+                        "last_rul": float(rul_vals[-1]),
+                        "time_rel_end": float(time_rel[-1]),
+                        "time_rel": time_rel.astype(np.float64),
+                        "rul_actual": rul_vals.astype(np.float64),
+                        "rul_norm": rul_norm.astype(np.float64),
                     }
         self._test_rul_meta = meta
         return meta
 
-    def _paper_life_steps(self, data_no: int, fallback_steps: int) -> int:
+    def _label_life_profile(self, data_no: int, fallback_steps: int) -> Dict[str, float]:
         meta = self._load_test_rul_meta()
         rec = meta.get(int(data_no))
         if rec is None:
-            return max(int(fallback_steps), 1)
-        return max(int(round(float(rec.get("life_steps", fallback_steps)))), 1)
+            observed_end = float(max(int(fallback_steps) - 1, 0))
+            full_rul = max(observed_end, 1.0)
+            label_rel_end = max(observed_end, 1.0)
+            replay_to_label_scale = label_rel_end / max(observed_end, 1.0)
+            full_index_span = full_rul / max(replay_to_label_scale, 1e-9)
+            return {
+                "first_rul": float(full_rul),
+                "last_rul": 0.0,
+                "rul_step": 1.0,
+                "time_rel_end": float(label_rel_end),
+                "time_rel": np.asarray([0.0, float(label_rel_end)], dtype=np.float64),
+                "rul_norm": np.asarray([1.0, 0.0], dtype=np.float64),
+                "replay_to_label_scale": float(replay_to_label_scale),
+                "tail_anchor_norm": 0.0,
+                "full_index_span": float(full_index_span),
+            }
+        observed_end = float(max(int(fallback_steps) - 1, 0))
+        label_rel_end = max(float(rec.get("time_rel_end", 0.0)), 0.0)
+        if observed_end <= 0.0:
+            replay_to_label_scale = max(label_rel_end, 1.0)
+        else:
+            replay_to_label_scale = max(label_rel_end, 1e-9) / observed_end
+        first_rul = max(float(rec.get("first_rul", 1.0)), 1e-9)
+        last_rul = max(float(rec.get("last_rul", 0.0)), 0.0)
+        full_index_span = first_rul / max(replay_to_label_scale, 1e-9)
+        return {
+            "first_rul": first_rul,
+            "last_rul": last_rul,
+            "rul_step": max(float(rec.get("rul_step", 0.1)), 1e-9),
+            "time_rel_end": label_rel_end,
+            "time_rel": np.asarray(rec.get("time_rel", np.asarray([0.0, label_rel_end], dtype=np.float64)), dtype=np.float64),
+            "rul_norm": np.asarray(rec.get("rul_norm", np.asarray([1.0, last_rul / first_rul], dtype=np.float64)), dtype=np.float64),
+            "replay_to_label_scale": float(replay_to_label_scale),
+            "tail_anchor_norm": float(np.clip(last_rul / first_rul, 0.0, 1.0)),
+            "full_index_span": float(max(full_index_span, observed_end)),
+        }
 
     def _push_event(self, t: float, etype: str, payload: Any):
         heapq.heappush(self.event_q, (t, self._event_priority(etype), self._event_seq, etype, payload))
@@ -377,10 +422,14 @@ class EventDrivenShopEnv:
         observed_lifespans = [self.degr.lifespan(self.machine_curve[i]) for i in range(self.cfg.NUM_MACHINES)]
         avg_life = float(np.mean(observed_lifespans)) if observed_lifespans else 1.0
         self.machine_observed_life = {i: int(observed_lifespans[i]) for i in range(self.cfg.NUM_MACHINES)}
-        self.machine_lifespan = {
-            i: self._paper_life_steps(self.machine_curve[i], observed_lifespans[i])
-            for i in range(self.cfg.NUM_MACHINES)
-        }
+        self.machine_label_meta = {}
+        self.machine_replay_to_label_scale = {}
+        self.machine_lifespan = {}
+        for i in range(self.cfg.NUM_MACHINES):
+            profile = self._label_life_profile(self.machine_curve[i], observed_lifespans[i])
+            self.machine_label_meta[i] = profile
+            self.machine_replay_to_label_scale[i] = float(profile["replay_to_label_scale"])
+            self.machine_lifespan[i] = max(int(math.ceil(float(profile["full_index_span"]))), 1)
         self.machine_time_scale = {}
         self.machine_pt_sum = {i: 0.0 for i in range(self.cfg.NUM_MACHINES)}
         self.machine_pt_count = {i: 0 for i in range(self.cfg.NUM_MACHINES)}
@@ -393,8 +442,7 @@ class EventDrivenShopEnv:
             self.machine_pt_base[i] = float(base_mean)
         self.sensor_bank = SensorReplayBank(self.degr, self.machine_curve)
         self.rul_cache = GRUCache(self.rul, self.sensor_bank, self.cfg.RUL_WINDOW,
-                                  noise_std=self.cfg.RUL_OBS_NOISE, rng=self.obs_rng,
-                                  min_drop=float(getattr(self.cfg, "RUL_CACHE_MIN_DROP", 1e-4)))
+                                  noise_std=self.cfg.RUL_OBS_NOISE, rng=self.obs_rng)
         self.rul_cache.build()
 
         self.timeline_ops.clear()
@@ -684,59 +732,49 @@ class EventDrivenShopEnv:
     def _observed_rul_from_index(self, mid: int, idx_float: float) -> float:
         life = max(int(self.machine_observed_life.get(mid, 1)), 1)
         idx_float = max(0.0, min(float(idx_float), float(life - 1)))
-        lo = int(math.floor(idx_float))
-        hi = int(math.ceil(idx_float))
-        frac = float(idx_float - lo)
-        if self.rul_cache is not None:
-            h_lo = float(self.rul_cache.get_h(mid, lo))
-            h_hi = float(self.rul_cache.get_h(mid, hi))
-            h_ref = float(self.rul_cache.get_h(mid, 0))
-        else:
-            curve = self.machine_curve[mid]
-            lifespan = self.degr.lifespan(curve)
-            xw_lo = self.degr.window(curve, end_idx=lo, W=self.cfg.RUL_WINDOW)
-            xw_hi = self.degr.window(curve, end_idx=hi, W=self.cfg.RUL_WINDOW)
-            xw_ref = self.degr.window(curve, end_idx=0, W=self.cfg.RUL_WINDOW)
-            h_lo = float(self.rul.predict(curve, xw_lo, t_idx=lo, lifespan=lifespan))
-            h_hi = float(self.rul.predict(curve, xw_hi, t_idx=hi, lifespan=lifespan))
-            h_ref = float(self.rul.predict(curve, xw_ref, t_idx=0, lifespan=lifespan))
-        h_ref = max(h_ref, 1e-9)
-        h = (h_lo + frac * (h_hi - h_lo)) / h_ref
+        profile = self.machine_label_meta.get(mid)
+        if profile is None:
+            denom = max(float(life - 1), 1.0)
+            return float(max(0.0, min(1.0, 1.0 - (idx_float / denom))))
+        mapped_time = idx_float * float(profile["replay_to_label_scale"])
+        time_rel = np.asarray(profile["time_rel"], dtype=np.float64)
+        rul_norm = np.asarray(profile["rul_norm"], dtype=np.float64)
+        if time_rel.size <= 1:
+            return float(max(0.0, min(1.0, rul_norm[0] if rul_norm.size else 1.0)))
+        mapped_time = max(0.0, min(float(mapped_time), float(profile["time_rel_end"])))
+        h = float(np.interp(mapped_time, time_rel, rul_norm))
         return float(max(0.0, min(1.0, h)))
 
     def _tail_end_index(self, mid: int) -> float:
         observed_life = max(int(self.machine_observed_life.get(mid, 1)), 1)
         observed_end = float(max(observed_life - 1, 0))
-        life_steps = max(int(self.machine_lifespan.get(mid, observed_life)), 1)
-        return max(float(life_steps), observed_end)
+        full_span = float(self.machine_label_meta.get(mid, {}).get("full_index_span", self.machine_lifespan.get(mid, observed_life)))
+        return max(full_span, observed_end)
 
     def _tail_anchor_rul(self, mid: int) -> float:
+        profile = self.machine_label_meta.get(mid)
+        if profile is not None:
+            return float(max(0.0, min(1.0, profile["tail_anchor_norm"])))
         observed_life = max(int(self.machine_observed_life.get(mid, 1)), 1)
         observed_end = float(max(observed_life - 1, 0))
         return self._observed_rul_from_index(mid, observed_end)
 
     def _observed_index_from_rul(self, mid: int, target: float) -> float:
-        if self.rul_cache is not None:
-            arr = self.rul_cache.cache.get(mid)
-            if arr is not None and len(arr) > 0:
-                arr_desc = np.asarray(arr, dtype=np.float64)
-                arr_ref = max(float(arr_desc[0]), 1e-9)
-                arr_desc = np.clip(arr_desc / arr_ref, 0.0, 1.0)
-                if arr_desc.size == 1:
-                    return 0.0
-                target_clip = float(max(float(arr_desc[-1]), min(float(arr_desc[0]), target)))
-                if target_clip >= float(arr_desc[0]):
-                    return 0.0
-                for idx in range(1, arr_desc.size):
-                    hi = float(arr_desc[idx - 1])
-                    lo = float(arr_desc[idx])
-                    if target_clip >= lo:
-                        span = hi - lo
-                        if span <= 1e-9:
-                            return float(idx)
-                        frac = (hi - target_clip) / span
-                        return float((idx - 1) + frac)
-                return float(arr_desc.size - 1)
+        profile = self.machine_label_meta.get(mid)
+        if profile is not None:
+            time_rel = np.asarray(profile["time_rel"], dtype=np.float64)
+            rul_norm = np.asarray(profile["rul_norm"], dtype=np.float64)
+            if rul_norm.size <= 1:
+                return 0.0
+            anchor = float(profile["tail_anchor_norm"])
+            target_clip = float(max(anchor, min(1.0, target)))
+            if target_clip >= float(rul_norm[0]):
+                return 0.0
+            rel_time = float(np.interp(target_clip, rul_norm[::-1], time_rel[::-1]))
+            scale = max(float(profile["replay_to_label_scale"]), 1e-9)
+            observed_life = max(int(self.machine_observed_life.get(mid, 1)), 1)
+            observed_end = float(max(observed_life - 1, 0))
+            return float(max(0.0, min(observed_end, rel_time / scale)))
         observed_life = max(int(self.machine_observed_life.get(mid, 1)), 1)
         return float(max(0.0, min(float(observed_life - 1), (1.0 - target) * max(observed_life - 1, 0))))
 
