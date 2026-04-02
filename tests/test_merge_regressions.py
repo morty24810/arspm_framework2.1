@@ -1,6 +1,7 @@
 import random
 import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -23,6 +24,7 @@ from run_experiment import (
 from src.agents import PPOSchedulerAgent
 from src.compare import compare_mode_results, summarize_scheduling_strategy
 from src.env import EventDrivenShopEnv
+from src.viz import plot_rul_curves
 
 
 class _RecoveryEnvStub:
@@ -79,6 +81,22 @@ class _SingleStepPOMCP:
         return 0
 
 
+class _BestRewardPOMCP:
+    def __init__(self):
+        self.last_rewards = {}
+
+    def plan(self, belief, model, num_sims: int, horizon: int) -> int:
+        best_action = None
+        best_reward = None
+        for action in (1, 2):
+            _, _, reward = model(belief[0], action)
+            self.last_rewards[action] = reward
+            if best_reward is None or reward > best_reward:
+                best_reward = reward
+                best_action = action
+        return int(best_action)
+
+
 class _CompareEnvStub:
     def __init__(self, breakdown_count: int, breakdown_cost: float,
                  requeued_op_count: int, interrupted_proc_time: float, makespan: float):
@@ -108,6 +126,20 @@ class _ImGainEnvStub(_RolloutEnvStub):
 
     def im_has_positive_gain(self, mid: int, h: float, baseline_rul=None) -> bool:
         return self.allow_im
+
+
+class _LatePreferenceEnvStub(_ImGainEnvStub):
+    def __init__(self):
+        super().__init__(True)
+
+    @staticmethod
+    def get_region_b_elapsed(mid: int, h: float) -> float:
+        return 40.0
+
+    @staticmethod
+    def generative_step(mid: int, particle, action: int, current_stress: float, rng: random.Random):
+        dur = 11.6 if int(action) == 1 else 20.0
+        return dict(particle), float(particle.get("h_true", 1.0)), {"dur": dur}
 
 
 class _CostEnvStub:
@@ -187,6 +219,10 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertGreater(maintenance_prior_penalty(1, 0.8, cfg, enforce_region=False), 0.0)
         self.assertGreater(maintenance_prior_penalty(2, 0.05, cfg, enforce_region=False), 0.0)
         self.assertGreater(
+            maintenance_prior_penalty(1, 0.05, cfg, enforce_region=False),
+            maintenance_prior_penalty(2, 0.05, cfg, enforce_region=False),
+        )
+        self.assertGreater(
             maintenance_prior_penalty(2, 0.8, cfg, enforce_region=False),
             maintenance_prior_penalty(1, 0.8, cfg, enforce_region=False),
         )
@@ -225,10 +261,31 @@ class MergeRegressionTests(unittest.TestCase):
             h_for_prior=0.8,
             enforce_region=True,
         )
+        reward_late_im = maintenance_reward(
+            1,
+            12.0,
+            0.0,
+            0.0,
+            False,
+            cfg,
+            h_for_prior=0.05,
+            enforce_region=False,
+        )
+        reward_late_cm = maintenance_reward(
+            2,
+            20.0,
+            0.0,
+            0.0,
+            False,
+            cfg,
+            h_for_prior=0.05,
+            enforce_region=False,
+        )
 
         self.assertAlmostEqual(reward_inside, -(12.0 * 0.5 + cfg.IM_COST))
         self.assertLess(reward_early, reward_inside)
         self.assertAlmostEqual(reward_restricted, -(12.0 * 0.5 + cfg.IM_COST))
+        self.assertLess(reward_late_im, reward_late_cm)
 
     def test_compute_costs_uses_fixed_im_cm_action_costs(self):
         cfg = SimConfig()
@@ -241,6 +298,18 @@ class MergeRegressionTests(unittest.TestCase):
             maint,
             cfg.IM_COST + cfg.CM_COST + cfg.FAIL_COST_MULT * 10.0 + cfg.SCRAP_COST * 10.0 + 77.0,
         )
+
+    def test_im_duration_growth_is_softened_and_capped(self):
+        cfg = SimConfig()
+        env = EventDrivenShopEnv.__new__(EventDrivenShopEnv)
+        env.cfg = cfg
+
+        self.assertLess(cfg.MT_IM_LINEAR, 0.10)
+        short_dur = EventDrivenShopEnv._maintenance_duration(env, 0, 1, region_b_elapsed=50.0)
+        long_dur = EventDrivenShopEnv._maintenance_duration(env, 0, 1, region_b_elapsed=5000.0)
+
+        self.assertGreater(long_dur, short_dur)
+        self.assertAlmostEqual(long_dur, cfg.MT_IM_MAX)
 
     def test_stress_enabled_full_matrix_defaults(self):
         cfg = SimConfig()
@@ -389,6 +458,38 @@ class MergeRegressionTests(unittest.TestCase):
 
         self.assertEqual(action, 0)
 
+    def test_pomcp_prefers_cm_over_im_below_hy_in_unrestricted_mode(self):
+        cfg = SimConfig()
+        cfg.ENFORCE_REGION_POLICY = False
+        env = _LatePreferenceEnvStub()
+        planner = _BestRewardPOMCP()
+        particle = {
+            "h_true": 0.05,
+            "stress": 0.2,
+            "baseline_rul": 1.0,
+            "region_b_elapsed": 40.0,
+        }
+
+        action = select_maintenance_action(
+            "POMCP",
+            None,
+            planner,
+            {0: [particle]},
+            env,
+            0,
+            0.05,
+            np.zeros(18, dtype=np.float32),
+            0.1,
+            0.2,
+            0.0,
+            cfg,
+            random.Random(0),
+            explore=False,
+        )
+
+        self.assertEqual(action, 2)
+        self.assertGreater(planner.last_rewards[2], planner.last_rewards[1])
+
     def test_infer_route_results_keep_env_for_compare_metrics(self):
         primary_env = _CompareEnvStub(2, 18.0, 3, 4.5, 11.0)
         compare_env = _CompareEnvStub(5, 30.0, 7, 9.0, 13.0)
@@ -469,14 +570,31 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(env.rul_from_operating_index(0, 20.0), 0.6)
         self.assertAlmostEqual(env.operating_index_from_rul(0, 0.05), 4.0)
 
-    def test_gru_cache_is_monotone_non_increasing(self):
+    def test_gru_cache_is_strictly_smoothed_without_plateaus(self):
         from src.sensor_bank import GRUCache
 
-        cache = GRUCache(_PredictorStub([0.9, 0.95, 0.7, 0.72, 0.4]), _BankStub(5), 3)
+        cache = GRUCache(_PredictorStub([0.9, 0.95, 0.7, 0.72, 0.4]), _BankStub(5), 3, min_drop=1e-4)
         cache.build()
 
         vals = cache.cache[0]
-        self.assertTrue(np.allclose(vals, np.array([0.9, 0.9, 0.7, 0.7, 0.4], dtype=np.float32)))
+        self.assertTrue(np.all(np.diff(vals) < 0.0))
+        self.assertTrue(np.allclose(vals, np.array([0.9, 0.8999, 0.7, 0.6999, 0.4], dtype=np.float32), atol=1e-6))
+
+    def test_plot_rul_curves_accepts_segment_log(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_path = f"{tmpdir}/rul_segments.png"
+            plot_rul_curves(
+                {0: [(0.0, 1.0), (10.0, 0.8), (20.0, 0.6)]},
+                [(0, 20.0, 25.0, "CM")],
+                0.3,
+                0.1,
+                out_path,
+                policy_label="Policy: Unrestricted (no Hx/Hy enforcement) | Scheduler: THDQN | Maintenance: DQN",
+                threshold_enforced=False,
+                hard_threshold=0.05,
+                rul_segments={0: [(0.0, 10.0, 1.0, 0.8, "PROC"), (12.0, 20.0, 0.95, 0.6, "PROC")]},
+            )
+            self.assertTrue(Path(out_path).exists())
 
     def test_ppo_scheduler_checkpoint_roundtrip(self):
         cfg = SimConfig()

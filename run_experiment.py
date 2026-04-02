@@ -188,7 +188,10 @@ def maintenance_prior_penalty(action: int, h_for_prior: float, cfg: SimConfig, e
         if int(action) == 2:
             penalty += float(getattr(cfg, "PRIOR_CM_EARLY_W", 0.0)) * gap
     elif h < float(cfg.Hy):
-        penalty += float(cfg.PRIOR_LATE_W) * (float(cfg.Hy) - h) / max(float(cfg.Hy), eps)
+        late_gap = (float(cfg.Hy) - h) / max(float(cfg.Hy), eps)
+        penalty += float(cfg.PRIOR_LATE_W) * late_gap
+        if int(action) == 1:
+            penalty += float(getattr(cfg, "PRIOR_IM_LATE_W", 0.0)) * late_gap
     return float(penalty)
 
 def maintenance_reward(action: int, dur: float, local_urgency: float,
@@ -1111,6 +1114,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                 threshold_enforced=enforce_region,
                 rul_obs_log=None,
                 hard_threshold=float(getattr(cfg, "HARD_BREAKDOWN_RUL", 0.05)),
+                rul_segments=getattr(env, "rul_segment_log", None),
             )
             plot_rule_vs_features(env.rule_log, str(outdir / f"rule_vs_features{suffix}.png"), policy_label=policy_text)
             plot_maint_vs_slack(maint_scatter or [], str(outdir / f"maint_vs_slack{suffix}.png"), policy_label=policy_text)

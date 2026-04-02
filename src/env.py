@@ -95,6 +95,7 @@ class EventDrivenShopEnv:
         self.timeline_maint = []   # (mid, t0, t1, kind)
         self.rul_log = { }         # mid -> list[(t, canonical_h)]
         self.rul_obs_log = { }     # legacy mirror of canonical_h for compatibility
+        self.rul_segment_log = { } # mid -> list[(t0, t1, h_start, h_end, kind)]
         self.im_damage_log = { }   # mid -> list[(t, im_damage)]
         self.rule_log = []         # (t, state_vec, goal, rule)
         self.arrival_times: List[float] = []
@@ -392,13 +393,15 @@ class EventDrivenShopEnv:
             self.machine_pt_base[i] = float(base_mean)
         self.sensor_bank = SensorReplayBank(self.degr, self.machine_curve)
         self.rul_cache = GRUCache(self.rul, self.sensor_bank, self.cfg.RUL_WINDOW,
-                                  noise_std=self.cfg.RUL_OBS_NOISE, rng=self.obs_rng)
+                                  noise_std=self.cfg.RUL_OBS_NOISE, rng=self.obs_rng,
+                                  min_drop=float(getattr(self.cfg, "RUL_CACHE_MIN_DROP", 1e-4)))
         self.rul_cache.build()
 
         self.timeline_ops.clear()
         self.timeline_maint.clear()
         self.rul_log = {i: [] for i in range(self.cfg.NUM_MACHINES)}
         self.rul_obs_log = {i: [] for i in range(self.cfg.NUM_MACHINES)}
+        self.rul_segment_log = {i: [] for i in range(self.cfg.NUM_MACHINES)}
         self.im_damage_log = {i: [] for i in range(self.cfg.NUM_MACHINES)}
         self.rule_log.clear()
 
@@ -661,7 +664,9 @@ class EventDrivenShopEnv:
         # legacy behavior (commented): ratio-based duration by mean processing time.
         # mean_pt = self._mean_proc_time(mid)
         # return self.cfg.MAINT_IM_RATIO * mean_pt
-        return float(self.cfg.MT_IM_BASE + self.cfg.MT_IM_LINEAR * max(0.0, float(region_b_elapsed)))
+        dur = float(self.cfg.MT_IM_BASE + self.cfg.MT_IM_LINEAR * max(0.0, float(region_b_elapsed)))
+        im_max = float(getattr(self.cfg, "MT_IM_MAX", dur))
+        return float(min(dur, im_max))
 
     def get_region_b_elapsed(self, mid: int, h: Optional[float] = None) -> float:
         return self._region_b_elapsed(mid, h=h)
@@ -776,6 +781,11 @@ class EventDrivenShopEnv:
         h = float(h_obs if h_true is None else h_true)
         self.rul_log[mid].append((float(t), h))
         self.rul_obs_log[mid].append((float(t), h))
+
+    def _log_rul_segment(self, mid: int, t0: float, t1: float, h_start: float, h_end: float, kind: str = "PROC"):
+        self.rul_segment_log[mid].append(
+            (float(t0), float(t1), float(h_start), float(h_end), str(kind))
+        )
 
     def _peek_rul(self, mid: int) -> float:
         idx_float = float(self.machine_operating_idx.get(mid, 0)) + float(self.machine_operating_frac.get(mid, 0.0))
@@ -1159,6 +1169,7 @@ class EventDrivenShopEnv:
         m.status = "PROC"
         m.busy_until = t1
         m.current = (op.job_id, op.op_id)
+        self._log_rul_segment(mid, t0, t1, h_true, float(preview["h_end_true"]), kind="PROC")
         self.timeline_ops.append((mid, t0, t1, op.job_id, op.op_id, "DONE"))
         self._push_event(
             t1,

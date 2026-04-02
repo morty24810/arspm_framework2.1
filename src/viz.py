@@ -350,9 +350,61 @@ def plot_rul_curves(rul_log: Dict[int, List[Tuple[float, float]]], maint: List[T
                     Hx: float, Hy: float, out_path: str, p_fail_log: Optional[List[Tuple[float, float]]] = None,
                     policy_label: Optional[str] = None, threshold_enforced: bool = True,
                     rul_obs_log: Optional[Dict[int, List[Tuple[float, float]]]] = None,
-                    hard_threshold: Optional[float] = None):
+                    hard_threshold: Optional[float] = None,
+                    rul_segments: Optional[Dict[int, List[Tuple[float, float, float, float, str]]]] = None):
     fig, ax = plt.subplots(figsize=(12, 4))
-    for mid, pts in rul_log.items():
+    for mid in sorted(rul_log.keys()):
+        pts = rul_log.get(mid) or []
+        segs = [] if rul_segments is None else list(rul_segments.get(mid) or [])
+        color = None
+        if segs:
+            ordered_segs = sorted(segs, key=lambda x: (x[0], x[1]))
+            ordered_pts = sorted(pts, key=lambda x: x[0])
+            maint_spans = sorted([m for m in maint if int(m[0]) == int(mid)], key=lambda x: (x[1], x[2]))
+
+            def _post_maint_h(t1: float, fallback: float) -> float:
+                for tp, hp in ordered_pts:
+                    if abs(float(tp) - float(t1)) <= 1e-6:
+                        return float(hp)
+                for tp, hp in ordered_pts:
+                    if float(tp) >= float(t1) - 1e-6:
+                        return float(hp)
+                return float(fallback)
+
+            for idx, (t0, t1, h0, h1, _) in enumerate(ordered_segs):
+                kwargs = {"color": color} if color is not None else {}
+                line, = ax.plot([t0, t1], [h0, h1], label=f"M{mid}" if idx == 0 else None, **kwargs)
+                color = line.get_color()
+                if idx > 0:
+                    _, pt1, _, ph1, _ = ordered_segs[idx - 1]
+                    gap_maint = [
+                        (float(mt0), float(mt1), str(mkind))
+                        for _, mt0, mt1, mkind in maint_spans
+                        if float(mt0) >= float(pt1) - 1e-6 and float(mt1) <= float(t0) + 1e-6
+                    ]
+                    if not gap_maint:
+                        ax.plot([pt1, t0], [ph1, h0], linestyle="--", linewidth=0.9, alpha=0.45, color=color)
+                    else:
+                        cursor_t = float(pt1)
+                        cursor_h = float(ph1)
+                        for mt0, mt1, _ in gap_maint:
+                            if mt0 > cursor_t + 1e-6:
+                                ax.plot([cursor_t, mt0], [cursor_h, cursor_h], linestyle="--", linewidth=0.9, alpha=0.45, color=color)
+                            ax.plot([mt0, mt1], [cursor_h, cursor_h], linestyle="--", linewidth=0.9, alpha=0.55, color=color)
+                            next_h = _post_maint_h(mt1, h0)
+                            if abs(next_h - cursor_h) > 1e-6:
+                                ax.plot([mt1, mt1], [cursor_h, next_h], linestyle="--", linewidth=0.9, alpha=0.55, color=color)
+                            cursor_t = float(mt1)
+                            cursor_h = float(next_h)
+                        if t0 > cursor_t + 1e-6:
+                            ax.plot([cursor_t, t0], [cursor_h, cursor_h], linestyle="--", linewidth=0.9, alpha=0.45, color=color)
+            if rul_obs_log is not None:
+                obs_pts = rul_obs_log.get(mid) or []
+                if obs_pts:
+                    tobs = [p[0] for p in obs_pts]
+                    hobs = [p[1] for p in obs_pts]
+                    ax.plot(tobs, hobs, linestyle=":", linewidth=0.9, alpha=0.35, color=color)
+            continue
         if not pts:
             continue
         t = [p[0] for p in pts]
@@ -384,7 +436,7 @@ def plot_rul_curves(rul_log: Dict[int, List[Tuple[float, float]]], maint: List[T
 
     notes = []
     if rul_obs_log is not None:
-        notes.append("Observed trace shown as dashed line.")
+        notes.append("Observed trace shown as dotted overlay.")
     if not threshold_enforced:
         notes.append("Hx/Hy shown as reference only.")
     _draw_info_card(fig, policy_label, extra_note="\n".join(notes) if notes else None)

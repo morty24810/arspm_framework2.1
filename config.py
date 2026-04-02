@@ -69,6 +69,7 @@ class SimConfig:
     # extend latent true RUL linearly after the last observed sample.
     RUL_LINEAR_TAIL_ENABLE: bool = True
     RUL_LINEAR_TAIL_STEP: Optional[float] = None
+    RUL_CACHE_MIN_DROP: float = 1e-4
     DEGRAD_NOISE_STD: float = 0.02
     DEGRADATION_RATE_SCALE: float = 1.30
     BASE_DEGRADATION_RATE: float = 56.0
@@ -97,7 +98,8 @@ class SimConfig:
     # maintenance modeling
     MT_CM: float = 20.0                 # fixed CM duration
     MT_IM_BASE: float = 10.0            # a_i in IM duration = a_i + b_i * (T_t - T_x)
-    MT_IM_LINEAR: float = 0.10          # b_i in IM duration = a_i + b_i * (T_t - T_x)
+    MT_IM_LINEAR: float = 0.04          # b_i in IM duration = a_i + b_i * (T_t - T_x)
+    MT_IM_MAX: float = 30.0             # cap late IM duration growth to avoid extreme early-maint bias
     MAINT_IM_RATIO: float = 0.5         # legacy (unused in action-based maintenance duration)
     MAINT_CM_RATIO: float = 1.0         # legacy (unused in action-based maintenance duration)
     IM_RESET: float = 0.80              # legacy (unused in new IM model)
@@ -177,6 +179,7 @@ class SimConfig:
     CM_TIME_WEIGHT: float = 0.02
     PRIOR_EARLY_W: float = 4.0
     PRIOR_LATE_W: float = 4.0
+    PRIOR_IM_LATE_W: float = 12.0
     PRIOR_CM_EARLY_W: float = 8.0
     PRIOR_EPS: float = 1e-6
     ETA_EPS: float = 1e-6

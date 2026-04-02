@@ -25,12 +25,14 @@ class GRUCache:
     """
     Precomputes RUL predictions over each machine's replay sequence for O(1) lookup.
     """
-    def __init__(self, rul_predictor, bank: SensorReplayBank, window: int, noise_std: float = 0.0, rng=None):
+    def __init__(self, rul_predictor, bank: SensorReplayBank, window: int,
+                 noise_std: float = 0.0, rng=None, min_drop: float = 1e-4):
         self.rul = rul_predictor
         self.bank = bank
         self.window = int(window)
         self.noise_std = float(noise_std)
         self.rng = rng
+        self.min_drop = float(min_drop)
         self.cache: Dict[int, np.ndarray] = {}
 
     def build(self):
@@ -42,11 +44,15 @@ class GRUCache:
             for idx in range(life):
                 Xw = self.bank.window(mid, idx, self.window)
                 vals[idx] = self.rul.predict(data_no, Xw, t_idx=idx, lifespan=life)
-            # The paper uses a single degrading RUL signal. Enforce monotone
-            # non-increasing cached predictions so the simulator cannot bounce
-            # upward near the failure threshold.
-            vals = np.minimum.accumulate(np.clip(vals, 0.0, 1.0))
-            self.cache[mid] = vals
+            vals = np.clip(vals, 0.0, 1.0)
+            # Keep the paper-style single degrading signal, but avoid long
+            # constant plateaus from hard cumulative-min clipping.
+            smooth = np.empty_like(vals)
+            smooth[0] = vals[0]
+            for idx in range(1, life):
+                upper = max(0.0, float(smooth[idx - 1]) - self.min_drop)
+                smooth[idx] = min(float(vals[idx]), upper)
+            self.cache[mid] = smooth.astype(np.float32)
 
     def get_h(self, mid: int, idx: int) -> float:
         arr = self.cache.get(mid)
