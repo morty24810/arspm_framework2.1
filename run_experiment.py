@@ -23,6 +23,7 @@ from src.compare import (
     write_mode_comparison_outputs,
     extract_maintenance_rows,
     summarize_action_counts,
+    summarize_combo_conditioned_behavior,
     summarize_scheduling_strategy,
 )
 from src.viz import (
@@ -167,6 +168,14 @@ def filter_non_improving_im(env, mid: int, h_obs: float, allowed_actions: List[i
             return [a for a in allowed_actions if a != 1]
     return list(allowed_actions)
 
+
+def pomcp_unrestricted_safety_filter_enabled(mode: str, cfg: SimConfig, enforce_region: bool) -> bool:
+    return (
+        str(mode).upper() == "POMCP"
+        and not bool(enforce_region)
+        and bool(getattr(cfg, "POMCP_UNRESTRICTED_SAFETY_FILTER", False))
+    )
+
 def enforce_action_by_region(action: int, h_obs: float, cfg: SimConfig, enforce_region: bool) -> int:
     if not enforce_region:
         return int(action)
@@ -309,10 +318,31 @@ def sample_degradation_rate(ep: int, cfg: SimConfig, rng: random.Random) -> floa
         lo, hi = low_bound, high_bound
     return float(rng.uniform(lo, hi))
 
-def build_episode_combos(cfg: SimConfig, rng: random.Random, jobs_target: int):
+def build_episode_combos(
+    cfg: SimConfig,
+    rng: random.Random,
+    jobs_target: int,
+    combo_mode: Optional[str] = None,
+):
     segment_jobs = max(1, int(getattr(cfg, "COMBO_SEGMENT_JOBS", 1)))
     segment_count = max(1, int(math.ceil(jobs_target / segment_jobs)))
-    lam_ddt_mode = str(getattr(cfg, "LAM_DDT_MODE", "variable")).lower()
+    lam_ddt_mode = str(combo_mode or getattr(cfg, "LAM_DDT_MODE", "variable")).strip().lower()
+
+    lam_values = [float(x) for x in getattr(cfg, "ARRIVAL_LAM_VALUES", [100.0])]
+    if not lam_values:
+        lam_values = [100.0]
+    ddt_values = [float(x) for x in getattr(cfg, "DDT_VALUES", (1.0,))]
+    if not ddt_values:
+        ddt_values = [1.0]
+
+    if lam_ddt_mode == "episode_fixed":
+        combo_grid = [(lam, ddt) for lam in lam_values for ddt in ddt_values]
+        if not combo_grid:
+            combo_grid = [(float(getattr(cfg, "FIXED_ARRIVAL_LAM", 40.0)), float(getattr(cfg, "FIXED_DDT", 1.5)))]
+        lam, ddt = rng.choice(combo_grid)
+        combos = [(float(lam), float(ddt))]
+        seq = [0 for _ in range(segment_count)]
+        return combos, seq
 
     if lam_ddt_mode == "fixed":
         fixed_lam = float(getattr(cfg, "FIXED_ARRIVAL_LAM", 40.0))
@@ -324,20 +354,9 @@ def build_episode_combos(cfg: SimConfig, rng: random.Random, jobs_target: int):
     if not bool(getattr(cfg, "COMBO_RANDOMIZE", True)):
         combos = list(getattr(cfg, "DEFAULT_COMBOS", []))
         if not combos:
-            lam_values = list(getattr(cfg, "ARRIVAL_LAM_VALUES", [100.0]))
-            ddt_values = list(getattr(cfg, "DDT_VALUES", (1.0,)))
-            if not ddt_values:
-                ddt_values = [1.0]
             combos = [(float(lam_values[0]), float(ddt_values[0]))]
         seq = [i % len(combos) for i in range(segment_count)]
         return combos, seq
-
-    lam_values = list(getattr(cfg, "ARRIVAL_LAM_VALUES", [100.0]))
-    if not lam_values:
-        lam_values = [100.0]
-    ddt_values = list(getattr(cfg, "DDT_VALUES", (1.0,)))
-    if not ddt_values:
-        ddt_values = [1.0]
 
     combos = []
     seq = []
@@ -401,10 +420,11 @@ def build_episode_scenario(
     episode_combos: Optional[list[tuple[float, float]]] = None,
     episode_combo_seq: Optional[list[int]] = None,
     machine_curve_ids: Optional[List[int]] = None,
+    combo_mode: Optional[str] = None,
 ) -> EpisodeScenario:
     machine_curve_ids = list(machine_curve_ids or list(cfg.MACHINE_CURVE_IDS))
     if episode_combos is None or episode_combo_seq is None:
-        combos, seq = build_episode_combos(cfg, scenario_rng, jobs_target)
+        combos, seq = build_episode_combos(cfg, scenario_rng, jobs_target, combo_mode=combo_mode)
     else:
         combos = [(float(lam), float(ddt)) for lam, ddt in episode_combos]
         seq = [int(x) for x in episode_combo_seq]
@@ -470,6 +490,9 @@ def build_scenario_bank(base_seed: int, cfg: SimConfig, degr: DegradationReplay,
     machine_curve_ids = list(machine_curve_ids or list(cfg.MACHINE_CURVE_IDS))
     base_degrad = effective_base_degradation_rate(cfg)
 
+    train_combo_mode = str(getattr(cfg, "TRAIN_COMBO_MODE", getattr(cfg, "LAM_DDT_MODE", "variable"))).strip().lower()
+    eval_combo_mode = str(getattr(cfg, "EVAL_COMBO_MODE", getattr(cfg, "LAM_DDT_MODE", "variable"))).strip().lower()
+
     for ep in range(cfg.TRAIN_EPISODES):
         ep_num = ep + 1
         scenario_rng = make_rng(base_seed, "train", ep_num, "scenario")
@@ -482,6 +505,7 @@ def build_scenario_bank(base_seed: int, cfg: SimConfig, degr: DegradationReplay,
             scenario_rng=scenario_rng,
             degradation_rate=degrad_rate,
             machine_curve_ids=machine_curve_ids,
+            combo_mode=train_combo_mode,
         )
         train_scenarios.append(scenario)
         if cfg.EVAL_EVERY > 0 and ep_num % cfg.EVAL_EVERY == 0:
@@ -494,6 +518,7 @@ def build_scenario_bank(base_seed: int, cfg: SimConfig, degr: DegradationReplay,
                 scenario_rng=eval_rng,
                 degradation_rate=base_degrad,
                 machine_curve_ids=machine_curve_ids,
+                combo_mode=eval_combo_mode,
             )
 
     final_eval_scenario = build_episode_scenario(
@@ -503,6 +528,7 @@ def build_scenario_bank(base_seed: int, cfg: SimConfig, degr: DegradationReplay,
         scenario_rng=make_rng(base_seed, "final_eval", "scenario"),
         degradation_rate=base_degrad,
         machine_curve_ids=machine_curve_ids,
+        combo_mode=eval_combo_mode,
     )
     return ScenarioBank(
         train_scenarios=train_scenarios,
@@ -657,6 +683,59 @@ def compute_breakdown_reward_terms(env: EventDrivenShopEnv, mid: int, local_urge
     }
 
 
+def _pomcp_safety_filtered_actions(
+    env: EventDrivenShopEnv,
+    mid: int,
+    h_state: float,
+    current_stress: float,
+    local_urgency: float,
+    cfg: SimConfig,
+    *,
+    baseline_rul: Optional[float],
+    enforce_region: bool,
+    mode: str,
+) -> Tuple[List[int], Dict[str, Any]]:
+    base_allowed = filter_non_improving_im(
+        env,
+        mid,
+        h_state,
+        allowed_actions_by_region(h_state, cfg, enforce_region),
+    )
+    info: Dict[str, Any] = {
+        "im_invalid_flag": bool(1 not in base_allowed),
+        "dn_imminent_breakdown_veto": False,
+        "safety_filtered_actions": [],
+        "allowed_actions": list(base_allowed),
+    }
+    if not pomcp_unrestricted_safety_filter_enabled(mode, cfg, enforce_region):
+        return list(base_allowed), info
+
+    allowed = list(base_allowed)
+    if 0 in allowed:
+        idx_before = env.operating_index_from_rul(mid, h_state)
+        breakdown_terms = compute_breakdown_reward_terms(
+            env,
+            mid,
+            local_urgency,
+            current_stress,
+            h_true=h_state,
+            idx_before=idx_before,
+        )
+        hard_threshold = float(getattr(cfg, "HARD_BREAKDOWN_RUL", 0.05))
+        if bool(breakdown_terms["would_hard_breakdown"]) or float(breakdown_terms["h_end_true"]) <= hard_threshold:
+            allowed = [a for a in allowed if a != 0]
+            info["dn_imminent_breakdown_veto"] = True
+            info["safety_filtered_actions"].append("DN")
+
+    if info["im_invalid_flag"]:
+        info["safety_filtered_actions"].append("IM")
+
+    if not allowed:
+        allowed = [2]
+    info["allowed_actions"] = list(allowed)
+    return allowed, info
+
+
 def _sync_idle_after_maintenance(payload: Dict[str, Any],
                                  pending_maint: Dict[int, Dict[str, Any]],
                                  last_h: Dict[int, Optional[float]],
@@ -766,6 +845,9 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
             rec.setdefault("sched_ddt", regime.get("sched_ddt", ddt_hat_val))
             rec.setdefault("combo_segment", regime.get("segment"))
             rec.setdefault("combo_level_idx", regime.get("level_idx"))
+            rec.setdefault("im_invalid_flag", False)
+            rec.setdefault("dn_imminent_breakdown_veto", False)
+            rec.setdefault("safety_filtered_actions", "")
             if rec.get("event") == "maintenance":
                 mid_val = rec.get("mid")
                 maint_seq_global += 1
@@ -837,6 +919,9 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "delta_t_since_last_maint": float(env.time - m.last_maint_end),
                                     "lambda_hat": float(lambda_hat),
                                     "ddt_hat": float(ddt_hat),
+                                    "im_invalid_flag": bool(rec.get("action_meta", {}).get("im_invalid_flag", False)),
+                                    "dn_imminent_breakdown_veto": bool(rec.get("action_meta", {}).get("dn_imminent_breakdown_veto", False)),
+                                    "safety_filtered_actions": "|".join(rec.get("action_meta", {}).get("safety_filtered_actions", [])),
                                     "breakdown_flag": False,
                                     "breakdown_cost": 0.0,
                                     "breakdown_count": int(env.breakdown_count),
@@ -891,6 +976,9 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "delta_t_since_last_maint": float(env.time - m.last_maint_end),
                                     "lambda_hat": float(lambda_hat),
                                     "ddt_hat": float(ddt_hat),
+                                    "im_invalid_flag": bool(rec.get("action_meta", {}).get("im_invalid_flag", False)),
+                                    "dn_imminent_breakdown_veto": bool(rec.get("action_meta", {}).get("dn_imminent_breakdown_veto", False)),
+                                    "safety_filtered_actions": "|".join(rec.get("action_meta", {}).get("safety_filtered_actions", [])),
                                     "breakdown_flag": False,
                                     "breakdown_cost": 0.0,
                                     "breakdown_count": int(env.breakdown_count),
@@ -958,7 +1046,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                                     lambda_hat, ddt_hat, risk_t, win_e, win_l,
                                                     rul_mu, rul_sigma, env.time, m.last_maint_end,
                                                     pf_dn, pf_im, pf_cm, current_stress)
-                        a = select_maintenance_action(
+                        a, action_meta = select_maintenance_action(
                             maint_mode, maint_agent, pomcp, pomcp_beliefs, env, mid, h, s,
                             slack_pressure, current_stress, local_urgency, cfg, belief_rng, explore=False
                         )
@@ -995,6 +1083,9 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "delta_t_since_last_maint": float(env.time - m.last_maint_end),
                                     "lambda_hat": float(lambda_hat),
                                     "ddt_hat": float(ddt_hat),
+                                    "im_invalid_flag": bool(action_meta.get("im_invalid_flag", False)),
+                                    "dn_imminent_breakdown_veto": bool(action_meta.get("dn_imminent_breakdown_veto", False)),
+                                    "safety_filtered_actions": "|".join(action_meta.get("safety_filtered_actions", [])),
                                     "breakdown_flag": False,
                                     "breakdown_cost": 0.0,
                                     "breakdown_count": int(env.breakdown_count),
@@ -1017,6 +1108,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                 "risk_t": risk_t,
                                 "t_e": t_e,
                                 "t_l": t_l,
+                                "action_meta": dict(action_meta),
                             }
                             if env.time >= t_e or (enforce_region and h < cfg.Hy):
                                 rec = pending_maint[mid]
@@ -1058,6 +1150,9 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                         "delta_t_since_last_maint": float(env.time - m.last_maint_end),
                                         "lambda_hat": float(lambda_hat),
                                         "ddt_hat": float(ddt_hat),
+                                        "im_invalid_flag": bool(rec.get("action_meta", {}).get("im_invalid_flag", False)),
+                                        "dn_imminent_breakdown_veto": bool(rec.get("action_meta", {}).get("dn_imminent_breakdown_veto", False)),
+                                        "safety_filtered_actions": "|".join(rec.get("action_meta", {}).get("safety_filtered_actions", [])),
                                         "breakdown_flag": False,
                                         "breakdown_cost": 0.0,
                                         "breakdown_count": int(env.breakdown_count),
@@ -1194,6 +1289,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         "im_count", "im_damage", "risk_h", "risk_trend", "im_longterm_penalty", "opportunity_cost",
                         "p_fail", "expected_fail_cost", "downtime_cost", "delta_t_since_last_maint",
                         "lambda_hat", "ddt_hat", "lambda_true_segment", "ddt_true_segment", "sched_lambda", "sched_ddt", "sched_regime_feature_mode", "combo_segment", "combo_level_idx",
+                        "im_invalid_flag", "dn_imminent_breakdown_veto", "safety_filtered_actions",
                         "goal", "rule", "dispatched", "op", "job_due", "overdue",
                         "local_urgency", "breakdown_flag", "breakdown_kind", "breakdown_cost", "breakdown_count", "hard_breakdown_count",
                         "stochastic_breakdown_count", "requeued_op_count", "interrupted_proc_time",
@@ -1212,6 +1308,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                             row.get("lambda_hat"), row.get("ddt_hat"), row.get("lambda_true_segment"), row.get("ddt_true_segment"),
                             row.get("sched_lambda"), row.get("sched_ddt"), row.get("sched_regime_feature_mode"),
                             row.get("combo_segment"), row.get("combo_level_idx"),
+                            row.get("im_invalid_flag"), row.get("dn_imminent_breakdown_veto"), row.get("safety_filtered_actions"),
                             row.get("goal"), row.get("rule"), row.get("dispatched"),
                             json.dumps(row.get("op"), separators=(",", ":"), ensure_ascii=True) if row.get("op") is not None else "",
                             row.get("job_due"), row.get("overdue"),
@@ -1275,17 +1372,23 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
                               h_obs: float, state: np.ndarray, slack_pressure: float,
                               current_stress: float,
                               local_urgency: float, cfg: SimConfig, rng: random.Random,
-                              explore: bool) -> int:
+                              explore: bool) -> Tuple[int, Dict[str, Any]]:
     mode = mode.upper()
     enforce_region = bool(getattr(cfg, "ENFORCE_REGION_POLICY", True))
     allowed_actions = filter_non_improving_im(env, mid, h_obs, allowed_actions_by_region(h_obs, cfg, enforce_region))
+    action_meta: Dict[str, Any] = {
+        "im_invalid_flag": bool(1 not in allowed_actions),
+        "dn_imminent_breakdown_veto": False,
+        "safety_filtered_actions": [],
+        "allowed_actions": list(allowed_actions),
+    }
     if mode == "OFF":
-        return int(allowed_actions[0]) if len(allowed_actions) == 1 else 0
+        return int(allowed_actions[0]) if len(allowed_actions) == 1 else 0, action_meta
     if mode == "DQN":
         if maint_agent is None:
-            return int(allowed_actions[0]) if len(allowed_actions) == 1 else 0
+            return int(allowed_actions[0]) if len(allowed_actions) == 1 else 0, action_meta
         action = int(maint_agent.act(state, explore=explore, allowed_actions=allowed_actions))
-        return int(enforce_action_by_region(action, h_obs, cfg, enforce_region))
+        return int(enforce_action_by_region(action, h_obs, cfg, enforce_region)), action_meta
 
     if mode == "POMCP":
         if pomcp is None or pomcp_beliefs is None:
@@ -1308,14 +1411,58 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
             p["region_b_elapsed"] = region_b_elapsed
         pomcp_beliefs[mid] = belief
 
+        root_allowed_actions, root_info = _pomcp_safety_filtered_actions(
+            env,
+            mid,
+            h_obs,
+            current_stress,
+            local_urgency,
+            cfg,
+            baseline_rul=baseline_rul,
+            enforce_region=enforce_region,
+            mode=mode,
+        )
+        action_meta.update(root_info)
+
+        def action_candidates_fn(state_p):
+            state_allowed, _ = _pomcp_safety_filtered_actions(
+                env,
+                mid,
+                float(state_p.get("h_true", 1.0)),
+                float(state_p.get("stress", current_stress)),
+                local_urgency,
+                cfg,
+                baseline_rul=float(state_p.get("baseline_rul", baseline_rul)),
+                enforce_region=enforce_region,
+                mode=mode,
+            )
+            return state_allowed
+
         def model(state_p, action):
             h_state = float(state_p.get("h_true", 1.0))
             state_stress = float(state_p.get("stress", current_stress))
             baseline_state = float(state_p.get("baseline_rul", baseline_rul))
-            a = enforce_action_by_region(int(action), h_state, cfg, enforce_region)
-            useless_im = bool(a == 1 and not env.im_has_positive_gain(mid, h_state, baseline_rul=baseline_state))
-            if useless_im:
-                a = 0
+            if pomcp_unrestricted_safety_filter_enabled(mode, cfg, enforce_region):
+                state_allowed_actions, _ = _pomcp_safety_filtered_actions(
+                    env,
+                    mid,
+                    h_state,
+                    state_stress,
+                    local_urgency,
+                    cfg,
+                    baseline_rul=baseline_state,
+                    enforce_region=enforce_region,
+                    mode=mode,
+                )
+                a = int(action)
+                if a not in state_allowed_actions:
+                    a = int(state_allowed_actions[0])
+                useless_im = False
+            else:
+                a = enforce_action_by_region(int(action), h_state, cfg, enforce_region)
+                useless_im = bool(a == 1 and not env.im_has_positive_gain(mid, h_state, baseline_rul=baseline_state))
+                if useless_im:
+                    a = 0
             expected_breakdown_loss = 0.0
             if a == 0:
                 idx_before = env.operating_index_from_rul(mid, h_state)
@@ -1346,14 +1493,26 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
                 reward -= float(getattr(cfg, "IM_USELESS_PENALTY", 0.0))
             return next_state, obs, reward
 
-        action = int(pomcp.plan(belief, model, cfg.POMCP_NUM_SIMS, cfg.POMCP_HORIZON))
+        action = int(
+            pomcp.plan(
+                belief,
+                model,
+                cfg.POMCP_NUM_SIMS,
+                cfg.POMCP_HORIZON,
+                root_candidates=root_allowed_actions,
+                action_candidates_fn=action_candidates_fn,
+            )
+        )
+        if action not in root_allowed_actions:
+            action = int(root_allowed_actions[0])
         if action == 1 and not env.im_has_positive_gain(mid, h_obs, baseline_rul=baseline_rul):
-            return int(enforce_action_by_region(0, h_obs, cfg, enforce_region))
-        return int(enforce_action_by_region(action, h_obs, cfg, enforce_region))
+            action_meta["safety_filtered_actions"] = sorted(set(list(action_meta["safety_filtered_actions"]) + ["IM"]))
+            return int(enforce_action_by_region(0, h_obs, cfg, enforce_region)), action_meta
+        return int(enforce_action_by_region(action, h_obs, cfg, enforce_region)), action_meta
 
     # fallback: conservative threshold rule
     fallback_action = 2 if h_obs < cfg.Hy else 0
-    return int(enforce_action_by_region(fallback_action, h_obs, cfg, enforce_region))
+    return int(enforce_action_by_region(fallback_action, h_obs, cfg, enforce_region)), action_meta
 
 def _make_scheduler_agent(cfg: SimConfig, seed: int, device):
     scheduler_mode = str(getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
@@ -1383,7 +1542,11 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
     decision_log = list(final_result.get("decision_log", []))
     maint_counts = summarize_action_counts(extract_maintenance_rows(decision_log), key="kind", values=["DN", "IM", "CM"])
     schedule_summary = summarize_scheduling_strategy(decision_log, env=final_result.get("env"))
+    combo_behavior = summarize_combo_conditioned_behavior(decision_log)
     env = final_result.get("env")
+    cfg_env = getattr(env, "cfg", None)
+    im_invalid_filtered_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("im_invalid_flag")))
+    dn_veto_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("dn_imminent_breakdown_veto")))
     return {
         "seed": int(seed),
         "maint_mode": str(mode),
@@ -1413,17 +1576,25 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "stochastic_breakdown_count": int(getattr(env, "stochastic_breakdown_count", 0)),
         "current_stress_mean": float(schedule_summary.get("current_stress_mean", 0.0)),
         "current_stress_max": float(schedule_summary.get("current_stress_max", 0.0)),
-        "degradation_rate": float(getattr(getattr(env, "cfg", None), "BASE_DEGRADATION_RATE", 0.0)),
-        "degradation_rate_scale": float(getattr(getattr(env, "cfg", None), "DEGRADATION_RATE_SCALE", 1.0)),
-        "machine_set_mode": str(getattr(getattr(env, "cfg", None), "MACHINE_SET_MODE", "current6")),
-        "machine_curve_ids": list(getattr(getattr(env, "cfg", None), "MACHINE_CURVE_IDS", ())),
-        "rul_life_clock_mode": str(getattr(getattr(env, "cfg", None), "RUL_LIFE_CLOCK_MODE", "label_driven_scaled")),
+        "degradation_rate": float(getattr(cfg_env, "BASE_DEGRADATION_RATE", 0.0)),
+        "degradation_rate_scale": float(getattr(cfg_env, "DEGRADATION_RATE_SCALE", 1.0)),
+        "machine_set_mode": str(getattr(cfg_env, "MACHINE_SET_MODE", "current6")),
+        "machine_curve_ids": list(getattr(cfg_env, "MACHINE_CURVE_IDS", ())),
+        "rul_life_clock_mode": str(getattr(cfg_env, "RUL_LIFE_CLOCK_MODE", "label_driven_scaled")),
+        "lam_ddt_mode": str(getattr(cfg_env, "LAM_DDT_MODE", "variable")).lower(),
+        "train_combo_mode": str(getattr(cfg_env, "TRAIN_COMBO_MODE", getattr(cfg_env, "LAM_DDT_MODE", "variable"))).lower(),
+        "eval_combo_mode": str(getattr(cfg_env, "EVAL_COMBO_MODE", getattr(cfg_env, "LAM_DDT_MODE", "variable"))).lower(),
+        "fixed_arrival_lam": float(getattr(cfg_env, "FIXED_ARRIVAL_LAM", 40.0)),
+        "fixed_ddt": float(getattr(cfg_env, "FIXED_DDT", 1.5)),
         "machine_replay_to_label_scale": {
             int(mid): float(scale)
             for mid, scale in getattr(env, "machine_replay_to_label_scale", {}).items()
         },
         "scenario_combos": [list(x) for x in getattr(getattr(env, "episode_scenario", None), "combos", [])],
         "scenario_combo_seq": list(getattr(getattr(env, "episode_scenario", None), "combo_seq", [])),
+        "combo_behavior": combo_behavior,
+        "im_invalid_filtered_count": int(im_invalid_filtered_count),
+        "dn_veto_count": int(dn_veto_count),
         "maint_dn": int(maint_counts.get("DN", 0)),
         "maint_im": int(maint_counts.get("IM", 0)),
         "maint_cm": int(maint_counts.get("CM", 0)),
@@ -1840,7 +2011,7 @@ def train_one_mode(
                                                     lambda_hat, ddt_hat, risk_t, win_e, win_l,
                                                     rul_mu, rul_sigma, env.time, m.last_maint_end,
                                                     pf_dn, pf_im, pf_cm, current_stress)
-                        a = select_maintenance_action(
+                        a, action_meta = select_maintenance_action(
                             cfg.MAINT_MODE, maint_agent, episode_pomcp, pomcp_beliefs, env, mid, h, s,
                             slack_pressure, current_stress, local_urgency, cfg, belief_rng, explore=True
                         )
@@ -1887,6 +2058,7 @@ def train_one_mode(
                                 "risk_t": risk_t,
                                 "t_e": t_e,
                                 "t_l": t_l,
+                                "action_meta": dict(action_meta),
                             }
                             if env.time >= t_e or (enforce_region_train and h < cfg.Hy):
                                 rec = pending_maint[mid]
@@ -2159,6 +2331,10 @@ def train_one_mode(
         compare_type="full_system",
         scheduler_anchor="none",
     )
+    official_decision_log = official_result["decision_log"]
+    official_sched_summary = summarize_scheduling_strategy(official_decision_log, env=eval_env)
+    official_combo_behavior = summarize_combo_conditioned_behavior(official_decision_log)
+    official_maint_rows = extract_maintenance_rows(official_decision_log)
     summary_row = {
         "timestamp": ts,
         "seed": int(seed),
@@ -2187,12 +2363,14 @@ def train_one_mode(
         "interrupted_proc_time": float(eval_env.interrupted_proc_time),
         "hard_breakdown_count": int(eval_env.hard_breakdown_count),
         "stochastic_breakdown_count": int(eval_env.stochastic_breakdown_count),
-        "current_stress_mean": float(summarize_scheduling_strategy(official_result["decision_log"], env=eval_env).get("current_stress_mean", 0.0)),
-        "current_stress_max": float(summarize_scheduling_strategy(official_result["decision_log"], env=eval_env).get("current_stress_max", 0.0)),
+        "current_stress_mean": float(official_sched_summary.get("current_stress_mean", 0.0)),
+        "current_stress_max": float(official_sched_summary.get("current_stress_max", 0.0)),
         "scheduler_mode": str(cfg.SCHEDULER_MODE).upper(),
         "scheduler_mode_tag": build_scheduler_mode_tag(cfg.SCHEDULER_MODE),
         "sched_regime_feature_mode": str(getattr(eval_cfg, "SCHED_REGIME_FEATURE_MODE", "observer")).lower(),
         "lam_ddt_mode": str(getattr(base_cfg, "LAM_DDT_MODE", "variable")).lower(),
+        "train_combo_mode": str(getattr(base_cfg, "TRAIN_COMBO_MODE", getattr(base_cfg, "LAM_DDT_MODE", "variable"))).lower(),
+        "eval_combo_mode": str(getattr(base_cfg, "EVAL_COMBO_MODE", getattr(base_cfg, "LAM_DDT_MODE", "variable"))).lower(),
         "fixed_arrival_lam": float(getattr(base_cfg, "FIXED_ARRIVAL_LAM", 40.0)),
         "fixed_ddt": float(getattr(base_cfg, "FIXED_DDT", 1.5)),
         "degradation_rate": float(final_scenario.degradation_rate),
@@ -2206,6 +2384,9 @@ def train_one_mode(
         },
         "scenario_combos": [list(x) for x in getattr(final_scenario, "combos", [])],
         "scenario_combo_seq": list(getattr(final_scenario, "combo_seq", [])),
+        "combo_behavior": official_combo_behavior,
+        "im_invalid_filtered_count": int(sum(1 for row in official_maint_rows if bool(row.get("im_invalid_flag")))),
+        "dn_veto_count": int(sum(1 for row in official_maint_rows if bool(row.get("dn_imminent_breakdown_veto")))),
     }
     write_summary_files(outdir, f"summary_{ts}_{maint_mode_tag}_{train_policy_tag}", summary_row)
 

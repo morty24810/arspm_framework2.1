@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Dict, Tuple, List, Optional
 import math
 import random
 
@@ -28,35 +28,67 @@ class POMCPPlanner:
         self.c_ucb = float(c_ucb)
         self.rng = rng
 
-    def plan(self, belief, generative_model: Callable, num_sims: int, horizon: int) -> int:
+    def plan(
+        self,
+        belief,
+        generative_model: Callable,
+        num_sims: int,
+        horizon: int,
+        *,
+        root_candidates: Optional[List[int]] = None,
+        action_candidates_fn: Optional[Callable[[Any], List[int]]] = None,
+    ) -> int:
         root = Node()
         for _ in range(int(num_sims)):
             state = self.rng.choice(belief)
-            self._simulate(state, root, generative_model, int(horizon))
+            self._simulate(state, root, generative_model, int(horizon), action_candidates_fn=action_candidates_fn)
 
-        best_a = 0
+        candidates = list(root_candidates) if root_candidates else list(range(self.num_actions))
+        if not candidates:
+            candidates = list(range(self.num_actions))
+        best_a = int(candidates[0])
         best_q = -1e9
-        for a in range(self.num_actions):
+        for a in candidates:
             root.ensure_action(a)
             if root.q_a[a] > best_q:
                 best_q = root.q_a[a]
                 best_a = a
         return best_a
 
-    def _simulate(self, state, node: Node, model: Callable, depth: int) -> float:
+    def _simulate(
+        self,
+        state,
+        node: Node,
+        model: Callable,
+        depth: int,
+        *,
+        action_candidates_fn: Optional[Callable[[Any], List[int]]] = None,
+    ) -> float:
         if depth <= 0:
             return 0.0
 
-        a = self._select_action(node)
+        candidates = action_candidates_fn(state) if action_candidates_fn is not None else None
+        a = self._select_action(node, candidates=candidates)
         next_state, obs, reward = model(state, a)
         obs_key = self._obs_key(obs)
         key = (a, obs_key)
         if key not in node.children:
             node.children[key] = Node()
             # rollout for new node
-            total = reward + self.gamma * self._rollout(next_state, model, depth - 1)
+            total = reward + self.gamma * self._rollout(
+                next_state,
+                model,
+                depth - 1,
+                action_candidates_fn=action_candidates_fn,
+            )
         else:
-            total = reward + self.gamma * self._simulate(next_state, node.children[key], model, depth - 1)
+            total = reward + self.gamma * self._simulate(
+                next_state,
+                node.children[key],
+                model,
+                depth - 1,
+                action_candidates_fn=action_candidates_fn,
+            )
 
         node.n += 1
         node.ensure_action(a)
@@ -64,11 +96,14 @@ class POMCPPlanner:
         node.q_a[a] += (total - node.q_a[a]) / max(node.n_a[a], 1)
         return total
 
-    def _select_action(self, node: Node) -> int:
+    def _select_action(self, node: Node, *, candidates: Optional[List[int]] = None) -> int:
         # UCB1
-        best_a = 0
+        action_space = list(candidates) if candidates else list(range(self.num_actions))
+        if not action_space:
+            action_space = list(range(self.num_actions))
+        best_a = int(action_space[0])
         best_u = -1e9
-        for a in range(self.num_actions):
+        for a in action_space:
             node.ensure_action(a)
             if node.n_a[a] == 0:
                 return a
@@ -78,11 +113,22 @@ class POMCPPlanner:
                 best_a = a
         return best_a
 
-    def _rollout(self, state, model: Callable, depth: int) -> float:
+    def _rollout(
+        self,
+        state,
+        model: Callable,
+        depth: int,
+        *,
+        action_candidates_fn: Optional[Callable[[Any], List[int]]] = None,
+    ) -> float:
         total = 0.0
         discount = 1.0
         for _ in range(depth):
-            a = self.rng.randrange(self.num_actions)
+            candidates = action_candidates_fn(state) if action_candidates_fn is not None else None
+            action_space = list(candidates) if candidates else list(range(self.num_actions))
+            if not action_space:
+                action_space = list(range(self.num_actions))
+            a = self.rng.choice(action_space)
             state, _, r = model(state, a)
             total += discount * r
             discount *= self.gamma

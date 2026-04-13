@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple, Optional
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
-from matplotlib.patches import FancyBboxPatch, Patch
+from matplotlib.patches import FancyBboxPatch, Patch, Rectangle
 
 
 CARD_BBOX = {
@@ -492,18 +492,122 @@ def _plot_categorical_scatter(x, y, categories, color_map: Dict[int, str], label
     plt.close(fig)
 
 
+def _combo_heatmap_annotations(values: List[int], allowed_values: List[int]) -> Tuple[Optional[int], float]:
+    counts = {int(v): 0 for v in allowed_values}
+    for value in values:
+        if int(value) in counts:
+            counts[int(value)] += 1
+    total = sum(counts.values())
+    if total <= 0:
+        return None, 0.0
+    dominant = max(counts.items(), key=lambda kv: kv[1])[0]
+    share = counts[dominant] / max(total, 1)
+    return int(dominant), float(share)
+
+
+def _plot_combo_categorical_heatmap(
+    lam_values: np.ndarray,
+    ddt_values: np.ndarray,
+    categories: np.ndarray,
+    *,
+    allowed_values: List[int],
+    category_colors: Dict[int, str],
+    category_labels: Dict[int, str],
+    out_path: Path,
+    title: str,
+    legend_title: str,
+    policy_label: Optional[str],
+):
+    uniq_lam = sorted({float(x) for x in lam_values.tolist()})
+    uniq_ddt = sorted({float(x) for x in ddt_values.tolist()})
+    if not uniq_lam or not uniq_ddt:
+        return
+
+    fig, ax = plt.subplots(figsize=(1.8 + 1.3 * len(uniq_ddt), 1.8 + 0.95 * len(uniq_lam)))
+    ax.set_xlim(0, len(uniq_ddt))
+    ax.set_ylim(0, len(uniq_lam))
+    ax.invert_yaxis()
+    ax.set_xticks(np.arange(len(uniq_ddt)) + 0.5)
+    ax.set_yticks(np.arange(len(uniq_lam)) + 0.5)
+    ax.set_xticklabels([f"{x:.2f}" for x in uniq_ddt], fontsize=9)
+    ax.set_yticklabels([f"{x:.0f}" for x in uniq_lam], fontsize=9)
+    ax.set_xlabel("DDT")
+    ax.set_ylabel("λ")
+    ax.set_title(title)
+    ax.set_facecolor("#F7F8FA")
+
+    for yi, lam in enumerate(uniq_lam):
+        for xi, ddt in enumerate(uniq_ddt):
+            mask = np.isclose(lam_values, lam) & np.isclose(ddt_values, ddt)
+            cell_values = categories[mask]
+            dominant, share = _combo_heatmap_annotations(cell_values.tolist(), allowed_values)
+            if dominant is None:
+                face = "#ECEFF2"
+                label = "NA"
+                share_text = ""
+                alpha = 0.55
+            else:
+                face = category_colors[int(dominant)]
+                label = category_labels[int(dominant)]
+                share_text = f"{share * 100:.0f}%"
+                alpha = 0.35 + 0.60 * share
+            ax.add_patch(
+                Rectangle(
+                    (xi, yi),
+                    1.0,
+                    1.0,
+                    facecolor=face,
+                    edgecolor="#FFFFFF",
+                    linewidth=1.5,
+                    alpha=alpha,
+                )
+            )
+            ax.text(
+                xi + 0.5,
+                yi + 0.42,
+                label,
+                ha="center",
+                va="center",
+                fontsize=10,
+                color="#1F2A33",
+                fontweight="semibold",
+            )
+            if share_text:
+                ax.text(
+                    xi + 0.5,
+                    yi + 0.70,
+                    share_text,
+                    ha="center",
+                    va="center",
+                    fontsize=8.6,
+                    color="#30414D",
+                )
+
+    ax.set_aspect("equal")
+    handles = [
+        Patch(facecolor=category_colors[val], edgecolor="none", label=category_labels[val], alpha=0.75)
+        for val in allowed_values
+    ]
+    _legend_outside(ax, handles, title=legend_title, anchor_y=1.0)
+    fig.subplots_adjust(right=0.80, left=0.12, bottom=0.14, top=0.86)
+    _draw_info_card(fig, policy_label, extra_note="Cells show dominant category and share by λ×DDT combo.")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=220)
+    plt.close(fig)
+
+
 def plot_rule_vs_features(rule_log, out_path: str, policy_label: Optional[str] = None):
     if not rule_log:
         return
     S = np.stack([x[1] for x in rule_log])
+    sched_lambda = S[:, 4]
+    sched_ddt = S[:, 5]
     rules = np.array([x[3] for x in rule_log], dtype=np.int64)
     raw_goals = [x[2] for x in rule_log]
     valid_goal_mask = np.array(
         [isinstance(g, (int, np.integer)) and 0 <= int(g) <= 3 for g in raw_goals],
         dtype=bool,
     )
-    arrivals = S[:, 3]
-    avg_slack = S[:, 6]
     out_path = Path(out_path)
 
     rule_colors = {
@@ -520,18 +624,17 @@ def plot_rule_vs_features(rule_log, out_path: str, policy_label: Optional[str] =
         2: "#59A14F",
         3: "#B07AA1",
     }
-    _plot_categorical_scatter(
-        arrivals,
-        avg_slack,
+    _plot_combo_categorical_heatmap(
+        sched_lambda,
+        sched_ddt,
         rules,
-        rule_colors,
-        {i: f"Rule {i}" for i in range(6)},
-        out_path,
-        xlabel="Arrivals in Window",
-        ylabel="Average Slack",
-        title="Dispatch Rule by Load and Slack",
-        policy_label=policy_label,
+        allowed_values=list(range(6)),
+        category_colors=rule_colors,
+        category_labels={i: f"Rule {i}" for i in range(6)},
+        out_path=out_path,
+        title="Dispatch Rule by λ and DDT",
         legend_title="Dispatch Rule",
+        policy_label=policy_label,
     )
 
     if np.any(valid_goal_mask):
@@ -539,18 +642,17 @@ def plot_rule_vs_features(rule_log, out_path: str, policy_label: Optional[str] =
         suffix = out_path.suffix or ".png"
         goal_name = "goal_vs_features" + out_path.name[len("rule_vs_features"):] if out_path.name.startswith("rule_vs_features") else f"goal_vs_features{suffix}"
         goal_path = out_path.with_name(goal_name)
-        _plot_categorical_scatter(
-            arrivals[valid_goal_mask],
-            avg_slack[valid_goal_mask],
+        _plot_combo_categorical_heatmap(
+            sched_lambda[valid_goal_mask],
+            sched_ddt[valid_goal_mask],
             goals,
-            goal_colors,
-            {i: f"Goal {i}" for i in range(4)},
-            goal_path,
-            xlabel="Arrivals in Window",
-            ylabel="Average Slack",
-            title="Scheduler Goal by Load and Slack",
-            policy_label=policy_label,
+            allowed_values=list(range(4)),
+            category_colors=goal_colors,
+            category_labels={i: f"Goal {i}" for i in range(4)},
+            out_path=goal_path,
+            title="Scheduler Goal by λ and DDT",
             legend_title="Goal",
+            policy_label=policy_label,
         )
 
 

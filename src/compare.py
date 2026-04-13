@@ -71,6 +71,69 @@ def summarize_action_counts(rows: List[Dict[str, Any]], key: str, values: List[A
     return counts
 
 
+def _combo_key_from_row(row: Dict[str, Any]) -> str | None:
+    lam = _safe_float(row.get("lambda_true_segment"))
+    ddt = _safe_float(row.get("ddt_true_segment"))
+    if lam is None or ddt is None:
+        return None
+    return f"lam={lam:.1f}|ddt={ddt:.2f}"
+
+
+def _dominant_from_counts(counts: Dict[str, int]) -> Dict[str, Any]:
+    total = int(sum(int(v) for v in counts.values()))
+    if total <= 0:
+        return {"label": None, "share": 0.0}
+    dominant_label, dominant_count = max(counts.items(), key=lambda kv: int(kv[1]))
+    return {
+        "label": dominant_label,
+        "share": float(dominant_count / max(total, 1)),
+    }
+
+
+def summarize_combo_conditioned_behavior(decision_log: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    combo_summary: Dict[str, Dict[str, Any]] = {}
+    for row in decision_log or []:
+        combo_key = _combo_key_from_row(row)
+        if combo_key is None:
+            continue
+        entry = combo_summary.setdefault(
+            combo_key,
+            {
+                "rule_counts": {str(i): 0 for i in range(6)},
+                "goal_counts": {str(i): 0 for i in range(4)},
+                "maint_counts": {"DN": 0, "IM": 0, "CM": 0},
+                "dispatch_count": 0,
+                "maintenance_count": 0,
+            },
+        )
+        event = str(row.get("event", "")).lower()
+        if event == "scheduling":
+            rule = row.get("rule")
+            if isinstance(rule, float) and float(rule).is_integer():
+                rule = int(rule)
+            rule_key = str(rule)
+            if rule_key in entry["rule_counts"]:
+                entry["rule_counts"][rule_key] += 1
+            goal = row.get("goal")
+            if isinstance(goal, float) and float(goal).is_integer():
+                goal = int(goal)
+            goal_key = str(goal)
+            if goal_key in entry["goal_counts"]:
+                entry["goal_counts"][goal_key] += 1
+            if bool(row.get("dispatched")):
+                entry["dispatch_count"] += 1
+        elif event == "maintenance":
+            kind = str(row.get("kind", "")).upper()
+            if kind in entry["maint_counts"]:
+                entry["maint_counts"][kind] += 1
+            entry["maintenance_count"] += 1
+
+    for entry in combo_summary.values():
+        entry["dominant_rule"] = _dominant_from_counts(entry["rule_counts"])
+        entry["dominant_goal"] = _dominant_from_counts(entry["goal_counts"])
+    return combo_summary
+
+
 def compute_decision_log_makespan(decision_log: List[Dict[str, Any]]) -> float:
     t_end = 0.0
     for row in decision_log or []:
@@ -199,6 +262,8 @@ def compare_mode_results(
 
     primary_schedule_summary = summarize_scheduling_strategy(primary_result.get("decision_log", []), env=primary_result.get("env"))
     compare_schedule_summary = summarize_scheduling_strategy(compare_result.get("decision_log", []), env=compare_result.get("env"))
+    primary_combo_behavior = summarize_combo_conditioned_behavior(primary_result.get("decision_log", []))
+    compare_combo_behavior = summarize_combo_conditioned_behavior(compare_result.get("decision_log", []))
     primary_scheduler_mode = str(primary_result.get("scheduler_mode", getattr(primary_result.get("env"), "last_scheduler_mode", "THDQN"))).upper()
     compare_scheduler_mode = str(compare_result.get("scheduler_mode", getattr(compare_result.get("env"), "last_scheduler_mode", "THDQN"))).upper()
     primary_sched_regime_feature_mode = str(
@@ -231,6 +296,12 @@ def compare_mode_results(
         "compare_sched_regime_feature_mode": compare_sched_regime_feature_mode,
         "primary_action_counts": summarize_action_counts(primary_rows, key="kind", values=["DN", "IM", "CM"]),
         "compare_action_counts": summarize_action_counts(compare_rows, key="kind", values=["DN", "IM", "CM"]),
+        "primary_combo_behavior": primary_combo_behavior,
+        "compare_combo_behavior": compare_combo_behavior,
+        "primary_im_invalid_filtered_count": int(sum(1 for row in primary_rows if bool(row.get("im_invalid_flag")))),
+        "compare_im_invalid_filtered_count": int(sum(1 for row in compare_rows if bool(row.get("im_invalid_flag")))),
+        "primary_dn_veto_count": int(sum(1 for row in primary_rows if bool(row.get("dn_imminent_breakdown_veto")))),
+        "compare_dn_veto_count": int(sum(1 for row in compare_rows if bool(row.get("dn_imminent_breakdown_veto")))),
         "decision_union_count": int(union_count),
         "decision_aligned_count": int(aligned_count),
         "divergence_count": int(divergence_count),
@@ -333,9 +404,15 @@ def write_mode_comparison_outputs(
         "scheduler_anchor": summary.get("scheduler_anchor"),
         "primary_scheduler_mode": summary.get("primary_scheduler_mode"),
         "compare_scheduler_mode": summary.get("compare_scheduler_mode"),
+        "primary_sched_regime_feature_mode": summary.get("primary_sched_regime_feature_mode"),
+        "compare_sched_regime_feature_mode": summary.get("compare_sched_regime_feature_mode"),
         "divergence_count": summary.get("divergence_count"),
         "decision_union_count": summary.get("decision_union_count"),
         "divergence_rate": summary.get("divergence_rate"),
+        "primary_im_invalid_filtered_count": summary.get("primary_im_invalid_filtered_count"),
+        "compare_im_invalid_filtered_count": summary.get("compare_im_invalid_filtered_count"),
+        "primary_dn_veto_count": summary.get("primary_dn_veto_count"),
+        "compare_dn_veto_count": summary.get("compare_dn_veto_count"),
         "primary_tard": summary.get("primary_metrics", {}).get("tard"),
         "compare_tard": summary.get("compare_metrics", {}).get("tard"),
         "primary_maint": summary.get("primary_metrics", {}).get("maint"),

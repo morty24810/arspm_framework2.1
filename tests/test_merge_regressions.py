@@ -17,6 +17,8 @@ from infer_demo import (
 )
 from run_experiment import (
     _sync_idle_after_maintenance,
+    _build_run_record,
+    build_episode_combos,
     build_maintenance_state,
     effective_base_degradation_rate,
     effective_degradation_bounds,
@@ -27,9 +29,9 @@ from run_experiment import (
     select_maintenance_action,
 )
 from src.agents import PPOSchedulerAgent
-from src.compare import compare_mode_results, summarize_scheduling_strategy
+from src.compare import compare_mode_results, summarize_combo_conditioned_behavior, summarize_scheduling_strategy
 from src.env import EventDrivenShopEnv
-from src.viz import plot_rul_curves
+from src.viz import plot_rul_curves, plot_rule_vs_features
 
 
 class _RecoveryEnvStub:
@@ -84,7 +86,7 @@ class _SingleStepPOMCP:
     def __init__(self):
         self.last_reward = None
 
-    def plan(self, belief, model, num_sims: int, horizon: int) -> int:
+    def plan(self, belief, model, num_sims: int, horizon: int, **kwargs) -> int:
         _, _, reward = model(belief[0], 0)
         self.last_reward = reward
         return 0
@@ -94,7 +96,7 @@ class _BestRewardPOMCP:
     def __init__(self):
         self.last_rewards = {}
 
-    def plan(self, belief, model, num_sims: int, horizon: int) -> int:
+    def plan(self, belief, model, num_sims: int, horizon: int, **kwargs) -> int:
         best_action = None
         best_reward = None
         for action in (1, 2):
@@ -149,6 +151,23 @@ class _LatePreferenceEnvStub(_ImGainEnvStub):
     def generative_step(mid: int, particle, action: int, current_stress: float, rng: random.Random):
         dur = 11.6 if int(action) == 1 else 20.0
         return dict(particle), float(particle.get("h_true", 1.0)), {"dur": dur}
+
+
+class _HardBreakdownVetoEnvStub(_ImGainEnvStub):
+    def __init__(self):
+        super().__init__(False)
+
+    def expected_breakdown_loss(self, mid: int, local_urgency: float, *,
+                                pt=None, stress=None, h_true=None, idx_before=None):
+        return {
+            "p_fail_exec": 1.0,
+            "expected_breakdown_loss": 99.0,
+            "breakdown_penalty_cost": 99.0,
+            "expected_redispatch_pt": 1.0,
+            "recovery_dur": 5.0,
+            "hard_breakdown_flag": 1.0,
+            "h_end_true": 0.02,
+        }
 
 
 class _CostEnvStub:
@@ -418,6 +437,16 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(float(features[4]), 60.0)
         self.assertAlmostEqual(float(features[5]), 2.0)
 
+    def test_episode_fixed_training_combo_uses_single_uniform_combo(self):
+        cfg = SimConfig()
+        cfg.ARRIVAL_LAM_VALUES = (20.0, 40.0)
+        cfg.DDT_VALUES = (1.0, 1.5)
+        combos, seq = build_episode_combos(cfg, random.Random(7), jobs_target=40, combo_mode="episode_fixed")
+
+        self.assertEqual(len(combos), 1)
+        self.assertTrue(all(idx == 0 for idx in seq))
+        self.assertIn(tuple(combos[0]), {(20.0, 1.0), (20.0, 1.5), (40.0, 1.0), (40.0, 1.5)})
+
     def test_maintenance_state_includes_current_stress_as_18th_dimension(self):
         state = build_maintenance_state(
             0.4, -0.02, 12.0,
@@ -456,7 +485,7 @@ class MergeRegressionTests(unittest.TestCase):
             "region_b_elapsed": 0.0,
         }
 
-        action = select_maintenance_action(
+        action, meta = select_maintenance_action(
             "POMCP",
             None,
             planner,
@@ -474,6 +503,7 @@ class MergeRegressionTests(unittest.TestCase):
         )
 
         self.assertEqual(action, 0)
+        self.assertFalse(meta["dn_imminent_breakdown_veto"])
         self.assertIsNotNone(env.expected_breakdown_args)
         self.assertAlmostEqual(env.expected_breakdown_args["h_true"], 0.25)
         self.assertAlmostEqual(
@@ -516,7 +546,7 @@ class MergeRegressionTests(unittest.TestCase):
             "region_b_elapsed": 0.0,
         }
 
-        action = select_maintenance_action(
+        action, meta = select_maintenance_action(
             "POMCP",
             None,
             planner,
@@ -534,6 +564,7 @@ class MergeRegressionTests(unittest.TestCase):
         )
 
         self.assertEqual(action, 0)
+        self.assertTrue(meta["im_invalid_flag"])
 
     def test_pomcp_prefers_cm_over_im_below_hy_in_unrestricted_mode(self):
         cfg = SimConfig()
@@ -547,7 +578,7 @@ class MergeRegressionTests(unittest.TestCase):
             "region_b_elapsed": 40.0,
         }
 
-        action = select_maintenance_action(
+        action, meta = select_maintenance_action(
             "POMCP",
             None,
             planner,
@@ -565,7 +596,104 @@ class MergeRegressionTests(unittest.TestCase):
         )
 
         self.assertEqual(action, 2)
+        self.assertFalse(meta["dn_imminent_breakdown_veto"])
         self.assertGreater(planner.last_rewards[2], planner.last_rewards[1])
+
+    def test_pomcp_unrestricted_safety_filter_vetoes_imminent_breakdown_dn(self):
+        cfg = SimConfig()
+        cfg.ENFORCE_REGION_POLICY = False
+        cfg.POMCP_UNRESTRICTED_SAFETY_FILTER = True
+        env = _HardBreakdownVetoEnvStub()
+        planner = _SingleStepPOMCP()
+        particle = {
+            "h_true": 0.08,
+            "stress": 0.4,
+            "baseline_rul": 1.0,
+            "region_b_elapsed": 0.0,
+        }
+
+        action, meta = select_maintenance_action(
+            "POMCP",
+            None,
+            planner,
+            {0: [particle]},
+            env,
+            0,
+            0.08,
+            np.zeros(18, dtype=np.float32),
+            0.1,
+            0.4,
+            0.2,
+            cfg,
+            random.Random(0),
+            explore=False,
+        )
+
+        self.assertEqual(action, 2)
+        self.assertTrue(meta["im_invalid_flag"])
+        self.assertTrue(meta["dn_imminent_breakdown_veto"])
+        self.assertIn("DN", meta["safety_filtered_actions"])
+
+    def test_combo_conditioned_behavior_groups_rule_goal_and_maintenance_counts(self):
+        decision_log = [
+            {"event": "scheduling", "lambda_true_segment": 20.0, "ddt_true_segment": 1.0, "goal": 0, "rule": 2, "dispatched": True},
+            {"event": "scheduling", "lambda_true_segment": 20.0, "ddt_true_segment": 1.0, "goal": 0, "rule": 2, "dispatched": False},
+            {"event": "maintenance", "lambda_true_segment": 20.0, "ddt_true_segment": 1.0, "kind": "IM"},
+            {"event": "scheduling", "lambda_true_segment": 60.0, "ddt_true_segment": 2.0, "goal": 3, "rule": 5, "dispatched": True},
+            {"event": "maintenance", "lambda_true_segment": 60.0, "ddt_true_segment": 2.0, "kind": "CM"},
+        ]
+
+        summary = summarize_combo_conditioned_behavior(decision_log)
+
+        self.assertIn("lam=20.0|ddt=1.00", summary)
+        self.assertEqual(summary["lam=20.0|ddt=1.00"]["rule_counts"]["2"], 2)
+        self.assertEqual(summary["lam=20.0|ddt=1.00"]["goal_counts"]["0"], 2)
+        self.assertEqual(summary["lam=20.0|ddt=1.00"]["maint_counts"]["IM"], 1)
+        self.assertEqual(summary["lam=60.0|ddt=2.00"]["dominant_rule"]["label"], "5")
+
+    def test_top_level_run_record_includes_combo_modes_and_filter_counts(self):
+        env = _CompareEnvStub(0, 0.0, 0, 0.0, 12.0)
+        env.cfg = SimConfig()
+        env.machine_replay_to_label_scale = {0: 1.0}
+        env.last_decision_log = [
+            {
+                "event": "maintenance",
+                "mid": 0,
+                "kind": "IM",
+                "lambda_true_segment": 20.0,
+                "ddt_true_segment": 1.0,
+                "im_invalid_flag": True,
+                "dn_imminent_breakdown_veto": False,
+            },
+            {
+                "event": "scheduling",
+                "goal": 1,
+                "rule": 2,
+                "dispatched": True,
+                "current_stress": 0.2,
+                "lambda_true_segment": 20.0,
+                "ddt_true_segment": 1.0,
+            },
+        ]
+        env.episode_scenario = SimpleNamespace(combos=[(20.0, 1.0)], combo_seq=[0])
+        result = {
+            "metrics": {"tard": 1.0, "maint": 2.0, "total": 3.0},
+            "policy_label": "label",
+            "decision_log": list(env.last_decision_log),
+            "scheduler_mode": "PPO",
+            "sched_regime_feature_mode": "oracle",
+            "env": env,
+            "overdue": {"ratio_ops": 0.0, "ratio_time": 0.0},
+        }
+
+        row = _build_run_record(42, "DQN", "region_off_unrestricted", "region_off_unrestricted", result)
+
+        self.assertEqual(row["train_combo_mode"], "episode_fixed")
+        self.assertEqual(row["eval_combo_mode"], "variable")
+        self.assertEqual(row["lam_ddt_mode"], "variable")
+        self.assertEqual(row["im_invalid_filtered_count"], 1)
+        self.assertEqual(row["dn_veto_count"], 0)
+        self.assertIn("lam=20.0|ddt=1.00", row["combo_behavior"])
 
     def test_infer_route_results_keep_env_for_compare_metrics(self):
         primary_env = _CompareEnvStub(2, 18.0, 3, 4.5, 11.0)
@@ -734,6 +862,18 @@ class MergeRegressionTests(unittest.TestCase):
                 rul_segments={0: [(0.0, 10.0, 1.0, 0.8, "PROC"), (12.0, 20.0, 0.95, 0.6, "PROC")]},
             )
             self.assertTrue(Path(out_path).exists())
+
+    def test_rule_plot_uses_lambda_ddt_heatmap_outputs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_path = Path(tmpdir) / "rule_vs_features_test.png"
+            rule_log = [
+                (0.0, np.array([0, 0, 0, 1, 20.0, 1.0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=np.float32), 0, 2),
+                (1.0, np.array([0, 0, 0, 1, 20.0, 1.0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=np.float32), 0, 2),
+                (2.0, np.array([0, 0, 0, 1, 60.0, 2.0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=np.float32), 3, 5),
+            ]
+            plot_rule_vs_features(rule_log, str(out_path), policy_label="Policy: Unrestricted | Scheduler: THDQN")
+            self.assertTrue(out_path.exists())
+            self.assertTrue((Path(tmpdir) / "goal_vs_features_test.png").exists())
 
     def test_infer_summary_row_includes_breakdown_and_stress_fields(self):
         cfg = SimConfig()

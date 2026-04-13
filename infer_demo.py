@@ -13,7 +13,7 @@ from config import SimConfig, resolve_machine_set
 from src.utils import set_seed
 from src.agents import MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
 from src.pomcp import POMCPPlanner
-from src.compare import compare_mode_results, summarize_scheduling_strategy, write_mode_comparison_outputs
+from src.compare import compare_mode_results, summarize_combo_conditioned_behavior, summarize_scheduling_strategy, write_mode_comparison_outputs
 from checkpointing import load_checkpoint, load_maintenance_only
 from run_experiment import (
     apply_machine_set_mode,
@@ -112,7 +112,10 @@ def build_infer_summary_row(ts: str, episode_idx: int, cfg_eval: SimConfig, seed
                             maint_mode: str, maint_mode_tag: str, metrics: Dict[str, Any],
                             env: Any, overdue_stats: Dict[str, Any], *,
                             degradation_rate: float, degradation_rate_scale: float) -> Dict[str, Any]:
-    sched_summary = summarize_scheduling_strategy(list(getattr(env, "last_decision_log", [])), env=env)
+    decision_log = list(getattr(env, "last_decision_log", []))
+    sched_summary = summarize_scheduling_strategy(decision_log, env=env)
+    combo_behavior = summarize_combo_conditioned_behavior(decision_log)
+    maint_rows = [row for row in decision_log if row.get("event") == "maintenance"]
     return {
         "timestamp": ts,
         "episode": int(episode_idx),
@@ -124,6 +127,8 @@ def build_infer_summary_row(ts: str, episode_idx: int, cfg_eval: SimConfig, seed
         "scheduler_mode_tag": f"sched_{str(cfg_eval.SCHEDULER_MODE).lower()}",
         "sched_regime_feature_mode": str(getattr(cfg_eval, "SCHED_REGIME_FEATURE_MODE", "observer")).lower(),
         "lam_ddt_mode": str(getattr(cfg_eval, "LAM_DDT_MODE", "variable")).lower(),
+        "train_combo_mode": str(getattr(cfg_eval, "TRAIN_COMBO_MODE", getattr(cfg_eval, "LAM_DDT_MODE", "variable"))).lower(),
+        "eval_combo_mode": str(getattr(cfg_eval, "EVAL_COMBO_MODE", getattr(cfg_eval, "LAM_DDT_MODE", "variable"))).lower(),
         "fixed_arrival_lam": float(getattr(cfg_eval, "FIXED_ARRIVAL_LAM", 40.0)),
         "fixed_ddt": float(getattr(cfg_eval, "FIXED_DDT", 1.5)),
         "enforce_region_policy": int(cfg_eval.ENFORCE_REGION_POLICY),
@@ -157,6 +162,9 @@ def build_infer_summary_row(ts: str, episode_idx: int, cfg_eval: SimConfig, seed
         },
         "scenario_combos": [list(x) for x in getattr(getattr(env, "episode_scenario", None), "combos", [])],
         "scenario_combo_seq": list(getattr(getattr(env, "episode_scenario", None), "combo_seq", [])),
+        "combo_behavior": combo_behavior,
+        "im_invalid_filtered_count": int(sum(1 for row in maint_rows if bool(row.get("im_invalid_flag")))),
+        "dn_veto_count": int(sum(1 for row in maint_rows if bool(row.get("dn_imminent_breakdown_veto")))),
     }
 
 
@@ -335,7 +343,12 @@ def main():
             )
         else:
             combo_rng = random.Random(seed)
-            combos, seq = build_episode_combos(cfg_eval_base, combo_rng, int(jobs_target))
+            combos, seq = build_episode_combos(
+                cfg_eval_base,
+                combo_rng,
+                int(jobs_target),
+                combo_mode=str(getattr(cfg_eval_base, "EVAL_COMBO_MODE", getattr(cfg_eval_base, "LAM_DDT_MODE", "variable"))),
+            )
             scenario = build_episode_scenario(
                 cfg_eval_base,
                 degr,

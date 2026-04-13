@@ -62,15 +62,22 @@ class SimConfig:
     DDT_VALUES: tuple = (1.0, 1.5, 2.0)
     # Number of jobs per scenario segment (combo).
     COMBO_SEGMENT_JOBS: int = 9
-    # Regime mode for lambda/DDT generation.
+    # Legacy global regime mode. New experiments should prefer TRAIN_COMBO_MODE
+    # and EVAL_COMBO_MODE below.
     # "variable": sample from ARRIVAL_LAM_VALUES/DDT_VALUES by segment
     # "fixed": use one fixed lambda/DDT pair for the whole scenario
-    LAM_DDT_MODE: str = "fixed"
+    LAM_DDT_MODE: str = "variable"
     FIXED_ARRIVAL_LAM: float = 40.0
     FIXED_DDT: float = 1.5
+    # Explicit training/evaluation combo policies.
+    # "episode_fixed": one combo sampled uniformly per episode
+    # "variable": segment-wise combo changes within an episode
+    # "fixed": use FIXED_ARRIVAL_LAM/FIXED_DDT for the whole episode
+    TRAIN_COMBO_MODE: str = "episode_fixed"
+    EVAL_COMBO_MODE: str = "variable"
     # Legacy switch retained for backwards compatibility. When LAM_DDT_MODE is
     # "fixed", this should remain False and DEFAULT_COMBOS should hold the fixed pair.
-    COMBO_RANDOMIZE: bool = False
+    COMBO_RANDOMIZE: bool = True
     # Used when variable combos are disabled.
     DEFAULT_COMBOS = [
         (FIXED_ARRIVAL_LAM, FIXED_DDT),
@@ -228,6 +235,7 @@ class SimConfig:
     POMCP_UCB_C: float = 1.2
     POMCP_PARTICLES: int = 64
     POMCP_OBS_NOISE: float = 0.02
+    POMCP_UNRESTRICTED_SAFETY_FILTER: bool = True
     POMCP_H_DECAY: float = 0.02            # legacy (no longer the primary generative decay)
     # failure probability feature (generative rollout)
     PFAIL_HORIZON: int = 6
@@ -282,7 +290,7 @@ class SimConfig:
     # paired experiment runner
     EXPERIMENT_SEEDS: tuple = (42,)
     TRAIN_MAINT_MODES: tuple = ("DQN", "POMCP")
-    TRAIN_POLICY_ROUTES: tuple = ("region_on", "region_off")
+    TRAIN_POLICY_ROUTES: tuple = ("region_off",)
     SCENARIO_LOCK_SCOPE: str = "full"
     ENABLE_OOD_DIAGNOSTIC_EVAL: bool = False
     ENABLE_MAINT_ONLY_COMPARE: bool = False
