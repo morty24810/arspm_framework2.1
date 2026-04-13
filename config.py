@@ -62,11 +62,18 @@ class SimConfig:
     DDT_VALUES: tuple = (1.0, 1.5, 2.0)
     # Number of jobs per scenario segment (combo).
     COMBO_SEGMENT_JOBS: int = 9
-    # Randomize lambda/DDT combos during training.
-    COMBO_RANDOMIZE: bool = True
-    # Used when COMBO_RANDOMIZE is False.
+    # Regime mode for lambda/DDT generation.
+    # "variable": sample from ARRIVAL_LAM_VALUES/DDT_VALUES by segment
+    # "fixed": use one fixed lambda/DDT pair for the whole scenario
+    LAM_DDT_MODE: str = "fixed"
+    FIXED_ARRIVAL_LAM: float = 40.0
+    FIXED_DDT: float = 1.5
+    # Legacy switch retained for backwards compatibility. When LAM_DDT_MODE is
+    # "fixed", this should remain False and DEFAULT_COMBOS should hold the fixed pair.
+    COMBO_RANDOMIZE: bool = False
+    # Used when variable combos are disabled.
     DEFAULT_COMBOS = [
-        (40.0, 1.5),
+        (FIXED_ARRIVAL_LAM, FIXED_DDT),
     ]
     # Rush indicator threshold: smaller mean inter-arrival means heavier load.
     RUSH_LAM_MEAN_THRESH: float = 80.0
@@ -200,6 +207,8 @@ class SimConfig:
     IM_TIME_WEIGHT: float = 0.02
     IM_MIN_GAIN: float = 1e-3
     IM_USELESS_PENALTY: float = 4.0
+    IM_LOW_GAIN_RATIO: float = 0.8
+    IM_LOW_GAIN_PENALTY: float = 10.0
     CM_COST: float = 5.0
     CM_TIME_WEIGHT: float = 0.02
     PRIOR_EARLY_W: float = 4.0
@@ -256,6 +265,7 @@ class SimConfig:
     # scheduler algorithm
     SCHEDULER_MODE: str = "THDQN"
     TRAIN_SCHEDULER_MODES: tuple = ("THDQN", "PPO")
+    SCHED_REGIME_FEATURE_MODE: str = "oracle"
     SCHEDULER_STATE_DIM: int = 15
     MAINTENANCE_STATE_DIM: int = 18
     PPO_SCHED_REWARD_GOAL: int = 2

@@ -103,6 +103,7 @@ def build_infer_route_result(metrics: Dict[str, Any], env: Any, overdue_stats: D
         "maint_mode_tag": maint_mode_tag,
         "scheduler_mode": str(getattr(env, "last_scheduler_mode", "THDQN")).upper(),
         "scheduler_mode_tag": f"sched_{str(getattr(env, 'last_scheduler_mode', 'THDQN')).lower()}",
+        "sched_regime_feature_mode": str(getattr(env, "last_sched_regime_feature_mode", getattr(getattr(env, "cfg", None), "SCHED_REGIME_FEATURE_MODE", "observer"))).lower(),
     }
 
 
@@ -121,6 +122,10 @@ def build_infer_summary_row(ts: str, episode_idx: int, cfg_eval: SimConfig, seed
         "maint_mode_tag": maint_mode_tag,
         "scheduler_mode": str(cfg_eval.SCHEDULER_MODE).upper(),
         "scheduler_mode_tag": f"sched_{str(cfg_eval.SCHEDULER_MODE).lower()}",
+        "sched_regime_feature_mode": str(getattr(cfg_eval, "SCHED_REGIME_FEATURE_MODE", "observer")).lower(),
+        "lam_ddt_mode": str(getattr(cfg_eval, "LAM_DDT_MODE", "variable")).lower(),
+        "fixed_arrival_lam": float(getattr(cfg_eval, "FIXED_ARRIVAL_LAM", 40.0)),
+        "fixed_ddt": float(getattr(cfg_eval, "FIXED_DDT", 1.5)),
         "enforce_region_policy": int(cfg_eval.ENFORCE_REGION_POLICY),
         "hx": float(cfg_eval.Hx),
         "hy": float(cfg_eval.Hy),
@@ -150,6 +155,8 @@ def build_infer_summary_row(ts: str, episode_idx: int, cfg_eval: SimConfig, seed
             int(mid): float(scale)
             for mid, scale in getattr(env, "machine_replay_to_label_scale", {}).items()
         },
+        "scenario_combos": [list(x) for x in getattr(getattr(env, "episode_scenario", None), "combos", [])],
+        "scenario_combo_seq": list(getattr(getattr(env, "episode_scenario", None), "combo_seq", [])),
     }
 
 
@@ -195,12 +202,24 @@ def infer_scheduler_mode(ckpt_path: Path, map_location: torch.device) -> str:
     return "THDQN"
 
 
+def infer_checkpoint_config(ckpt_path: Path, map_location: torch.device) -> Dict[str, Any]:
+    ckpt = torch.load(str(ckpt_path), map_location=map_location)
+    return dict(ckpt.get("meta", {}).get("config", {}) or {})
+
+
 def main():
     args = parse_args()
     ckpt_path = Path(args.ckpt)
     if not ckpt_path.exists():
         raise FileNotFoundError(f"checkpoint not found: {ckpt_path}")
     cfg = SimConfig()
+    meta_cfg = infer_checkpoint_config(ckpt_path, torch.device("cpu"))
+    for key, value in meta_cfg.items():
+        if key.isupper() and hasattr(cfg, key):
+            try:
+                setattr(cfg, key, value)
+            except Exception:
+                pass
     validate_region_thresholds(cfg)
     cfg.SEED = int(cfg.SEED if args.seed is None else args.seed)
     _, resolved_machine_curve_ids = apply_machine_set_mode(cfg)

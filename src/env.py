@@ -307,6 +307,49 @@ class EventDrivenShopEnv:
             self.combo_seg_start_time = arrival
         return lam, ddt
 
+    def get_current_segment_regime(self) -> Dict[str, float]:
+        combo_levels_seq = list(getattr(self, "combo_levels_seq", []))
+        combo_levels = list(getattr(self, "combo_levels", []))
+        if not combo_levels_seq:
+            self._build_combo_plan()
+            combo_levels_seq = list(getattr(self, "combo_levels_seq", []))
+            combo_levels = list(getattr(self, "combo_levels", []))
+        if not combo_levels_seq or not combo_levels:
+            return {
+                "segment": 0,
+                "level_idx": 0,
+                "lambda_true_segment": float(getattr(self.cfg, "ARRIVAL_LAM_VALUES", [100.0])[0]),
+                "ddt_true_segment": float(getattr(self.cfg, "DDT_VALUES", (1.0,))[0]),
+            }
+        current_combo_seg = getattr(self, "current_combo_seg", None)
+        seg = int(current_combo_seg) if current_combo_seg is not None else 0
+        seg = min(max(seg, 0), len(combo_levels_seq) - 1)
+        level_idx = int(combo_levels_seq[seg])
+        lam, ddt = combo_levels[level_idx]
+        return {
+            "segment": int(seg),
+            "level_idx": int(level_idx),
+            "lambda_true_segment": float(lam),
+            "ddt_true_segment": float(ddt),
+        }
+
+    def resolve_scheduler_regime(self, lambda_hat: float, ddt_hat: float) -> Dict[str, float]:
+        regime = self.get_current_segment_regime()
+        mode = str(getattr(self.cfg, "SCHED_REGIME_FEATURE_MODE", "observer")).strip().lower()
+        sched_lambda = float(lambda_hat)
+        sched_ddt = float(ddt_hat)
+        if mode == "oracle":
+            sched_lambda = float(regime["lambda_true_segment"])
+            sched_ddt = float(regime["ddt_true_segment"])
+        regime.update({
+            "sched_regime_feature_mode": mode,
+            "sched_lambda": float(sched_lambda),
+            "sched_ddt": float(sched_ddt),
+            "lambda_hat": float(lambda_hat),
+            "ddt_hat": float(ddt_hat),
+        })
+        return regime
+
     def get_combo_time_log(self, t_end: float) -> List[Tuple[float, float, float, float, int]]:
         log = list(self.combo_time_log)
         if self.current_combo_seg is not None:
@@ -478,6 +521,7 @@ class EventDrivenShopEnv:
         ready_len = len(self._ready_ops())
         avg_slack, slack_q10, overdue_rate, slack_pressure = self.compute_slack_stats()
         arrivals, lam_hat, _, _, ddt_hat, rush = self.get_obs_estimates(avg_slack, slack_pressure)
+        regime = self.resolve_scheduler_regime(lam_hat, ddt_hat)
         u_ave = self._utilization()
         current_stress = self.get_current_stress(slack_pressure)
         idle_risks = [
@@ -489,7 +533,7 @@ class EventDrivenShopEnv:
         idle_fail_risk_max = float(np.max(idle_risks)) if idle_risks else 0.0
         return np.array([
             idle, wip, ready_len,
-            arrivals, lam_hat, ddt_hat,
+            arrivals, regime["sched_lambda"], regime["sched_ddt"],
             avg_slack, slack_q10, slack_pressure,
             u_ave, overdue_rate, rush,
             idle_fail_risk_mean, idle_fail_risk_max,

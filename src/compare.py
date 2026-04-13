@@ -201,6 +201,18 @@ def compare_mode_results(
     compare_schedule_summary = summarize_scheduling_strategy(compare_result.get("decision_log", []), env=compare_result.get("env"))
     primary_scheduler_mode = str(primary_result.get("scheduler_mode", getattr(primary_result.get("env"), "last_scheduler_mode", "THDQN"))).upper()
     compare_scheduler_mode = str(compare_result.get("scheduler_mode", getattr(compare_result.get("env"), "last_scheduler_mode", "THDQN"))).upper()
+    primary_sched_regime_feature_mode = str(
+        primary_result.get(
+            "sched_regime_feature_mode",
+            getattr(getattr(primary_result.get("env"), "cfg", None), "SCHED_REGIME_FEATURE_MODE", "observer"),
+        )
+    ).lower()
+    compare_sched_regime_feature_mode = str(
+        compare_result.get(
+            "sched_regime_feature_mode",
+            getattr(getattr(compare_result.get("env"), "cfg", None), "SCHED_REGIME_FEATURE_MODE", "observer"),
+        )
+    ).lower()
     primary_metrics = primary_result["metrics"]
     compare_metrics = compare_result["metrics"]
     primary_overdue = primary_result["overdue"]
@@ -215,6 +227,8 @@ def compare_mode_results(
         "scheduler_anchor": scheduler_anchor,
         "primary_scheduler_mode": primary_scheduler_mode,
         "compare_scheduler_mode": compare_scheduler_mode,
+        "primary_sched_regime_feature_mode": primary_sched_regime_feature_mode,
+        "compare_sched_regime_feature_mode": compare_sched_regime_feature_mode,
         "primary_action_counts": summarize_action_counts(primary_rows, key="kind", values=["DN", "IM", "CM"]),
         "compare_action_counts": summarize_action_counts(compare_rows, key="kind", values=["DN", "IM", "CM"]),
         "decision_union_count": int(union_count),

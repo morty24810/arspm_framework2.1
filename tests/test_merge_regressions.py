@@ -21,6 +21,7 @@ from run_experiment import (
     effective_base_degradation_rate,
     effective_degradation_bounds,
     filter_non_improving_im,
+    maintenance_low_gain_penalty,
     maintenance_prior_penalty,
     maintenance_reward,
     select_maintenance_action,
@@ -69,6 +70,10 @@ class _RolloutEnvStub:
             "hard_breakdown_flag": 0.0,
             "h_end_true": 0.2,
         }
+
+    def im_target_rul(self, mid: int, baseline_rul=None) -> float:
+        baseline = self.machines[mid].maint_rul_baseline if baseline_rul is None else float(baseline_rul)
+        return float(min(1.0, max(0.0, 0.8 * baseline)))
 
     @staticmethod
     def generative_step(mid: int, particle, action: int, current_stress: float, rng: random.Random):
@@ -375,6 +380,9 @@ class MergeRegressionTests(unittest.TestCase):
         env.jobs = {}
         env.time = 0.0
         env.arrival_times = []
+        env.combo_levels = [(20.0, 1.0), (60.0, 2.0)]
+        env.combo_levels_seq = [1]
+        env.current_combo_seg = 0
         env.compute_slack_stats = lambda: (10.0, 5.0, 0.0, 0.4)
         env.get_obs_estimates = lambda avg_slack, slack_pressure: (3.0, 20.0, 0.0, 0.0, 1.5, 0.0)
         env._ready_ops = lambda: [1, 2]
@@ -385,6 +393,30 @@ class MergeRegressionTests(unittest.TestCase):
 
         self.assertEqual(features.shape[0], 15)
         self.assertAlmostEqual(float(features[-1]), EventDrivenShopEnv.get_current_stress(env, 0.4))
+
+    def test_scheduler_oracle_mode_replaces_observer_lambda_and_ddt(self):
+        cfg = SimConfig()
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        env = EventDrivenShopEnv.__new__(EventDrivenShopEnv)
+        env.cfg = cfg
+        env.machines = [SimpleNamespace(mid=0, status="IDLE")]
+        env.jobs = {}
+        env.time = 0.0
+        env.arrival_times = []
+        env.combo_levels = [(20.0, 1.0), (60.0, 2.0)]
+        env.combo_levels_seq = [1]
+        env.current_combo_seg = 0
+        env.compute_slack_stats = lambda: (10.0, 5.0, 0.0, 0.4)
+        env.get_obs_estimates = lambda avg_slack, slack_pressure: (3.0, 20.0, 0.0, 0.0, 1.5, 0.0)
+        env._ready_ops = lambda: []
+        env._peek_rul = lambda mid: 0.8
+        env.failure_prob = lambda h: 1.0 - float(h)
+
+        features = EventDrivenShopEnv.get_global_features(env)
+
+        self.assertEqual(features.shape[0], 15)
+        self.assertAlmostEqual(float(features[4]), 60.0)
+        self.assertAlmostEqual(float(features[5]), 2.0)
 
     def test_maintenance_state_includes_current_stress_as_18th_dimension(self):
         state = build_maintenance_state(
@@ -454,6 +486,23 @@ class MergeRegressionTests(unittest.TestCase):
         cfg = SimConfig()
         allowed = filter_non_improving_im(_ImGainEnvStub(False), 0, 0.9, [0, 1, 2])
         self.assertEqual(allowed, [0, 2])
+
+    def test_low_gain_im_penalty_is_applied_near_target(self):
+        cfg = SimConfig()
+        env = _RolloutEnvStub()
+
+        self.assertEqual(
+            maintenance_low_gain_penalty(1, 0.5, cfg, env=env, mid=0, baseline_rul=1.0),
+            0.0,
+        )
+        self.assertGreater(
+            maintenance_low_gain_penalty(1, 0.79, cfg, env=env, mid=0, baseline_rul=1.0),
+            0.0,
+        )
+        self.assertEqual(
+            maintenance_low_gain_penalty(0, 0.79, cfg, env=env, mid=0, baseline_rul=1.0),
+            0.0,
+        )
 
     def test_pomcp_downgrades_non_improving_im_to_dn(self):
         cfg = SimConfig()

@@ -202,10 +202,35 @@ def maintenance_prior_penalty(action: int, h_for_prior: float, cfg: SimConfig, e
             penalty += float(getattr(cfg, "PRIOR_IM_LATE_W", 0.0)) * late_gap
     return float(penalty)
 
+
+def maintenance_low_gain_penalty(action: int, h_for_prior: float, cfg: SimConfig, *,
+                                 env=None, mid: Optional[int] = None,
+                                 baseline_rul: Optional[float] = None) -> float:
+    if int(action) != 1 or env is None or mid is None:
+        return 0.0
+    if not hasattr(env, "im_target_rul"):
+        return 0.0
+    target_rul = float(env.im_target_rul(mid, baseline_rul=baseline_rul))
+    h = float(max(0.0, min(1.0, h_for_prior)))
+    min_gain = float(getattr(cfg, "IM_MIN_GAIN", 1e-3))
+    if target_rul <= h + min_gain:
+        return 0.0
+    ratio = float(getattr(cfg, "IM_LOW_GAIN_RATIO", 0.8))
+    ratio = min(max(ratio, 0.0), 0.999999)
+    low_gain_floor = max(0.0, min(1.0, target_rul * ratio))
+    if h < low_gain_floor:
+        return 0.0
+    denom = max(target_rul - low_gain_floor, min_gain)
+    gap = (h - low_gain_floor) / denom
+    return float(getattr(cfg, "IM_LOW_GAIN_PENALTY", 0.0)) * max(0.0, min(gap, 1.0))
+
 def maintenance_reward(action: int, dur: float, local_urgency: float,
                        expected_breakdown_loss: float, window_violation: bool,
                        cfg: SimConfig, *, h_for_prior: float,
-                       enforce_region: bool) -> float:
+                       enforce_region: bool,
+                       env=None,
+                       mid: Optional[int] = None,
+                       baseline_rul: Optional[float] = None) -> float:
     downtime_cost = float(dur) * float(local_urgency)
     maint_cost = 0.0
     if action == 1:
@@ -215,7 +240,15 @@ def maintenance_reward(action: int, dur: float, local_urgency: float,
     dn_breakdown_cost = float(expected_breakdown_loss) if int(action) == 0 else 0.0
     violation = cfg.W_WINDOW_VIOLATION if window_violation else 0.0
     prior_penalty = maintenance_prior_penalty(action, h_for_prior, cfg, enforce_region)
-    return -(downtime_cost + maint_cost + dn_breakdown_cost + violation + prior_penalty)
+    low_gain_penalty = maintenance_low_gain_penalty(
+        action,
+        h_for_prior,
+        cfg,
+        env=env,
+        mid=mid,
+        baseline_rul=baseline_rul,
+    )
+    return -(downtime_cost + maint_cost + dn_breakdown_cost + violation + prior_penalty + low_gain_penalty)
 
 def scheduling_reward(goal: int, tard, maint, prev_tard, prev_maint):
     # incremental rewards, 4 goals
@@ -279,6 +312,14 @@ def sample_degradation_rate(ep: int, cfg: SimConfig, rng: random.Random) -> floa
 def build_episode_combos(cfg: SimConfig, rng: random.Random, jobs_target: int):
     segment_jobs = max(1, int(getattr(cfg, "COMBO_SEGMENT_JOBS", 1)))
     segment_count = max(1, int(math.ceil(jobs_target / segment_jobs)))
+    lam_ddt_mode = str(getattr(cfg, "LAM_DDT_MODE", "variable")).lower()
+
+    if lam_ddt_mode == "fixed":
+        fixed_lam = float(getattr(cfg, "FIXED_ARRIVAL_LAM", 40.0))
+        fixed_ddt = float(getattr(cfg, "FIXED_DDT", 1.5))
+        combos = [(fixed_lam, fixed_ddt)]
+        seq = [0 for _ in range(segment_count)]
+        return combos, seq
 
     if not bool(getattr(cfg, "COMBO_RANDOMIZE", True)):
         combos = list(getattr(cfg, "DEFAULT_COMBOS", []))
@@ -709,6 +750,22 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                 return
             rec = dict(row)
             rec.setdefault("maint_mode", str(maint_mode).upper())
+            lambda_hat_val = rec.get("lambda_hat")
+            ddt_hat_val = rec.get("ddt_hat")
+            if lambda_hat_val is not None and ddt_hat_val is not None:
+                try:
+                    regime = env.resolve_scheduler_regime(float(lambda_hat_val), float(ddt_hat_val))
+                except Exception:
+                    regime = env.get_current_segment_regime() if hasattr(env, "get_current_segment_regime") else {}
+            else:
+                regime = env.get_current_segment_regime() if hasattr(env, "get_current_segment_regime") else {}
+            rec.setdefault("sched_regime_feature_mode", str(getattr(cfg, "SCHED_REGIME_FEATURE_MODE", "observer")).lower())
+            rec.setdefault("lambda_true_segment", regime.get("lambda_true_segment"))
+            rec.setdefault("ddt_true_segment", regime.get("ddt_true_segment"))
+            rec.setdefault("sched_lambda", regime.get("sched_lambda", lambda_hat_val))
+            rec.setdefault("sched_ddt", regime.get("sched_ddt", ddt_hat_val))
+            rec.setdefault("combo_segment", regime.get("segment"))
+            rec.setdefault("combo_level_idx", regime.get("level_idx"))
             if rec.get("event") == "maintenance":
                 mid_val = rec.get("mid")
                 maint_seq_global += 1
@@ -1091,6 +1148,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
         env.last_policy_label = policy_label
         env.last_maint_mode = str(maint_mode).upper()
         env.last_scheduler_mode = str(getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
+        env.last_sched_regime_feature_mode = str(getattr(cfg, "SCHED_REGIME_FEATURE_MODE", "observer")).lower()
 
         if generate_outputs:
             outdir = Path(outdir or "outputs")
@@ -1135,7 +1193,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         "time", "event", "maint_mode", "maint_seq_global", "maint_seq_machine", "mid", "state", "action", "kind", "duration", "h", "h_true", "h_end_true", "hard_breakdown_threshold", "dh", "eta", "slack_pressure", "current_stress",
                         "im_count", "im_damage", "risk_h", "risk_trend", "im_longterm_penalty", "opportunity_cost",
                         "p_fail", "expected_fail_cost", "downtime_cost", "delta_t_since_last_maint",
-                        "lambda_hat", "ddt_hat",
+                        "lambda_hat", "ddt_hat", "lambda_true_segment", "ddt_true_segment", "sched_lambda", "sched_ddt", "sched_regime_feature_mode", "combo_segment", "combo_level_idx",
                         "goal", "rule", "dispatched", "op", "job_due", "overdue",
                         "local_urgency", "breakdown_flag", "breakdown_kind", "breakdown_cost", "breakdown_count", "hard_breakdown_count",
                         "stochastic_breakdown_count", "requeued_op_count", "interrupted_proc_time",
@@ -1151,7 +1209,9 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                             row.get("im_longterm_penalty"), row.get("opportunity_cost"),
                             row.get("p_fail"), row.get("expected_fail_cost"),
                             row.get("downtime_cost"), row.get("delta_t_since_last_maint"),
-                            row.get("lambda_hat"), row.get("ddt_hat"),
+                            row.get("lambda_hat"), row.get("ddt_hat"), row.get("lambda_true_segment"), row.get("ddt_true_segment"),
+                            row.get("sched_lambda"), row.get("sched_ddt"), row.get("sched_regime_feature_mode"),
+                            row.get("combo_segment"), row.get("combo_level_idx"),
                             row.get("goal"), row.get("rule"), row.get("dispatched"),
                             json.dumps(row.get("op"), separators=(",", ":"), ensure_ascii=True) if row.get("op") is not None else "",
                             row.get("job_due"), row.get("overdue"),
@@ -1278,6 +1338,9 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
                 cfg,
                 h_for_prior=h_state,
                 enforce_region=enforce_region,
+                env=env,
+                mid=mid,
+                baseline_rul=baseline_state,
             )
             if useless_im:
                 reward -= float(getattr(cfg, "IM_USELESS_PENALTY", 0.0))
@@ -1327,6 +1390,7 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "maint_mode_tag": build_maint_mode_tag(mode),
         "scheduler_mode": str(final_result.get("scheduler_mode", "THDQN")).upper(),
         "scheduler_mode_tag": build_scheduler_mode_tag(final_result.get("scheduler_mode", "THDQN")),
+        "sched_regime_feature_mode": str(final_result.get("sched_regime_feature_mode", getattr(getattr(env, "cfg", None), "SCHED_REGIME_FEATURE_MODE", "observer"))).lower(),
         "policy_tag": eval_policy_tag,
         "train_policy_tag": train_policy_tag,
         "eval_policy_tag": eval_policy_tag,
@@ -1358,6 +1422,8 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
             int(mid): float(scale)
             for mid, scale in getattr(env, "machine_replay_to_label_scale", {}).items()
         },
+        "scenario_combos": [list(x) for x in getattr(getattr(env, "episode_scenario", None), "combos", [])],
+        "scenario_combo_seq": list(getattr(getattr(env, "episode_scenario", None), "combo_seq", [])),
         "maint_dn": int(maint_counts.get("DN", 0)),
         "maint_im": int(maint_counts.get("IM", 0)),
         "maint_cm": int(maint_counts.get("CM", 0)),
@@ -1463,6 +1529,7 @@ def _make_eval_result(metrics: Dict[str, Any], env, overdue_stats: Dict[str, Any
         "scheduler_anchor": scheduler_anchor,
         "scheduler_mode": str(getattr(env, "last_scheduler_mode", "THDQN")).upper(),
         "scheduler_mode_tag": build_scheduler_mode_tag(getattr(env, "last_scheduler_mode", "THDQN")),
+        "sched_regime_feature_mode": str(getattr(env, "last_sched_regime_feature_mode", getattr(getattr(env, "cfg", None), "SCHED_REGIME_FEATURE_MODE", "observer"))).lower(),
         "decision_log": list(getattr(env, "last_decision_log", [])),
     }
 
@@ -1666,6 +1733,9 @@ def train_one_mode(
                                 cfg,
                                 h_for_prior=h_now,
                                 enforce_region=enforce_region_train,
+                                env=env,
+                                mid=mid,
+                                baseline_rul=env.machines[mid].maint_rul_baseline,
                             )
                             slack_samples.append(avg_slack)
                             pressure_samples.append(slack_pressure)
@@ -1718,7 +1788,7 @@ def train_one_mode(
                                                         rul_mu2, rul_sigma, env.time, env.machines[mid].last_maint_end,
                                                         pf_dn2, pf_im2, pf_cm2, current_stress)
                             if maint_agent is not None:
-                                maint_agent.buf.add(rec["state"], action_now, r, sp, 0.0)
+                                maint_agent.buf.add(rec["state"], executed_action, r, sp, 0.0)
                                 maint_agent.learn()
                             last_h[mid] = h2
                             del pending_maint[mid]
@@ -1796,6 +1866,9 @@ def train_one_mode(
                                 cfg,
                                 h_for_prior=h,
                                 enforce_region=enforce_region_train,
+                                env=env,
+                                mid=mid,
+                                baseline_rul=m.maint_rul_baseline,
                             )
                             sp = build_maintenance_state(h, 0.0, eta, slack_pressure, local_urgency, avg_slack,
                                                         lambda_hat, ddt_hat, risk_t, win_e, win_l,
@@ -1835,6 +1908,9 @@ def train_one_mode(
                                     cfg,
                                     h_for_prior=h_now,
                                     enforce_region=enforce_region_train,
+                                    env=env,
+                                    mid=mid,
+                                    baseline_rul=env.machines[mid].maint_rul_baseline,
                                 )
                                 slack_samples.append(avg_slack)
                                 pressure_samples.append(slack_pressure)
@@ -1886,7 +1962,7 @@ def train_one_mode(
                                                             rul_mu2, rul_sigma, env.time, m.last_maint_end,
                                                             pf_dn2, pf_im2, pf_cm2, current_stress)
                                 if maint_agent is not None:
-                                    maint_agent.buf.add(rec["state"], action_now, r, sp, 0.0)
+                                    maint_agent.buf.add(rec["state"], executed_action, r, sp, 0.0)
                                     maint_agent.learn()
                                 last_h[mid] = h2
                                 del pending_maint[mid]
@@ -2115,6 +2191,10 @@ def train_one_mode(
         "current_stress_max": float(summarize_scheduling_strategy(official_result["decision_log"], env=eval_env).get("current_stress_max", 0.0)),
         "scheduler_mode": str(cfg.SCHEDULER_MODE).upper(),
         "scheduler_mode_tag": build_scheduler_mode_tag(cfg.SCHEDULER_MODE),
+        "sched_regime_feature_mode": str(getattr(eval_cfg, "SCHED_REGIME_FEATURE_MODE", "observer")).lower(),
+        "lam_ddt_mode": str(getattr(base_cfg, "LAM_DDT_MODE", "variable")).lower(),
+        "fixed_arrival_lam": float(getattr(base_cfg, "FIXED_ARRIVAL_LAM", 40.0)),
+        "fixed_ddt": float(getattr(base_cfg, "FIXED_DDT", 1.5)),
         "degradation_rate": float(final_scenario.degradation_rate),
         "degradation_rate_scale": effective_degradation_rate_scale(base_cfg),
         "machine_set_mode": str(getattr(base_cfg, "MACHINE_SET_MODE", "current6")),
@@ -2124,6 +2204,8 @@ def train_one_mode(
             int(mid): float(scale)
             for mid, scale in getattr(eval_env, "machine_replay_to_label_scale", {}).items()
         },
+        "scenario_combos": [list(x) for x in getattr(final_scenario, "combos", [])],
+        "scenario_combo_seq": list(getattr(final_scenario, "combo_seq", [])),
     }
     write_summary_files(outdir, f"summary_{ts}_{maint_mode_tag}_{train_policy_tag}", summary_row)
 
