@@ -73,8 +73,9 @@ class SimConfig:
     # "episode_fixed": one combo sampled uniformly per episode
     # "variable": segment-wise combo changes within an episode
     # "fixed": use FIXED_ARRIVAL_LAM/FIXED_DDT for the whole episode
+    # "grid_full": deterministic full lambda x DDT coverage, one segment per combo
     TRAIN_COMBO_MODE: str = "episode_fixed"
-    EVAL_COMBO_MODE: str = "variable"
+    EVAL_COMBO_MODE: str = "grid_full"
     # Legacy switch retained for backwards compatibility. When LAM_DDT_MODE is
     # "fixed", this should remain False and DEFAULT_COMBOS should hold the fixed pair.
     COMBO_RANDOMIZE: bool = True
@@ -236,6 +237,7 @@ class SimConfig:
     POMCP_PARTICLES: int = 64
     POMCP_OBS_NOISE: float = 0.02
     POMCP_UNRESTRICTED_SAFETY_FILTER: bool = True
+    POMCP_MAINT_ACTION_MAX_H: float = 0.40
     POMCP_H_DECAY: float = 0.02            # legacy (no longer the primary generative decay)
     # failure probability feature (generative rollout)
     PFAIL_HORIZON: int = 6
@@ -275,6 +277,8 @@ class SimConfig:
     TRAIN_SCHEDULER_MODES: tuple = ("THDQN", "PPO")
     SCHED_REGIME_FEATURE_MODE: str = "oracle"
     SCHEDULER_STATE_DIM: int = 15
+    THDQN_LOW_STATE_MODE: str = "pruned"
+    THDQN_LOW_STATE_DIM: int = 11
     MAINTENANCE_STATE_DIM: int = 18
     PPO_SCHED_REWARD_GOAL: int = 2
     PPO_LR: float = 3e-4

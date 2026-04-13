@@ -78,19 +78,28 @@ class THDQNAgent:
     - High: choose goal g in {0..3}
     - Low: choose rule r in {0..5} conditioned on g
     """
-    def __init__(self, state_dim: int, cfg, rng: random.Random, device):
+    LOW_STATE_KEEP = (0, 1, 2, 6, 7, 8, 9, 10, 12, 13, 14)
+
+    def __init__(self, state_dim: int, cfg, rng: random.Random, device, low_state_dim: int | None = None):
         self.cfg = cfg
         self.rng = rng
         self.device = device
         self.state_dim = int(state_dim)
+        self.low_state_mode = str(getattr(cfg, "THDQN_LOW_STATE_MODE", "pruned")).strip().lower()
+        self.low_state_indices = tuple(self.LOW_STATE_KEEP)
+        self.low_state_dim = int(
+            low_state_dim
+            if low_state_dim is not None
+            else getattr(cfg, "THDQN_LOW_STATE_DIM", len(self.low_state_indices))
+        )
 
         self.q_high = MLP(self.state_dim, 4).to(device)
         self.q_high_t = MLP(self.state_dim, 4).to(device)
         self.q_high_t.load_state_dict(self.q_high.state_dict())
         self.opt_h = torch.optim.Adam(self.q_high.parameters(), lr=cfg.LR)
 
-        self.q_low = MLP(self.state_dim + 4, 6).to(device)
-        self.q_low_t = MLP(self.state_dim + 4, 6).to(device)
+        self.q_low = MLP(self.low_state_dim + 4, 6).to(device)
+        self.q_low_t = MLP(self.low_state_dim + 4, 6).to(device)
         self.q_low_t.load_state_dict(self.q_low.state_dict())
         self.opt_l = torch.optim.Adam(self.q_low.parameters(), lr=cfg.LR)
 
@@ -115,8 +124,28 @@ class THDQNAgent:
         padded[:arr.shape[0]] = arr
         return padded
 
+    def _match_low_state_dim(self, s: np.ndarray) -> np.ndarray:
+        arr = np.asarray(s, dtype=np.float32)
+        if arr.shape[0] == self.low_state_dim:
+            return arr
+        if arr.shape[0] > self.low_state_dim:
+            return arr[:self.low_state_dim]
+        padded = np.zeros(self.low_state_dim, dtype=np.float32)
+        padded[:arr.shape[0]] = arr
+        return padded
+
+    def build_low_state(self, s: np.ndarray) -> np.ndarray:
+        high_state = self._match_state_dim(s)
+        if self.low_state_mode != "pruned":
+            return self._match_low_state_dim(high_state)
+        if high_state.shape[0] <= max(self.low_state_indices):
+            return self._match_low_state_dim(high_state)
+        low = np.asarray([high_state[i] for i in self.low_state_indices], dtype=np.float32)
+        return self._match_low_state_dim(low)
+
     def act(self, s: np.ndarray, explore=True):
         s = self._match_state_dim(s)
+        low_s = self.build_low_state(s)
         e = self.eps(self.steps)
         self.steps += 1
 
@@ -128,7 +157,7 @@ class THDQNAgent:
                 x = torch.tensor(s[None], dtype=torch.float32, device=self.device)
                 g = int(torch.argmax(self.q_high(x), dim=1).item())
 
-        sg = np.concatenate([s, self._onehot_goal(g)], axis=0).astype(np.float32)
+        sg = np.concatenate([low_s, self._onehot_goal(g)], axis=0).astype(np.float32)
 
         # low
         if explore and self.rng.random() < e:

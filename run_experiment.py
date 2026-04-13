@@ -19,6 +19,7 @@ from src.rul_predictor import RULPredictorWrapper
 from src.env import EventDrivenShopEnv, EpisodeScenario, JobTemplate, OperationTemplate
 from src.agents import MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
 from src.compare import (
+    combo_dominant_maps,
     compare_mode_results,
     write_mode_comparison_outputs,
     extract_maintenance_rows,
@@ -152,6 +153,18 @@ def scheduler_act(sched_agent, state: np.ndarray, *, explore: bool):
         return goal, int(rule), {"logprob": float(logprob), "value": float(value)}
     goal, rule = sched_agent.act(state, explore=explore)
     return int(goal), int(rule), {}
+
+
+def combo_grid(cfg: SimConfig) -> List[Tuple[float, float]]:
+    lam_values = sorted(float(x) for x in getattr(cfg, "ARRIVAL_LAM_VALUES", [100.0]))
+    ddt_values = sorted(float(x) for x in getattr(cfg, "DDT_VALUES", (1.0,)))
+    return [(lam, ddt) for lam in lam_values for ddt in ddt_values]
+
+
+def compute_grid_full_jobs_target(cfg: SimConfig) -> int:
+    combos = combo_grid(cfg)
+    segment_jobs = max(1, int(getattr(cfg, "COMBO_SEGMENT_JOBS", 1)))
+    return int(max(1, len(combos)) * segment_jobs)
 
 def allowed_actions_by_region(h_obs: float, cfg: SimConfig, enforce_region: bool) -> List[int]:
     if not enforce_region:
@@ -336,12 +349,21 @@ def build_episode_combos(
         ddt_values = [1.0]
 
     if lam_ddt_mode == "episode_fixed":
-        combo_grid = [(lam, ddt) for lam in lam_values for ddt in ddt_values]
-        if not combo_grid:
-            combo_grid = [(float(getattr(cfg, "FIXED_ARRIVAL_LAM", 40.0)), float(getattr(cfg, "FIXED_DDT", 1.5)))]
-        lam, ddt = rng.choice(combo_grid)
+        grid = combo_grid(cfg)
+        if not grid:
+            fallback_grid = [(float(getattr(cfg, "FIXED_ARRIVAL_LAM", 40.0)), float(getattr(cfg, "FIXED_DDT", 1.5)))]
+            grid = fallback_grid
+        lam, ddt = rng.choice(grid)
         combos = [(float(lam), float(ddt))]
         seq = [0 for _ in range(segment_count)]
+        return combos, seq
+
+    if lam_ddt_mode == "grid_full":
+        grid = combo_grid(cfg)
+        if not grid:
+            grid = [(float(getattr(cfg, "FIXED_ARRIVAL_LAM", 40.0)), float(getattr(cfg, "FIXED_DDT", 1.5)))]
+        combos = [(float(lam), float(ddt)) for lam, ddt in grid]
+        seq = list(range(len(combos)))
         return combos, seq
 
     if lam_ddt_mode == "fixed":
@@ -492,6 +514,9 @@ def build_scenario_bank(base_seed: int, cfg: SimConfig, degr: DegradationReplay,
 
     train_combo_mode = str(getattr(cfg, "TRAIN_COMBO_MODE", getattr(cfg, "LAM_DDT_MODE", "variable"))).strip().lower()
     eval_combo_mode = str(getattr(cfg, "EVAL_COMBO_MODE", getattr(cfg, "LAM_DDT_MODE", "variable"))).strip().lower()
+    eval_jobs_target = int(cfg.EVAL_JOBS_TARGET * 2)
+    if eval_combo_mode == "grid_full":
+        eval_jobs_target = compute_grid_full_jobs_target(cfg)
 
     for ep in range(cfg.TRAIN_EPISODES):
         ep_num = ep + 1
@@ -509,12 +534,11 @@ def build_scenario_bank(base_seed: int, cfg: SimConfig, degr: DegradationReplay,
         )
         train_scenarios.append(scenario)
         if cfg.EVAL_EVERY > 0 and ep_num % cfg.EVAL_EVERY == 0:
-            eval_jobs = cfg.EVAL_JOBS_TARGET * 2
             eval_rng = make_rng(base_seed, "periodic_eval", ep_num, "scenario")
             periodic_eval_scenarios[ep_num] = build_episode_scenario(
                 cfg,
                 degr,
-                jobs_target=eval_jobs,
+                jobs_target=eval_jobs_target,
                 scenario_rng=eval_rng,
                 degradation_rate=base_degrad,
                 machine_curve_ids=machine_curve_ids,
@@ -524,7 +548,7 @@ def build_scenario_bank(base_seed: int, cfg: SimConfig, degr: DegradationReplay,
     final_eval_scenario = build_episode_scenario(
         cfg,
         degr,
-        jobs_target=cfg.EVAL_JOBS_TARGET * 2,
+        jobs_target=eval_jobs_target,
         scenario_rng=make_rng(base_seed, "final_eval", "scenario"),
         degradation_rate=base_degrad,
         machine_curve_ids=machine_curve_ids,
@@ -711,6 +735,16 @@ def _pomcp_safety_filtered_actions(
         return list(base_allowed), info
 
     allowed = list(base_allowed)
+    max_h = float(getattr(cfg, "POMCP_MAINT_ACTION_MAX_H", 0.40))
+    if h_state > max_h:
+        removed = [a for a in allowed if a in (1, 2)]
+        if removed:
+            allowed = [a for a in allowed if a == 0]
+            if 1 in removed:
+                info["safety_filtered_actions"].append("IM")
+            if 2 in removed:
+                info["safety_filtered_actions"].append("CM")
+
     if 0 in allowed:
         idx_before = env.operating_index_from_rul(mid, h_state)
         breakdown_terms = compute_breakdown_reward_terms(
@@ -732,6 +766,7 @@ def _pomcp_safety_filtered_actions(
 
     if not allowed:
         allowed = [2]
+    info["safety_filtered_actions"] = sorted(set(info["safety_filtered_actions"]))
     info["allowed_actions"] = list(allowed)
     return allowed, info
 
@@ -1524,7 +1559,13 @@ def _make_scheduler_agent(cfg: SimConfig, seed: int, device):
             rng=make_rng(seed, "ppo", "sched_agent"),
             device=device,
         )
-    return THDQNAgent(state_dim=state_dim, cfg=cfg, rng=make_rng(seed, "sched_agent"), device=device)
+    return THDQNAgent(
+        state_dim=state_dim,
+        low_state_dim=int(getattr(cfg, "THDQN_LOW_STATE_DIM", 11)),
+        cfg=cfg,
+        rng=make_rng(seed, "sched_agent"),
+        device=device,
+    )
 
 
 def _make_maint_agent(cfg: SimConfig, seed: int, device) -> MaintenanceAgentDDQN:
@@ -1543,6 +1584,7 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
     maint_counts = summarize_action_counts(extract_maintenance_rows(decision_log), key="kind", values=["DN", "IM", "CM"])
     schedule_summary = summarize_scheduling_strategy(decision_log, env=final_result.get("env"))
     combo_behavior = summarize_combo_conditioned_behavior(decision_log)
+    dominant_rule_by_combo, dominant_goal_by_combo = combo_dominant_maps(combo_behavior)
     env = final_result.get("env")
     cfg_env = getattr(env, "cfg", None)
     im_invalid_filtered_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("im_invalid_flag")))
@@ -1593,6 +1635,8 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "scenario_combos": [list(x) for x in getattr(getattr(env, "episode_scenario", None), "combos", [])],
         "scenario_combo_seq": list(getattr(getattr(env, "episode_scenario", None), "combo_seq", [])),
         "combo_behavior": combo_behavior,
+        "dominant_rule_by_combo": dominant_rule_by_combo,
+        "dominant_goal_by_combo": dominant_goal_by_combo,
         "im_invalid_filtered_count": int(im_invalid_filtered_count),
         "dn_veto_count": int(dn_veto_count),
         "maint_dn": int(maint_counts.get("DN", 0)),
@@ -2153,8 +2197,10 @@ def train_one_mode(
                 S2 = env.get_global_features()
                 if scheduler_has_goal_head(sched_agent):
                     sched_agent.buf_h.add(S, int(g), r_s, S2, 0.0)
-                    sg = np.concatenate([S, sched_agent._onehot_goal(int(g))], axis=0).astype(np.float32)
-                    sg2 = np.concatenate([S2, sched_agent._onehot_goal(int(g))], axis=0).astype(np.float32)
+                    low_s = sched_agent.build_low_state(S)
+                    low_s2 = sched_agent.build_low_state(S2)
+                    sg = np.concatenate([low_s, sched_agent._onehot_goal(int(g))], axis=0).astype(np.float32)
+                    sg2 = np.concatenate([low_s2, sched_agent._onehot_goal(int(g))], axis=0).astype(np.float32)
                     sched_agent.buf_l.add(sg, rule, r_s, sg2, 0.0)
                     sched_agent.learn()
                 else:
@@ -2334,6 +2380,7 @@ def train_one_mode(
     official_decision_log = official_result["decision_log"]
     official_sched_summary = summarize_scheduling_strategy(official_decision_log, env=eval_env)
     official_combo_behavior = summarize_combo_conditioned_behavior(official_decision_log)
+    official_dominant_rule_by_combo, official_dominant_goal_by_combo = combo_dominant_maps(official_combo_behavior)
     official_maint_rows = extract_maintenance_rows(official_decision_log)
     summary_row = {
         "timestamp": ts,
@@ -2385,6 +2432,8 @@ def train_one_mode(
         "scenario_combos": [list(x) for x in getattr(final_scenario, "combos", [])],
         "scenario_combo_seq": list(getattr(final_scenario, "combo_seq", [])),
         "combo_behavior": official_combo_behavior,
+        "dominant_rule_by_combo": official_dominant_rule_by_combo,
+        "dominant_goal_by_combo": official_dominant_goal_by_combo,
         "im_invalid_filtered_count": int(sum(1 for row in official_maint_rows if bool(row.get("im_invalid_flag")))),
         "dn_veto_count": int(sum(1 for row in official_maint_rows if bool(row.get("dn_imminent_breakdown_veto")))),
     }

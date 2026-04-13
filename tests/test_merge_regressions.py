@@ -28,8 +28,8 @@ from run_experiment import (
     maintenance_reward,
     select_maintenance_action,
 )
-from src.agents import PPOSchedulerAgent
-from src.compare import compare_mode_results, summarize_combo_conditioned_behavior, summarize_scheduling_strategy
+from src.agents import PPOSchedulerAgent, THDQNAgent
+from src.compare import combo_dominant_maps, compare_mode_results, summarize_combo_conditioned_behavior, summarize_scheduling_strategy
 from src.env import EventDrivenShopEnv
 from src.viz import plot_rul_curves, plot_rule_vs_features
 
@@ -447,6 +447,34 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertTrue(all(idx == 0 for idx in seq))
         self.assertIn(tuple(combos[0]), {(20.0, 1.0), (20.0, 1.5), (40.0, 1.0), (40.0, 1.5)})
 
+    def test_grid_full_eval_combo_covers_full_lambda_ddt_grid(self):
+        cfg = SimConfig()
+        cfg.ARRIVAL_LAM_VALUES = (20.0, 40.0, 60.0)
+        cfg.DDT_VALUES = (1.0, 1.5, 2.0)
+
+        combos, seq = build_episode_combos(cfg, random.Random(7), jobs_target=81, combo_mode="grid_full")
+
+        self.assertEqual(len(combos), 9)
+        self.assertEqual(seq, list(range(9)))
+        self.assertEqual(
+            combos,
+            [
+                (20.0, 1.0), (20.0, 1.5), (20.0, 2.0),
+                (40.0, 1.0), (40.0, 1.5), (40.0, 2.0),
+                (60.0, 1.0), (60.0, 1.5), (60.0, 2.0),
+            ],
+        )
+
+    def test_thdqn_pruned_low_state_excludes_regime_features(self):
+        cfg = SimConfig()
+        agent = THDQNAgent(state_dim=15, low_state_dim=11, cfg=cfg, rng=random.Random(0), device=torch.device("cpu"))
+        full_state = np.arange(15, dtype=np.float32)
+
+        low_state = agent.build_low_state(full_state)
+
+        self.assertEqual(low_state.shape[0], 11)
+        np.testing.assert_allclose(low_state, np.array([0, 1, 2, 6, 7, 8, 9, 10, 12, 13, 14], dtype=np.float32))
+
     def test_maintenance_state_includes_current_stress_as_18th_dimension(self):
         state = build_maintenance_state(
             0.4, -0.02, 12.0,
@@ -634,6 +662,42 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertTrue(meta["dn_imminent_breakdown_veto"])
         self.assertIn("DN", meta["safety_filtered_actions"])
 
+    def test_pomcp_unrestricted_high_health_gate_allows_only_dn(self):
+        cfg = SimConfig()
+        cfg.ENFORCE_REGION_POLICY = False
+        cfg.POMCP_UNRESTRICTED_SAFETY_FILTER = True
+        cfg.POMCP_MAINT_ACTION_MAX_H = 0.40
+        env = _ImGainEnvStub(True)
+        planner = _BestRewardPOMCP()
+        particle = {
+            "h_true": 0.90,
+            "stress": 0.1,
+            "baseline_rul": 1.0,
+            "region_b_elapsed": 0.0,
+        }
+
+        action, meta = select_maintenance_action(
+            "POMCP",
+            None,
+            planner,
+            {0: [particle]},
+            env,
+            0,
+            0.90,
+            np.zeros(18, dtype=np.float32),
+            0.1,
+            0.1,
+            0.0,
+            cfg,
+            random.Random(0),
+            explore=False,
+        )
+
+        self.assertEqual(action, 0)
+        self.assertEqual(meta["allowed_actions"], [0])
+        self.assertIn("IM", meta["safety_filtered_actions"])
+        self.assertIn("CM", meta["safety_filtered_actions"])
+
     def test_combo_conditioned_behavior_groups_rule_goal_and_maintenance_counts(self):
         decision_log = [
             {"event": "scheduling", "lambda_true_segment": 20.0, "ddt_true_segment": 1.0, "goal": 0, "rule": 2, "dispatched": True},
@@ -644,12 +708,15 @@ class MergeRegressionTests(unittest.TestCase):
         ]
 
         summary = summarize_combo_conditioned_behavior(decision_log)
+        dominant_rule_by_combo, dominant_goal_by_combo = combo_dominant_maps(summary)
 
         self.assertIn("lam=20.0|ddt=1.00", summary)
         self.assertEqual(summary["lam=20.0|ddt=1.00"]["rule_counts"]["2"], 2)
         self.assertEqual(summary["lam=20.0|ddt=1.00"]["goal_counts"]["0"], 2)
         self.assertEqual(summary["lam=20.0|ddt=1.00"]["maint_counts"]["IM"], 1)
         self.assertEqual(summary["lam=60.0|ddt=2.00"]["dominant_rule"]["label"], "5")
+        self.assertEqual(dominant_rule_by_combo["lam=60.0|ddt=2.00"]["label"], "5")
+        self.assertEqual(dominant_goal_by_combo["lam=20.0|ddt=1.00"]["label"], "0")
 
     def test_top_level_run_record_includes_combo_modes_and_filter_counts(self):
         env = _CompareEnvStub(0, 0.0, 0, 0.0, 12.0)
@@ -689,11 +756,12 @@ class MergeRegressionTests(unittest.TestCase):
         row = _build_run_record(42, "DQN", "region_off_unrestricted", "region_off_unrestricted", result)
 
         self.assertEqual(row["train_combo_mode"], "episode_fixed")
-        self.assertEqual(row["eval_combo_mode"], "variable")
+        self.assertEqual(row["eval_combo_mode"], "grid_full")
         self.assertEqual(row["lam_ddt_mode"], "variable")
         self.assertEqual(row["im_invalid_filtered_count"], 1)
         self.assertEqual(row["dn_veto_count"], 0)
         self.assertIn("lam=20.0|ddt=1.00", row["combo_behavior"])
+        self.assertIn("lam=20.0|ddt=1.00", row["dominant_rule_by_combo"])
 
     def test_infer_route_results_keep_env_for_compare_metrics(self):
         primary_env = _CompareEnvStub(2, 18.0, 3, 4.5, 11.0)

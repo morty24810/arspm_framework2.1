@@ -13,7 +13,7 @@ from config import SimConfig, resolve_machine_set
 from src.utils import set_seed
 from src.agents import MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
 from src.pomcp import POMCPPlanner
-from src.compare import compare_mode_results, summarize_combo_conditioned_behavior, summarize_scheduling_strategy, write_mode_comparison_outputs
+from src.compare import combo_dominant_maps, compare_mode_results, summarize_combo_conditioned_behavior, summarize_scheduling_strategy, write_mode_comparison_outputs
 from checkpointing import load_checkpoint, load_maintenance_only
 from run_experiment import (
     apply_machine_set_mode,
@@ -84,12 +84,19 @@ def make_maint_agent(cfg: SimConfig, seed: int, device: torch.device) -> Mainten
     )
 
 
-def make_sched_agent(cfg: SimConfig, seed: int, device: torch.device, state_dim: int | None = None):
+def make_sched_agent(cfg: SimConfig, seed: int, device: torch.device,
+                     state_dim: int | None = None, low_state_dim: int | None = None):
     scheduler_mode = str(getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
     state_dim = int(getattr(cfg, "SCHEDULER_STATE_DIM", 15) if state_dim is None else state_dim)
     if scheduler_mode == "PPO":
         return PPOSchedulerAgent(state_dim=int(state_dim), cfg=cfg, rng=random.Random(seed), device=device)
-    return THDQNAgent(state_dim=int(state_dim), cfg=cfg, rng=random.Random(seed), device=device)
+    return THDQNAgent(
+        state_dim=int(state_dim),
+        low_state_dim=int(getattr(cfg, "THDQN_LOW_STATE_DIM", 11) if low_state_dim is None else low_state_dim),
+        cfg=cfg,
+        rng=random.Random(seed),
+        device=device,
+    )
 
 
 def build_infer_route_result(metrics: Dict[str, Any], env: Any, overdue_stats: Dict[str, Any],
@@ -115,6 +122,7 @@ def build_infer_summary_row(ts: str, episode_idx: int, cfg_eval: SimConfig, seed
     decision_log = list(getattr(env, "last_decision_log", []))
     sched_summary = summarize_scheduling_strategy(decision_log, env=env)
     combo_behavior = summarize_combo_conditioned_behavior(decision_log)
+    dominant_rule_by_combo, dominant_goal_by_combo = combo_dominant_maps(combo_behavior)
     maint_rows = [row for row in decision_log if row.get("event") == "maintenance"]
     return {
         "timestamp": ts,
@@ -163,6 +171,8 @@ def build_infer_summary_row(ts: str, episode_idx: int, cfg_eval: SimConfig, seed
         "scenario_combos": [list(x) for x in getattr(getattr(env, "episode_scenario", None), "combos", [])],
         "scenario_combo_seq": list(getattr(getattr(env, "episode_scenario", None), "combo_seq", [])),
         "combo_behavior": combo_behavior,
+        "dominant_rule_by_combo": dominant_rule_by_combo,
+        "dominant_goal_by_combo": dominant_goal_by_combo,
         "im_invalid_filtered_count": int(sum(1 for row in maint_rows if bool(row.get("im_invalid_flag")))),
         "dn_veto_count": int(sum(1 for row in maint_rows if bool(row.get("dn_imminent_breakdown_veto")))),
     }
@@ -187,6 +197,18 @@ def infer_scheduler_state_dim(ckpt_path: Path, map_location: torch.device) -> in
     if hasattr(weight, "shape") and len(weight.shape) >= 2:
         return int(weight.shape[1])
     return 15
+
+
+def infer_thdqn_low_state_dim(ckpt_path: Path, map_location: torch.device) -> int:
+    ckpt = torch.load(str(ckpt_path), map_location=map_location)
+    meta_cfg = ckpt.get("meta", {}).get("config", {}) or {}
+    if "THDQN_LOW_STATE_DIM" in meta_cfg:
+        return int(meta_cfg["THDQN_LOW_STATE_DIM"])
+    models = ckpt.get("models", {})
+    weight = models.get("low_q", {}).get("net.0.weight")
+    if hasattr(weight, "shape") and len(weight.shape) >= 2:
+        return int(weight.shape[1] - 4)
+    return 11
 
 
 def infer_maint_state_dim(ckpt_path: Path, map_location: torch.device) -> int:
@@ -270,11 +292,13 @@ def main():
 
     cfg.SCHEDULER_MODE = infer_scheduler_mode(ckpt_path, device)
     sched_state_dim = infer_scheduler_state_dim(ckpt_path, device)
+    thdqn_low_state_dim = infer_thdqn_low_state_dim(ckpt_path, device)
     maint_state_dim = infer_maint_state_dim(ckpt_path, device)
     cfg.SCHEDULER_STATE_DIM = int(sched_state_dim)
+    cfg.THDQN_LOW_STATE_DIM = int(thdqn_low_state_dim)
     cfg.MAINTENANCE_STATE_DIM = int(maint_state_dim)
     maint_agent = make_maint_agent(cfg, cfg.SEED, device)
-    sched_agent = make_sched_agent(cfg, cfg.SEED, device, state_dim=sched_state_dim)
+    sched_agent = make_sched_agent(cfg, cfg.SEED, device, state_dim=sched_state_dim, low_state_dim=thdqn_low_state_dim)
 
     allow_missing_maint = cfg.MAINT_MODE != "DQN" or compare_maint_modes
     ckpt = load_checkpoint(

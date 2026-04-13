@@ -134,6 +134,15 @@ def summarize_combo_conditioned_behavior(decision_log: List[Dict[str, Any]]) -> 
     return combo_summary
 
 
+def combo_dominant_maps(combo_behavior: Dict[str, Dict[str, Any]]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    dominant_rule_by_combo: Dict[str, Any] = {}
+    dominant_goal_by_combo: Dict[str, Any] = {}
+    for combo_key, entry in (combo_behavior or {}).items():
+        dominant_rule_by_combo[str(combo_key)] = dict(entry.get("dominant_rule", {}))
+        dominant_goal_by_combo[str(combo_key)] = dict(entry.get("dominant_goal", {}))
+    return dominant_rule_by_combo, dominant_goal_by_combo
+
+
 def compute_decision_log_makespan(decision_log: List[Dict[str, Any]]) -> float:
     t_end = 0.0
     for row in decision_log or []:
@@ -264,6 +273,8 @@ def compare_mode_results(
     compare_schedule_summary = summarize_scheduling_strategy(compare_result.get("decision_log", []), env=compare_result.get("env"))
     primary_combo_behavior = summarize_combo_conditioned_behavior(primary_result.get("decision_log", []))
     compare_combo_behavior = summarize_combo_conditioned_behavior(compare_result.get("decision_log", []))
+    primary_dominant_rule_by_combo, primary_dominant_goal_by_combo = combo_dominant_maps(primary_combo_behavior)
+    compare_dominant_rule_by_combo, compare_dominant_goal_by_combo = combo_dominant_maps(compare_combo_behavior)
     primary_scheduler_mode = str(primary_result.get("scheduler_mode", getattr(primary_result.get("env"), "last_scheduler_mode", "THDQN"))).upper()
     compare_scheduler_mode = str(compare_result.get("scheduler_mode", getattr(compare_result.get("env"), "last_scheduler_mode", "THDQN"))).upper()
     primary_sched_regime_feature_mode = str(
@@ -298,6 +309,10 @@ def compare_mode_results(
         "compare_action_counts": summarize_action_counts(compare_rows, key="kind", values=["DN", "IM", "CM"]),
         "primary_combo_behavior": primary_combo_behavior,
         "compare_combo_behavior": compare_combo_behavior,
+        "primary_dominant_rule_by_combo": primary_dominant_rule_by_combo,
+        "compare_dominant_rule_by_combo": compare_dominant_rule_by_combo,
+        "primary_dominant_goal_by_combo": primary_dominant_goal_by_combo,
+        "compare_dominant_goal_by_combo": compare_dominant_goal_by_combo,
         "primary_im_invalid_filtered_count": int(sum(1 for row in primary_rows if bool(row.get("im_invalid_flag")))),
         "compare_im_invalid_filtered_count": int(sum(1 for row in compare_rows if bool(row.get("im_invalid_flag")))),
         "primary_dn_veto_count": int(sum(1 for row in primary_rows if bool(row.get("dn_imminent_breakdown_veto")))),
