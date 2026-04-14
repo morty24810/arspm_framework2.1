@@ -24,7 +24,11 @@ from run_experiment import (
     effective_base_degradation_rate,
     effective_degradation_bounds,
     filter_non_improving_im,
+    maintenance_agent_arch_for_context,
+    maintenance_agent_store_transition,
     maintenance_cm_preference_penalty,
+    maintenance_hier_metrics,
+    maintenance_hier_rewards,
     maintenance_im_history_features,
     maintenance_low_gain_penalty,
     maintenance_prior_penalty,
@@ -33,7 +37,7 @@ from run_experiment import (
     normalize_jobs_target_for_combo_mode,
     select_maintenance_action,
 )
-from src.agents import PPOSchedulerAgent, THDQNAgent
+from src.agents import HierMaintenanceAgentDDQN, MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
 from src.compare import combo_dominant_maps, compare_mode_results, summarize_combo_conditioned_behavior, summarize_scheduling_strategy
 from src.env import EventDrivenShopEnv
 from src.viz import plot_gantt, plot_rul_curves, plot_rule_vs_features
@@ -305,6 +309,7 @@ class MergeRegressionTests(unittest.TestCase):
     def test_cm_preference_penalty_only_hits_thdqn_dqn_unrestricted(self):
         cfg = SimConfig()
         cfg.SCHEDULER_MODE = "THDQN"
+        cfg.THDQN_DQN_HIER_MAINT = False
         env = _ImGainEnvStub(True)
 
         penalty, readiness, active = maintenance_cm_preference_penalty(
@@ -336,35 +341,10 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(penalty_safe, 0.0)
         self.assertFalse(active_safe)
 
-        penalty_ppo, _, active_ppo = maintenance_cm_preference_penalty(
-            2, 0.95, cfg,
-            maint_mode="DQN",
-            enforce_region=False,
-            env=env,
-            mid=0,
-            baseline_rul=0.9,
-            im_since_cm_norm=0.0,
-            im_damage_norm=0.0,
-            dn_imminent_breakdown=False,
-        )
-        cfg.SCHEDULER_MODE = "PPO"
-        penalty_ppo, _, active_ppo = maintenance_cm_preference_penalty(
-            2, 0.95, cfg,
-            maint_mode="DQN",
-            enforce_region=False,
-            env=env,
-            mid=0,
-            baseline_rul=0.9,
-            im_since_cm_norm=0.0,
-            im_damage_norm=0.0,
-            dn_imminent_breakdown=False,
-        )
-        self.assertEqual(penalty_ppo, 0.0)
-        self.assertFalse(active_ppo)
-
     def test_im_late_penalty_rises_with_low_health_or_im_history(self):
         cfg = SimConfig()
         cfg.SCHEDULER_MODE = "THDQN"
+        cfg.THDQN_DQN_HIER_MAINT = False
         env = _ImGainEnvStub(True)
         penalty, readiness, active = maintenance_cm_preference_penalty(
             1, 0.12, cfg,
@@ -486,11 +466,62 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertFalse(cfg.FAIL_STOCHASTIC)
         self.assertTrue(cfg.RUL_LINEAR_TAIL_ENABLE)
         self.assertIsNone(cfg.RUL_LINEAR_TAIL_STEP)
-        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("THDQN", "PPO"))
-        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN", "POMCP"))
+        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("THDQN",))
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN",))
         self.assertAlmostEqual(cfg.DEGRADATION_RATE_SCALE, 1.30)
         self.assertEqual(cfg.SCHEDULER_STATE_DIM, 15)
         self.assertEqual(cfg.MAINTENANCE_STATE_DIM, 18)
+
+    def test_hier_maintenance_arch_only_enables_for_thdqn_dqn_unrestricted(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "THDQN"
+        cfg.MAINT_MODE = "DQN"
+        self.assertEqual(maintenance_agent_arch_for_context(cfg, "DQN", False, "THDQN"), "hier_ddqn")
+        self.assertEqual(maintenance_agent_arch_for_context(cfg, "DQN", True, "THDQN"), "flat_ddqn")
+        self.assertEqual(maintenance_agent_arch_for_context(cfg, "DQN", False, "PPO"), "flat_ddqn")
+        self.assertEqual(maintenance_agent_arch_for_context(cfg, "POMCP", False, "THDQN"), "flat_ddqn")
+
+    def test_hier_maintenance_rewards_separate_gate_and_type_penalties(self):
+        cfg = SimConfig()
+        action_meta = {"maint_gate_action": "MAINT", "maint_type_action": "CM"}
+        metrics = maintenance_hier_metrics(
+            action_meta,
+            0.9,
+            0.05,
+            False,
+            cfg,
+            maint_mode="DQN",
+            enforce_region=False,
+            im_since_cm_norm=0.0,
+            im_damage_norm=0.0,
+        )
+        gate_reward, type_reward = maintenance_hier_rewards(-10.0, action_meta, metrics)
+        self.assertLess(gate_reward, -10.0)
+        self.assertLess(type_reward, -10.0)
+        self.assertTrue(metrics["gate_penalty_active"])
+        self.assertTrue(metrics["type_penalty_active"])
+
+    def test_hier_maintenance_transition_storage_splits_gate_and_type_buffers(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "THDQN"
+        cfg.MAINT_MODE = "DQN"
+        cfg.ENFORCE_REGION_POLICY = False
+        agent = HierMaintenanceAgentDDQN(state_dim=20, cfg=cfg, rng=random.Random(0), device=torch.device("cpu"))
+        s = np.zeros(20, dtype=np.float32)
+        sp = np.ones(20, dtype=np.float32)
+        maintenance_agent_store_transition(
+            agent,
+            s,
+            2,
+            -5.0,
+            sp,
+            0.0,
+            action_meta={"maint_gate_action": "MAINT", "maint_type_action": "CM"},
+            gate_reward=-6.0,
+            type_reward=-7.0,
+        )
+        self.assertEqual(len(agent.buf_gate), 1)
+        self.assertEqual(len(agent.buf_type), 1)
 
     def test_default_machine_set_and_paper_machine_set_can_be_resolved(self):
         cfg = SimConfig()
@@ -1279,6 +1310,33 @@ class MergeRegressionTests(unittest.TestCase):
             critic_key = next(iter(agent.critic.state_dict().keys()))
             self.assertTrue(torch.allclose(agent.actor.state_dict()[actor_key], loaded.actor.state_dict()[actor_key]))
             self.assertTrue(torch.allclose(agent.critic.state_dict()[critic_key], loaded.critic.state_dict()[critic_key]))
+
+    def test_hier_maintenance_checkpoint_roundtrip(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "THDQN"
+        cfg.MAINT_MODE = "DQN"
+        cfg.ENFORCE_REGION_POLICY = False
+        cfg.MAINT_AGENT_ARCH = "hier_ddqn"
+        cfg.MAINTENANCE_STATE_DIM = 20
+        sched = THDQNAgent(state_dim=15, cfg=cfg, rng=random.Random(0), device=torch.device("cpu"), low_state_dim=11)
+        agent = HierMaintenanceAgentDDQN(state_dim=20, cfg=cfg, rng=random.Random(0), device=torch.device("cpu"))
+        with torch.no_grad():
+            for p in agent.q_gate.parameters():
+                p.add_(0.123)
+            for p in agent.q_type.parameters():
+                p.add_(0.456)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_mgr = CheckpointManager(tmpdir, cfg, torch.device("cpu"))
+            ckpt_mgr.save_latest(sched, agent, _ObserverStub(), None, {"tard": 1.0, "maint": 2.0, "total": 3.0})
+            loaded_sched = THDQNAgent(state_dim=15, cfg=cfg, rng=random.Random(1), device=torch.device("cpu"), low_state_dim=11)
+            loaded_agent = HierMaintenanceAgentDDQN(state_dim=20, cfg=cfg, rng=random.Random(1), device=torch.device("cpu"))
+            load_checkpoint(str(ckpt_mgr.latest_path), sched_agent=loaded_sched, maint_agent=loaded_agent, observer=None, map_location="cpu")
+
+            gate_key = next(iter(agent.q_gate.state_dict().keys()))
+            type_key = next(iter(agent.q_type.state_dict().keys()))
+            self.assertTrue(torch.allclose(agent.q_gate.state_dict()[gate_key], loaded_agent.q_gate.state_dict()[gate_key]))
+            self.assertTrue(torch.allclose(agent.q_type.state_dict()[type_key], loaded_agent.q_type.state_dict()[type_key]))
 
     def test_scheduler_summary_tolerates_goal_less_ppo_logs(self):
         decision_log = [

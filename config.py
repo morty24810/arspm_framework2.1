@@ -275,15 +275,19 @@ class SimConfig:
 
     # scheduler algorithm
     SCHEDULER_MODE: str = "THDQN"
-    TRAIN_SCHEDULER_MODES: tuple = ("THDQN", "PPO")
+    TRAIN_SCHEDULER_MODES: tuple = ("THDQN",)
     SCHED_REGIME_FEATURE_MODE: str = "oracle"
     SCHEDULER_STATE_DIM: int = 15
     THDQN_LOW_STATE_MODE: str = "pruned"
     THDQN_LOW_STATE_DIM: int = 11
+    MAINT_AGENT_ARCH: str = "flat_ddqn"
     MAINTENANCE_STATE_DIM: int = 18
-    THDQN_DQN_CM_PREF_FIX: bool = True
+    THDQN_DQN_HIER_MAINT: bool = True
     THDQN_DQN_MAINT_STATE_DIM: int = 20
-    THDQN_DQN_CM_PREF_H_TRIGGER: float = 0.30
+    THDQN_DQN_GATE_H_TRIGGER: float = 0.30
+    THDQN_DQN_GATE_DN_RISK_TRIGGER: float = 0.20
+    THDQN_DQN_GATE_MAINT_EARLY_PENALTY: float = 4.0
+    THDQN_DQN_GATE_DN_LATE_PENALTY: float = 8.0
     THDQN_DQN_CM_EARLY_PENALTY: float = 6.0
     THDQN_DQN_IM_LATE_PENALTY: float = 4.0
     THDQN_DQN_HIGH_HEALTH_CM_H: float = 0.70
@@ -300,7 +304,7 @@ class SimConfig:
 
     # paired experiment runner
     EXPERIMENT_SEEDS: tuple = (42,)
-    TRAIN_MAINT_MODES: tuple = ("DQN", "POMCP")
+    TRAIN_MAINT_MODES: tuple = ("DQN",)
     TRAIN_POLICY_ROUTES: tuple = ("region_off",)
     SCENARIO_LOCK_SCOPE: str = "full"
     ENABLE_OOD_DIAGNOSTIC_EVAL: bool = False

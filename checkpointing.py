@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from src.agents import HierMaintenanceAgentDDQN
+
 
 def _jsonable(value: Any) -> Any:
     if isinstance(value, (str, int, float, bool)) or value is None:
@@ -100,6 +102,18 @@ def _is_ppo_scheduler(agent) -> bool:
     return hasattr(agent, "actor") and hasattr(agent, "critic") and not hasattr(agent, "q_high")
 
 
+def _is_hier_maint(agent) -> bool:
+    return isinstance(agent, HierMaintenanceAgentDDQN)
+
+
+def _has_flat_maint_weights(models: Dict[str, Any]) -> bool:
+    return any(k in models for k in ("maint_q", "maint_target"))
+
+
+def _has_hier_maint_weights(models: Dict[str, Any]) -> bool:
+    return any(k in models for k in ("maint_gate_q", "maint_gate_target", "maint_type_q", "maint_type_target"))
+
+
 class CheckpointManager:
     def __init__(self, save_dir: str, cfg, device):
         self.save_dir = Path(save_dir)
@@ -132,8 +146,14 @@ class CheckpointManager:
                 models["low_q"] = sched_agent.q_low.state_dict()
                 models["low_target"] = sched_agent.q_low_t.state_dict()
         if maint_agent is not None:
-            models["maint_q"] = maint_agent.q.state_dict()
-            models["maint_target"] = maint_agent.qt.state_dict()
+            if _is_hier_maint(maint_agent):
+                models["maint_gate_q"] = maint_agent.q_gate.state_dict()
+                models["maint_gate_target"] = maint_agent.q_gate_t.state_dict()
+                models["maint_type_q"] = maint_agent.q_type.state_dict()
+                models["maint_type_target"] = maint_agent.q_type_t.state_dict()
+            else:
+                models["maint_q"] = maint_agent.q.state_dict()
+                models["maint_target"] = maint_agent.qt.state_dict()
 
         states: Dict[str, Any] = {}
         if sched_agent is not None:
@@ -146,7 +166,11 @@ class CheckpointManager:
                 states["low_extra"] = {"eps": eps_val, "steps": int(sched_agent.steps)}
         if maint_agent is not None:
             eps_val = float(maint_agent.eps(maint_agent.steps))
-            states["maint_extra"] = {"eps": eps_val, "steps": int(maint_agent.steps)}
+            states["maint_extra"] = {
+                "eps": eps_val,
+                "steps": int(maint_agent.steps),
+                "arch": "hier_ddqn" if _is_hier_maint(maint_agent) else "flat_ddqn",
+            }
         obs_state = _observer_state(observer)
         if obs_state is not None:
             states["observer"] = obs_state
@@ -219,14 +243,27 @@ def load_checkpoint(path: str, sched_agent=None, maint_agent=None, observer=None
             _safe_load_model(sched_agent.q_low, models.get("low_q", {}), "low_q")
             _safe_load_model(sched_agent.q_low_t, models.get("low_target", {}), "low_target")
 
-    if maint_agent is None and any(k in models for k in ("maint_q", "maint_target")):
+    if maint_agent is None and (_has_flat_maint_weights(models) or _has_hier_maint_weights(models)):
         raise ValueError("Checkpoint contains maintenance weights, but maint_agent is None.")
     if maint_agent is not None:
-        if "maint_q" in models and "maint_target" in models:
-            _safe_load_model(maint_agent.q, models.get("maint_q", {}), "maint_q")
-            _safe_load_model(maint_agent.qt, models.get("maint_target", {}), "maint_target")
-        elif not allow_missing_maint:
-            raise ValueError("Checkpoint missing maintenance weights.")
+        if _is_hier_maint(maint_agent):
+            if _has_flat_maint_weights(models):
+                raise ValueError("Checkpoint contains flat maintenance weights, but maint_agent is hierarchical.")
+            if all(k in models for k in ("maint_gate_q", "maint_gate_target", "maint_type_q", "maint_type_target")):
+                _safe_load_model(maint_agent.q_gate, models.get("maint_gate_q", {}), "maint_gate_q")
+                _safe_load_model(maint_agent.q_gate_t, models.get("maint_gate_target", {}), "maint_gate_target")
+                _safe_load_model(maint_agent.q_type, models.get("maint_type_q", {}), "maint_type_q")
+                _safe_load_model(maint_agent.q_type_t, models.get("maint_type_target", {}), "maint_type_target")
+            elif not allow_missing_maint:
+                raise ValueError("Checkpoint missing hierarchical maintenance weights.")
+        else:
+            if _has_hier_maint_weights(models):
+                raise ValueError("Checkpoint contains hierarchical maintenance weights, but maint_agent is flat.")
+            if "maint_q" in models and "maint_target" in models:
+                _safe_load_model(maint_agent.q, models.get("maint_q", {}), "maint_q")
+                _safe_load_model(maint_agent.qt, models.get("maint_target", {}), "maint_target")
+            elif not allow_missing_maint:
+                raise ValueError("Checkpoint missing maintenance weights.")
 
     states = ckpt.get("states", {})
     if sched_agent is not None:
@@ -246,11 +283,24 @@ def load_maintenance_only(path: str, maint_agent, map_location="cpu", allow_miss
         raise ValueError("maint_agent is required for maintenance-only checkpoint loading.")
     ckpt = torch.load(path, map_location=map_location)
     models = ckpt.get("models", {})
-    if "maint_q" in models and "maint_target" in models:
-        _safe_load_model(maint_agent.q, models.get("maint_q", {}), "maint_q")
-        _safe_load_model(maint_agent.qt, models.get("maint_target", {}), "maint_target")
-    elif not allow_missing_maint:
-        raise ValueError("Checkpoint missing maintenance weights.")
+    if _is_hier_maint(maint_agent):
+        if _has_flat_maint_weights(models):
+            raise ValueError("Checkpoint contains flat maintenance weights, but maint_agent is hierarchical.")
+        if all(k in models for k in ("maint_gate_q", "maint_gate_target", "maint_type_q", "maint_type_target")):
+            _safe_load_model(maint_agent.q_gate, models.get("maint_gate_q", {}), "maint_gate_q")
+            _safe_load_model(maint_agent.q_gate_t, models.get("maint_gate_target", {}), "maint_gate_target")
+            _safe_load_model(maint_agent.q_type, models.get("maint_type_q", {}), "maint_type_q")
+            _safe_load_model(maint_agent.q_type_t, models.get("maint_type_target", {}), "maint_type_target")
+        elif not allow_missing_maint:
+            raise ValueError("Checkpoint missing hierarchical maintenance weights.")
+    else:
+        if _has_hier_maint_weights(models):
+            raise ValueError("Checkpoint contains hierarchical maintenance weights, but maint_agent is flat.")
+        if "maint_q" in models and "maint_target" in models:
+            _safe_load_model(maint_agent.q, models.get("maint_q", {}), "maint_q")
+            _safe_load_model(maint_agent.qt, models.get("maint_target", {}), "maint_target")
+        elif not allow_missing_maint:
+            raise ValueError("Checkpoint missing maintenance weights.")
 
     states = ckpt.get("states", {})
     if "maint_extra" in states:

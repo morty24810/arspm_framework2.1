@@ -11,7 +11,7 @@ import torch
 
 from config import SimConfig, resolve_machine_set
 from src.utils import set_seed
-from src.agents import MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
+from src.agents import HierMaintenanceAgentDDQN, MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
 from src.pomcp import POMCPPlanner
 from src.compare import combo_dominant_maps, compare_mode_results, summarize_combo_conditioned_behavior, summarize_scheduling_strategy, write_mode_comparison_outputs
 from checkpointing import load_checkpoint, load_maintenance_only
@@ -77,7 +77,9 @@ def parse_combo_plan(plan: str):
 
 
 def make_maint_agent(cfg: SimConfig, seed: int, device: torch.device) -> MaintenanceAgentDDQN:
-    return MaintenanceAgentDDQN(
+    arch = str(getattr(cfg, "MAINT_AGENT_ARCH", "flat_ddqn")).strip().lower()
+    agent_cls = HierMaintenanceAgentDDQN if arch == "hier_ddqn" else MaintenanceAgentDDQN
+    return agent_cls(
         state_dim=int(getattr(cfg, "MAINTENANCE_STATE_DIM", 18)),
         cfg=cfg,
         rng=random.Random(seed),
@@ -181,6 +183,10 @@ def build_infer_summary_row(ts: str, episode_idx: int, cfg_eval: SimConfig, seed
         "dn_veto_count": int(sum(1 for row in maint_rows if bool(row.get("dn_imminent_breakdown_veto")))),
         "cm_emergency_override_count": int(sum(1 for row in maint_rows if bool(row.get("cm_emergency_override")))),
         "cm_preference_penalty_count": int(sum(1 for row in maint_rows if bool(row.get("cm_preference_penalty_active")))),
+        "gate_dn_count": int(sum(1 for row in maint_rows if str(row.get("maint_gate_action", "")).upper() == "DN")),
+        "gate_maint_count": int(sum(1 for row in maint_rows if str(row.get("maint_gate_action", "")).upper() == "MAINT")),
+        "gate_penalty_count": int(sum(1 for row in maint_rows if bool(row.get("gate_penalty_active")))),
+        "type_penalty_count": int(sum(1 for row in maint_rows if bool(row.get("type_penalty_active")))),
         "high_health_cm_count": int(sum(
             1 for row in maint_rows
             if str(row.get("kind", "")).upper() == "CM"
@@ -247,11 +253,29 @@ def infer_thdqn_low_state_mode(ckpt_path: Path, map_location: torch.device) -> s
 
 def infer_maint_state_dim(ckpt_path: Path, map_location: torch.device) -> int:
     ckpt = torch.load(str(ckpt_path), map_location=map_location)
+    meta_cfg = ckpt.get("meta", {}).get("config", {}) or {}
+    if "MAINTENANCE_STATE_DIM" in meta_cfg:
+        return int(meta_cfg["MAINTENANCE_STATE_DIM"])
     models = ckpt.get("models", {})
+    weight = models.get("maint_gate_q", {}).get("net.0.weight")
+    if hasattr(weight, "shape") and len(weight.shape) >= 2:
+        return int(weight.shape[1])
     weight = models.get("maint_q", {}).get("net.0.weight")
     if hasattr(weight, "shape") and len(weight.shape) >= 2:
         return int(weight.shape[1])
     return 18
+
+
+def infer_maint_agent_arch(ckpt_path: Path, map_location: torch.device) -> str:
+    ckpt = torch.load(str(ckpt_path), map_location=map_location)
+    meta_cfg = ckpt.get("meta", {}).get("config", {}) or {}
+    arch = str(meta_cfg.get("MAINT_AGENT_ARCH", "")).strip().lower()
+    if arch in {"flat_ddqn", "hier_ddqn"}:
+        return arch
+    models = ckpt.get("models", {})
+    if any(k in models for k in ("maint_gate_q", "maint_gate_target", "maint_type_q", "maint_type_target")):
+        return "hier_ddqn"
+    return "flat_ddqn"
 
 
 def infer_scheduler_mode(ckpt_path: Path, map_location: torch.device) -> str:
@@ -291,6 +315,7 @@ def main():
         cfg.NUM_MACHINES = int(args.machines)
     cfg.MAINT_MODE = str(args.maint_mode).upper()
     cfg.ENFORCE_REGION_POLICY = True
+    checkpoint_enforce_region = bool(meta_cfg.get("ENFORCE_REGION_POLICY", True))
     cfg.COMBO_RANDOMIZE = bool(int(args.randomize_combos))
     if args.segment_jobs is not None:
         cfg.COMBO_SEGMENT_JOBS = max(1, int(args.segment_jobs))
@@ -328,12 +353,21 @@ def main():
     sched_state_dim = infer_scheduler_state_dim(ckpt_path, device)
     thdqn_low_state_dim = infer_thdqn_low_state_dim(ckpt_path, device)
     thdqn_low_state_mode = infer_thdqn_low_state_mode(ckpt_path, device) if cfg.SCHEDULER_MODE == "THDQN" else None
+    maint_agent_arch = infer_maint_agent_arch(ckpt_path, device)
     maint_state_dim = infer_maint_state_dim(ckpt_path, device)
     cfg.SCHEDULER_STATE_DIM = int(sched_state_dim)
     cfg.THDQN_LOW_STATE_DIM = int(thdqn_low_state_dim)
     if thdqn_low_state_mode is not None:
         cfg.THDQN_LOW_STATE_MODE = str(thdqn_low_state_mode)
+    cfg.MAINT_AGENT_ARCH = str(maint_agent_arch)
     cfg.MAINTENANCE_STATE_DIM = int(maint_state_dim)
+    if (
+        str(cfg.SCHEDULER_MODE).upper() == "THDQN"
+        and str(cfg.MAINT_MODE).upper() == "DQN"
+        and not checkpoint_enforce_region
+        and str(cfg.MAINT_AGENT_ARCH).lower() != "hier_ddqn"
+    ):
+        raise ValueError("Legacy flat THDQN + DQN + unrestricted maintenance checkpoints are not compatible with the hierarchical maintenance architecture.")
     maint_agent = make_maint_agent(cfg, cfg.SEED, device)
     sched_agent = make_sched_agent(
         cfg,
@@ -365,17 +399,30 @@ def main():
     else:
         sched_agent.actor.eval()
         sched_agent.critic.eval()
-    maint_agent.q.eval()
-    maint_agent.qt.eval()
+    if isinstance(maint_agent, HierMaintenanceAgentDDQN):
+        maint_agent.q_gate.eval()
+        maint_agent.q_gate_t.eval()
+        maint_agent.q_type.eval()
+        maint_agent.q_type_t.eval()
+    else:
+        maint_agent.q.eval()
+        maint_agent.qt.eval()
 
     dqn_compare_agent = None
     if compare_maint_modes:
         compare_cfg = copy.deepcopy(cfg)
+        compare_cfg.MAINT_AGENT_ARCH = infer_maint_agent_arch(dqn_ckpt_path, device)
         compare_cfg.MAINTENANCE_STATE_DIM = infer_maint_state_dim(dqn_ckpt_path, device)
         dqn_compare_agent = make_maint_agent(compare_cfg, cfg.SEED + 997, device)
         load_maintenance_only(str(dqn_ckpt_path), dqn_compare_agent, map_location=device, allow_missing_maint=False)
-        dqn_compare_agent.q.eval()
-        dqn_compare_agent.qt.eval()
+        if isinstance(dqn_compare_agent, HierMaintenanceAgentDDQN):
+            dqn_compare_agent.q_gate.eval()
+            dqn_compare_agent.q_gate_t.eval()
+            dqn_compare_agent.q_type.eval()
+            dqn_compare_agent.q_type_t.eval()
+        else:
+            dqn_compare_agent.q.eval()
+            dqn_compare_agent.qt.eval()
 
     base_outdir = Path(args.outdir)
     base_outdir.mkdir(parents=True, exist_ok=True)

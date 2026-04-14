@@ -72,6 +72,129 @@ class MaintenanceAgentDDQN:
             self.qt.load_state_dict(self.q.state_dict())
         return loss
 
+
+class HierMaintenanceAgentDDQN:
+    # gate actions: 0 DN, 1 MAINT
+    # type actions: 0 IM, 1 CM
+    def __init__(self, state_dim: int, cfg, rng: random.Random, device):
+        self.cfg = cfg
+        self.rng = rng
+        self.device = device
+        self.state_dim = int(state_dim)
+
+        self.q_gate = MLP(self.state_dim, 2).to(device)
+        self.q_gate_t = MLP(self.state_dim, 2).to(device)
+        self.q_gate_t.load_state_dict(self.q_gate.state_dict())
+        self.opt_gate = torch.optim.Adam(self.q_gate.parameters(), lr=cfg.LR)
+
+        self.q_type = MLP(self.state_dim, 2).to(device)
+        self.q_type_t = MLP(self.state_dim, 2).to(device)
+        self.q_type_t.load_state_dict(self.q_type.state_dict())
+        self.opt_type = torch.optim.Adam(self.q_type.parameters(), lr=cfg.LR)
+
+        self.buf_gate = ReplayBuffer(cfg.REPLAY_SIZE, rng)
+        self.buf_type = ReplayBuffer(cfg.REPLAY_SIZE, rng)
+
+        self.eps = EpsSchedule(cfg.EPS_START, cfg.EPS_END, cfg.EPS_DECAY_STEPS)
+        self.steps = 0
+
+    def _match_state_dim(self, s: np.ndarray) -> np.ndarray:
+        arr = np.asarray(s, dtype=np.float32)
+        if arr.shape[0] == self.state_dim:
+            return arr
+        if arr.shape[0] > self.state_dim:
+            return arr[:self.state_dim]
+        padded = np.zeros(self.state_dim, dtype=np.float32)
+        padded[:arr.shape[0]] = arr
+        return padded
+
+    def _sample_weighted_action(self, allowed_actions, weights):
+        total = sum(max(float(weights[a]), 0.0) for a in allowed_actions)
+        if total <= 0.0:
+            return int(self.rng.choice(allowed_actions))
+        pick = self.rng.random() * total
+        acc = 0.0
+        for action in allowed_actions:
+            acc += max(float(weights[action]), 0.0)
+            if pick <= acc:
+                return int(action)
+        return int(allowed_actions[-1])
+
+    def _gate_weights(self, s: np.ndarray):
+        h = float(s[0]) if s.size > 0 else 1.0
+        local_urgency = float(s[4]) if s.size > 4 else 0.0
+        dn_weight = float(getattr(self.cfg, "MAINT_BIAS_DN", 1.0))
+        maint_weight = max(
+            float(getattr(self.cfg, "MAINT_BIAS_IM", 1.0)),
+            float(getattr(self.cfg, "MAINT_BIAS_CM", 1.0)),
+        )
+        if h > float(getattr(self.cfg, "Hy", 0.1)) and local_urgency > float(getattr(self.cfg, "URGENCY_BIAS_THRESH", 0.8)):
+            denom = max(1e-6, 1.0 - float(getattr(self.cfg, "URGENCY_BIAS_THRESH", 0.8)))
+            frac = (local_urgency - float(getattr(self.cfg, "URGENCY_BIAS_THRESH", 0.8))) / denom
+            maint_weight *= max(0.1, 1.0 - float(getattr(self.cfg, "URGENCY_BIAS_SCALE", 0.6)) * frac)
+        return {0: dn_weight, 1: maint_weight}
+
+    def _type_weights(self, s: np.ndarray):
+        h = float(s[0]) if s.size > 0 else 1.0
+        local_urgency = float(s[4]) if s.size > 4 else 0.0
+        weights = {
+            0: float(getattr(self.cfg, "MAINT_BIAS_IM", 1.0)),
+            1: float(getattr(self.cfg, "MAINT_BIAS_CM", 1.0)),
+        }
+        if h > float(getattr(self.cfg, "Hy", 0.1)) and local_urgency > float(getattr(self.cfg, "URGENCY_BIAS_THRESH", 0.8)):
+            denom = max(1e-6, 1.0 - float(getattr(self.cfg, "URGENCY_BIAS_THRESH", 0.8)))
+            frac = (local_urgency - float(getattr(self.cfg, "URGENCY_BIAS_THRESH", 0.8))) / denom
+            damp = max(0.1, 1.0 - float(getattr(self.cfg, "URGENCY_BIAS_SCALE", 0.6)) * frac)
+            weights[0] *= damp
+            weights[1] *= damp
+        return weights
+
+    def act(self, s: np.ndarray, explore=True, gate_allowed_actions=None, type_allowed_actions=None):
+        s = self._match_state_dim(s)
+        gate_allowed_actions = list(gate_allowed_actions or [0, 1])
+        type_allowed_actions = list(type_allowed_actions or [0, 1])
+        e = self.eps(self.steps)
+        self.steps += 1
+
+        if explore and self.rng.random() < e:
+            if bool(getattr(self.cfg, "MAINT_BIAS_ENABLED", False)):
+                gate_action = self._sample_weighted_action(gate_allowed_actions, self._gate_weights(s))
+            else:
+                gate_action = int(self.rng.choice(gate_allowed_actions))
+        else:
+            with torch.no_grad():
+                x = torch.tensor(s[None], dtype=torch.float32, device=self.device)
+                q_gate = self.q_gate(x).detach().cpu()[0]
+                gate_action = max(gate_allowed_actions, key=lambda a: float(q_gate[a].item()))
+
+        type_action = None
+        if int(gate_action) == 1 and type_allowed_actions:
+            if explore and self.rng.random() < e:
+                if bool(getattr(self.cfg, "MAINT_BIAS_ENABLED", False)):
+                    type_action = self._sample_weighted_action(type_allowed_actions, self._type_weights(s))
+                else:
+                    type_action = int(self.rng.choice(type_allowed_actions))
+            else:
+                with torch.no_grad():
+                    x = torch.tensor(s[None], dtype=torch.float32, device=self.device)
+                    q_type = self.q_type(x).detach().cpu()[0]
+                    type_action = max(type_allowed_actions, key=lambda a: float(q_type[a].item()))
+        return int(gate_action), None if type_action is None else int(type_action)
+
+    def learn(self):
+        losses = {}
+        if len(self.buf_gate) >= self.cfg.BATCH:
+            batch = self.buf_gate.sample(self.cfg.BATCH)
+            losses["gate"] = ddqn_update(self.q_gate, self.q_gate_t, self.opt_gate, batch, self.cfg.GAMMA, self.device)
+        if len(self.buf_type) >= self.cfg.BATCH:
+            batch = self.buf_type.sample(self.cfg.BATCH)
+            losses["type"] = ddqn_update(self.q_type, self.q_type_t, self.opt_type, batch, self.cfg.GAMMA, self.device)
+
+        if self.steps % self.cfg.TARGET_UPDATE == 0:
+            self.q_gate_t.load_state_dict(self.q_gate.state_dict())
+            self.q_type_t.load_state_dict(self.q_type.state_dict())
+        return losses if losses else None
+
 class THDQNAgent:
     """
     Minimal hierarchical DQN:
