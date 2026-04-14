@@ -13,6 +13,7 @@ from checkpointing import CheckpointManager, load_checkpoint
 from infer_demo import (
     build_infer_route_result,
     build_infer_summary_row,
+    infer_thdqn_low_state_mode,
     should_use_formal_final_eval_scenario,
 )
 from run_experiment import (
@@ -26,6 +27,7 @@ from run_experiment import (
     maintenance_low_gain_penalty,
     maintenance_prior_penalty,
     maintenance_reward,
+    normalize_jobs_target_for_combo_mode,
     select_maintenance_action,
 )
 from src.agents import PPOSchedulerAgent, THDQNAgent
@@ -465,6 +467,16 @@ class MergeRegressionTests(unittest.TestCase):
             ],
         )
 
+    def test_grid_full_normalizes_jobs_target_to_full_grid(self):
+        cfg = SimConfig()
+        cfg.ARRIVAL_LAM_VALUES = (20.0, 40.0, 60.0)
+        cfg.DDT_VALUES = (1.0, 1.5, 2.0)
+        cfg.COMBO_SEGMENT_JOBS = 7
+
+        self.assertEqual(normalize_jobs_target_for_combo_mode(cfg, 5, "grid_full"), 63)
+        self.assertEqual(normalize_jobs_target_for_combo_mode(cfg, 999, "grid_full"), 63)
+        self.assertEqual(normalize_jobs_target_for_combo_mode(cfg, 42, "variable"), 42)
+
     def test_thdqn_pruned_low_state_excludes_regime_features(self):
         cfg = SimConfig()
         agent = THDQNAgent(state_dim=15, low_state_dim=11, cfg=cfg, rng=random.Random(0), device=torch.device("cpu"))
@@ -474,6 +486,36 @@ class MergeRegressionTests(unittest.TestCase):
 
         self.assertEqual(low_state.shape[0], 11)
         np.testing.assert_allclose(low_state, np.array([0, 1, 2, 6, 7, 8, 9, 10, 12, 13, 14], dtype=np.float32))
+
+    def test_infer_legacy_thdqn_low_state_mode_from_checkpoint_shape(self):
+        with tempfile.TemporaryDirectory() as td:
+            ckpt_path = Path(td) / "legacy_thdqn.pt"
+            torch.save(
+                {
+                    "meta": {"config": {"SCHEDULER_MODE": "THDQN"}},
+                    "models": {
+                        "high_q": {"net.0.weight": torch.zeros((8, 15))},
+                        "low_q": {"net.0.weight": torch.zeros((8, 19))},
+                    },
+                },
+                ckpt_path,
+            )
+            self.assertEqual(infer_thdqn_low_state_mode(ckpt_path, torch.device("cpu")), "full")
+
+    def test_infer_pruned_thdqn_low_state_mode_from_checkpoint_shape(self):
+        with tempfile.TemporaryDirectory() as td:
+            ckpt_path = Path(td) / "pruned_thdqn.pt"
+            torch.save(
+                {
+                    "meta": {"config": {"SCHEDULER_MODE": "THDQN", "THDQN_LOW_STATE_DIM": 11}},
+                    "models": {
+                        "high_q": {"net.0.weight": torch.zeros((8, 15))},
+                        "low_q": {"net.0.weight": torch.zeros((8, 15))},
+                    },
+                },
+                ckpt_path,
+            )
+            self.assertEqual(infer_thdqn_low_state_mode(ckpt_path, torch.device("cpu")), "pruned")
 
     def test_maintenance_state_includes_current_stress_as_18th_dimension(self):
         state = build_maintenance_state(
@@ -660,9 +702,10 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(action, 2)
         self.assertTrue(meta["im_invalid_flag"])
         self.assertTrue(meta["dn_imminent_breakdown_veto"])
+        self.assertFalse(meta["cm_emergency_override"])
         self.assertIn("DN", meta["safety_filtered_actions"])
 
-    def test_pomcp_unrestricted_high_health_gate_allows_only_dn(self):
+    def test_pomcp_unrestricted_high_health_gate_blocks_only_cm(self):
         cfg = SimConfig()
         cfg.ENFORCE_REGION_POLICY = False
         cfg.POMCP_UNRESTRICTED_SAFETY_FILTER = True
@@ -693,10 +736,83 @@ class MergeRegressionTests(unittest.TestCase):
             explore=False,
         )
 
-        self.assertEqual(action, 0)
-        self.assertEqual(meta["allowed_actions"], [0])
-        self.assertIn("IM", meta["safety_filtered_actions"])
+        self.assertEqual(action, 1)
+        self.assertEqual(sorted(meta["allowed_actions"]), [0, 1])
         self.assertIn("CM", meta["safety_filtered_actions"])
+        self.assertNotIn("IM", meta["safety_filtered_actions"])
+        self.assertFalse(meta["cm_emergency_override"])
+
+    def test_pomcp_unrestricted_high_health_cm_emergency_override(self):
+        cfg = SimConfig()
+        cfg.ENFORCE_REGION_POLICY = False
+        cfg.POMCP_UNRESTRICTED_SAFETY_FILTER = True
+        cfg.POMCP_MAINT_ACTION_MAX_H = 0.40
+        env = _HardBreakdownVetoEnvStub()
+        planner = _SingleStepPOMCP()
+        particle = {
+            "h_true": 0.90,
+            "stress": 0.4,
+            "baseline_rul": 1.0,
+            "region_b_elapsed": 0.0,
+        }
+
+        action, meta = select_maintenance_action(
+            "POMCP",
+            None,
+            planner,
+            {0: [particle]},
+            env,
+            0,
+            0.90,
+            np.zeros(18, dtype=np.float32),
+            0.1,
+            0.4,
+            0.2,
+            cfg,
+            random.Random(0),
+            explore=False,
+        )
+
+        self.assertEqual(action, 2)
+        self.assertEqual(meta["allowed_actions"], [2])
+        self.assertTrue(meta["im_invalid_flag"])
+        self.assertTrue(meta["dn_imminent_breakdown_veto"])
+        self.assertTrue(meta["cm_emergency_override"])
+        self.assertIn("CM", meta["safety_filtered_actions"])
+
+    def test_pomcp_cm_emergency_override_is_not_set_when_cm_was_not_blocked(self):
+        cfg = SimConfig()
+        cfg.ENFORCE_REGION_POLICY = False
+        cfg.POMCP_UNRESTRICTED_SAFETY_FILTER = True
+        cfg.POMCP_MAINT_ACTION_MAX_H = 0.40
+        env = _LatePreferenceEnvStub()
+        planner = _BestRewardPOMCP()
+        particle = {
+            "h_true": 0.05,
+            "stress": 0.2,
+            "baseline_rul": 1.0,
+            "region_b_elapsed": 40.0,
+        }
+
+        action, meta = select_maintenance_action(
+            "POMCP",
+            None,
+            planner,
+            {0: [particle]},
+            env,
+            0,
+            0.05,
+            np.zeros(18, dtype=np.float32),
+            0.1,
+            0.2,
+            0.0,
+            cfg,
+            random.Random(0),
+            explore=False,
+        )
+
+        self.assertEqual(action, 2)
+        self.assertFalse(meta["cm_emergency_override"])
 
     def test_combo_conditioned_behavior_groups_rule_goal_and_maintenance_counts(self):
         decision_log = [
@@ -731,6 +847,7 @@ class MergeRegressionTests(unittest.TestCase):
                 "ddt_true_segment": 1.0,
                 "im_invalid_flag": True,
                 "dn_imminent_breakdown_veto": False,
+                "cm_emergency_override": True,
             },
             {
                 "event": "scheduling",
@@ -760,6 +877,7 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(row["lam_ddt_mode"], "variable")
         self.assertEqual(row["im_invalid_filtered_count"], 1)
         self.assertEqual(row["dn_veto_count"], 0)
+        self.assertEqual(row["cm_emergency_override_count"], 1)
         self.assertIn("lam=20.0|ddt=1.00", row["combo_behavior"])
         self.assertIn("lam=20.0|ddt=1.00", row["dominant_rule_by_combo"])
 

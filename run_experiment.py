@@ -166,6 +166,13 @@ def compute_grid_full_jobs_target(cfg: SimConfig) -> int:
     segment_jobs = max(1, int(getattr(cfg, "COMBO_SEGMENT_JOBS", 1)))
     return int(max(1, len(combos)) * segment_jobs)
 
+
+def normalize_jobs_target_for_combo_mode(cfg: SimConfig, jobs_target: int, combo_mode: Optional[str] = None) -> int:
+    mode = str(combo_mode or getattr(cfg, "LAM_DDT_MODE", "variable")).strip().lower()
+    if mode == "grid_full":
+        return compute_grid_full_jobs_target(cfg)
+    return int(jobs_target)
+
 def allowed_actions_by_region(h_obs: float, cfg: SimConfig, enforce_region: bool) -> List[int]:
     if not enforce_region:
         return [0, 1, 2]
@@ -444,6 +451,7 @@ def build_episode_scenario(
     machine_curve_ids: Optional[List[int]] = None,
     combo_mode: Optional[str] = None,
 ) -> EpisodeScenario:
+    jobs_target = normalize_jobs_target_for_combo_mode(cfg, jobs_target, combo_mode)
     machine_curve_ids = list(machine_curve_ids or list(cfg.MACHINE_CURVE_IDS))
     if episode_combos is None or episode_combo_seq is None:
         combos, seq = build_episode_combos(cfg, scenario_rng, jobs_target, combo_mode=combo_mode)
@@ -725,9 +733,11 @@ def _pomcp_safety_filtered_actions(
         h_state,
         allowed_actions_by_region(h_state, cfg, enforce_region),
     )
+    max_h = float(getattr(cfg, "POMCP_MAINT_ACTION_MAX_H", 0.40))
     info: Dict[str, Any] = {
         "im_invalid_flag": bool(1 not in base_allowed),
         "dn_imminent_breakdown_veto": False,
+        "cm_emergency_override": False,
         "safety_filtered_actions": [],
         "allowed_actions": list(base_allowed),
     }
@@ -735,15 +745,12 @@ def _pomcp_safety_filtered_actions(
         return list(base_allowed), info
 
     allowed = list(base_allowed)
-    max_h = float(getattr(cfg, "POMCP_MAINT_ACTION_MAX_H", 0.40))
+    cm_blocked_high_health = False
     if h_state > max_h:
-        removed = [a for a in allowed if a in (1, 2)]
-        if removed:
-            allowed = [a for a in allowed if a == 0]
-            if 1 in removed:
-                info["safety_filtered_actions"].append("IM")
-            if 2 in removed:
-                info["safety_filtered_actions"].append("CM")
+        if 2 in allowed:
+            allowed = [a for a in allowed if a != 2]
+            cm_blocked_high_health = True
+            info["safety_filtered_actions"].append("CM")
 
     if 0 in allowed:
         idx_before = env.operating_index_from_rul(mid, h_state)
@@ -765,7 +772,13 @@ def _pomcp_safety_filtered_actions(
         info["safety_filtered_actions"].append("IM")
 
     if not allowed:
-        allowed = [2]
+        if cm_blocked_high_health and info["im_invalid_flag"] and info["dn_imminent_breakdown_veto"]:
+            allowed = [2]
+            info["cm_emergency_override"] = True
+        else:
+            raise ValueError(
+                "POMCP safety filter removed all maintenance actions without a valid emergency override path."
+            )
     info["safety_filtered_actions"] = sorted(set(info["safety_filtered_actions"]))
     info["allowed_actions"] = list(allowed)
     return allowed, info
@@ -882,6 +895,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
             rec.setdefault("combo_level_idx", regime.get("level_idx"))
             rec.setdefault("im_invalid_flag", False)
             rec.setdefault("dn_imminent_breakdown_veto", False)
+            rec.setdefault("cm_emergency_override", False)
             rec.setdefault("safety_filtered_actions", "")
             if rec.get("event") == "maintenance":
                 mid_val = rec.get("mid")
@@ -956,6 +970,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "ddt_hat": float(ddt_hat),
                                     "im_invalid_flag": bool(rec.get("action_meta", {}).get("im_invalid_flag", False)),
                                     "dn_imminent_breakdown_veto": bool(rec.get("action_meta", {}).get("dn_imminent_breakdown_veto", False)),
+                                    "cm_emergency_override": bool(rec.get("action_meta", {}).get("cm_emergency_override", False)),
                                     "safety_filtered_actions": "|".join(rec.get("action_meta", {}).get("safety_filtered_actions", [])),
                                     "breakdown_flag": False,
                                     "breakdown_cost": 0.0,
@@ -1013,6 +1028,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "ddt_hat": float(ddt_hat),
                                     "im_invalid_flag": bool(rec.get("action_meta", {}).get("im_invalid_flag", False)),
                                     "dn_imminent_breakdown_veto": bool(rec.get("action_meta", {}).get("dn_imminent_breakdown_veto", False)),
+                                    "cm_emergency_override": bool(rec.get("action_meta", {}).get("cm_emergency_override", False)),
                                     "safety_filtered_actions": "|".join(rec.get("action_meta", {}).get("safety_filtered_actions", [])),
                                     "breakdown_flag": False,
                                     "breakdown_cost": 0.0,
@@ -1120,6 +1136,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "ddt_hat": float(ddt_hat),
                                     "im_invalid_flag": bool(action_meta.get("im_invalid_flag", False)),
                                     "dn_imminent_breakdown_veto": bool(action_meta.get("dn_imminent_breakdown_veto", False)),
+                                    "cm_emergency_override": bool(action_meta.get("cm_emergency_override", False)),
                                     "safety_filtered_actions": "|".join(action_meta.get("safety_filtered_actions", [])),
                                     "breakdown_flag": False,
                                     "breakdown_cost": 0.0,
@@ -1187,6 +1204,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                         "ddt_hat": float(ddt_hat),
                                         "im_invalid_flag": bool(rec.get("action_meta", {}).get("im_invalid_flag", False)),
                                         "dn_imminent_breakdown_veto": bool(rec.get("action_meta", {}).get("dn_imminent_breakdown_veto", False)),
+                                        "cm_emergency_override": bool(rec.get("action_meta", {}).get("cm_emergency_override", False)),
                                         "safety_filtered_actions": "|".join(rec.get("action_meta", {}).get("safety_filtered_actions", [])),
                                         "breakdown_flag": False,
                                         "breakdown_cost": 0.0,
@@ -1324,7 +1342,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         "im_count", "im_damage", "risk_h", "risk_trend", "im_longterm_penalty", "opportunity_cost",
                         "p_fail", "expected_fail_cost", "downtime_cost", "delta_t_since_last_maint",
                         "lambda_hat", "ddt_hat", "lambda_true_segment", "ddt_true_segment", "sched_lambda", "sched_ddt", "sched_regime_feature_mode", "combo_segment", "combo_level_idx",
-                        "im_invalid_flag", "dn_imminent_breakdown_veto", "safety_filtered_actions",
+                        "im_invalid_flag", "dn_imminent_breakdown_veto", "cm_emergency_override", "safety_filtered_actions",
                         "goal", "rule", "dispatched", "op", "job_due", "overdue",
                         "local_urgency", "breakdown_flag", "breakdown_kind", "breakdown_cost", "breakdown_count", "hard_breakdown_count",
                         "stochastic_breakdown_count", "requeued_op_count", "interrupted_proc_time",
@@ -1343,7 +1361,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                             row.get("lambda_hat"), row.get("ddt_hat"), row.get("lambda_true_segment"), row.get("ddt_true_segment"),
                             row.get("sched_lambda"), row.get("sched_ddt"), row.get("sched_regime_feature_mode"),
                             row.get("combo_segment"), row.get("combo_level_idx"),
-                            row.get("im_invalid_flag"), row.get("dn_imminent_breakdown_veto"), row.get("safety_filtered_actions"),
+                            row.get("im_invalid_flag"), row.get("dn_imminent_breakdown_veto"), row.get("cm_emergency_override"), row.get("safety_filtered_actions"),
                             row.get("goal"), row.get("rule"), row.get("dispatched"),
                             json.dumps(row.get("op"), separators=(",", ":"), ensure_ascii=True) if row.get("op") is not None else "",
                             row.get("job_due"), row.get("overdue"),
@@ -1414,6 +1432,7 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
     action_meta: Dict[str, Any] = {
         "im_invalid_flag": bool(1 not in allowed_actions),
         "dn_imminent_breakdown_veto": False,
+        "cm_emergency_override": False,
         "safety_filtered_actions": [],
         "allowed_actions": list(allowed_actions),
     }
@@ -1589,6 +1608,7 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
     cfg_env = getattr(env, "cfg", None)
     im_invalid_filtered_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("im_invalid_flag")))
     dn_veto_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("dn_imminent_breakdown_veto")))
+    cm_emergency_override_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("cm_emergency_override")))
     return {
         "seed": int(seed),
         "maint_mode": str(mode),
@@ -1639,6 +1659,7 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "dominant_goal_by_combo": dominant_goal_by_combo,
         "im_invalid_filtered_count": int(im_invalid_filtered_count),
         "dn_veto_count": int(dn_veto_count),
+        "cm_emergency_override_count": int(cm_emergency_override_count),
         "maint_dn": int(maint_counts.get("DN", 0)),
         "maint_im": int(maint_counts.get("IM", 0)),
         "maint_cm": int(maint_counts.get("CM", 0)),
@@ -2436,6 +2457,7 @@ def train_one_mode(
         "dominant_goal_by_combo": official_dominant_goal_by_combo,
         "im_invalid_filtered_count": int(sum(1 for row in official_maint_rows if bool(row.get("im_invalid_flag")))),
         "dn_veto_count": int(sum(1 for row in official_maint_rows if bool(row.get("dn_imminent_breakdown_veto")))),
+        "cm_emergency_override_count": int(sum(1 for row in official_maint_rows if bool(row.get("cm_emergency_override")))),
     }
     write_summary_files(outdir, f"summary_{ts}_{maint_mode_tag}_{train_policy_tag}", summary_row)
 

@@ -29,6 +29,7 @@ from run_experiment import (
     effective_base_degradation_rate,
     effective_degradation_rate_scale,
     make_rng,
+    normalize_jobs_target_for_combo_mode,
     write_summary_files,
     validate_region_thresholds,
 )
@@ -85,11 +86,14 @@ def make_maint_agent(cfg: SimConfig, seed: int, device: torch.device) -> Mainten
 
 
 def make_sched_agent(cfg: SimConfig, seed: int, device: torch.device,
-                     state_dim: int | None = None, low_state_dim: int | None = None):
+                     state_dim: int | None = None, low_state_dim: int | None = None,
+                     low_state_mode: str | None = None):
     scheduler_mode = str(getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
     state_dim = int(getattr(cfg, "SCHEDULER_STATE_DIM", 15) if state_dim is None else state_dim)
     if scheduler_mode == "PPO":
         return PPOSchedulerAgent(state_dim=int(state_dim), cfg=cfg, rng=random.Random(seed), device=device)
+    if low_state_mode is not None:
+        cfg.THDQN_LOW_STATE_MODE = str(low_state_mode)
     return THDQNAgent(
         state_dim=int(state_dim),
         low_state_dim=int(getattr(cfg, "THDQN_LOW_STATE_DIM", 11) if low_state_dim is None else low_state_dim),
@@ -175,6 +179,7 @@ def build_infer_summary_row(ts: str, episode_idx: int, cfg_eval: SimConfig, seed
         "dominant_goal_by_combo": dominant_goal_by_combo,
         "im_invalid_filtered_count": int(sum(1 for row in maint_rows if bool(row.get("im_invalid_flag")))),
         "dn_veto_count": int(sum(1 for row in maint_rows if bool(row.get("dn_imminent_breakdown_veto")))),
+        "cm_emergency_override_count": int(sum(1 for row in maint_rows if bool(row.get("cm_emergency_override")))),
     }
 
 
@@ -209,6 +214,29 @@ def infer_thdqn_low_state_dim(ckpt_path: Path, map_location: torch.device) -> in
     if hasattr(weight, "shape") and len(weight.shape) >= 2:
         return int(weight.shape[1] - 4)
     return 11
+
+
+def infer_thdqn_low_state_mode(ckpt_path: Path, map_location: torch.device) -> str:
+    ckpt = torch.load(str(ckpt_path), map_location=map_location)
+    meta_cfg = ckpt.get("meta", {}).get("config", {}) or {}
+    mode = str(meta_cfg.get("THDQN_LOW_STATE_MODE", "")).strip().lower()
+    if mode in {"pruned", "full"}:
+        return mode
+    state_dim = infer_scheduler_state_dim(ckpt_path, map_location)
+    low_state_dim = infer_thdqn_low_state_dim(ckpt_path, map_location)
+    models = ckpt.get("models", {})
+    weight = models.get("low_q", {}).get("net.0.weight")
+    if not (hasattr(weight, "shape") and len(weight.shape) >= 2):
+        raise ValueError("Unable to infer THDQN low-state mode from checkpoint.")
+    low_input_dim = int(weight.shape[1] - 4)
+    if low_input_dim == int(state_dim):
+        return "full"
+    if low_input_dim == int(low_state_dim):
+        return "pruned"
+    raise ValueError(
+        f"Ambiguous THDQN low-state mode in checkpoint: low_input_dim={low_input_dim}, "
+        f"state_dim={state_dim}, low_state_dim={low_state_dim}"
+    )
 
 
 def infer_maint_state_dim(ckpt_path: Path, map_location: torch.device) -> int:
@@ -293,12 +321,22 @@ def main():
     cfg.SCHEDULER_MODE = infer_scheduler_mode(ckpt_path, device)
     sched_state_dim = infer_scheduler_state_dim(ckpt_path, device)
     thdqn_low_state_dim = infer_thdqn_low_state_dim(ckpt_path, device)
+    thdqn_low_state_mode = infer_thdqn_low_state_mode(ckpt_path, device) if cfg.SCHEDULER_MODE == "THDQN" else None
     maint_state_dim = infer_maint_state_dim(ckpt_path, device)
     cfg.SCHEDULER_STATE_DIM = int(sched_state_dim)
     cfg.THDQN_LOW_STATE_DIM = int(thdqn_low_state_dim)
+    if thdqn_low_state_mode is not None:
+        cfg.THDQN_LOW_STATE_MODE = str(thdqn_low_state_mode)
     cfg.MAINTENANCE_STATE_DIM = int(maint_state_dim)
     maint_agent = make_maint_agent(cfg, cfg.SEED, device)
-    sched_agent = make_sched_agent(cfg, cfg.SEED, device, state_dim=sched_state_dim, low_state_dim=thdqn_low_state_dim)
+    sched_agent = make_sched_agent(
+        cfg,
+        cfg.SEED,
+        device,
+        state_dim=sched_state_dim,
+        low_state_dim=thdqn_low_state_dim,
+        low_state_mode=thdqn_low_state_mode,
+    )
 
     allow_missing_maint = cfg.MAINT_MODE != "DQN" or compare_maint_modes
     ckpt = load_checkpoint(
@@ -366,12 +404,14 @@ def main():
                 machine_curve_ids=machine_curve_ids,
             )
         else:
+            combo_mode = str(getattr(cfg_eval_base, "EVAL_COMBO_MODE", getattr(cfg_eval_base, "LAM_DDT_MODE", "variable")))
+            jobs_target = normalize_jobs_target_for_combo_mode(cfg_eval_base, int(jobs_target), combo_mode)
             combo_rng = random.Random(seed)
             combos, seq = build_episode_combos(
                 cfg_eval_base,
                 combo_rng,
                 int(jobs_target),
-                combo_mode=str(getattr(cfg_eval_base, "EVAL_COMBO_MODE", getattr(cfg_eval_base, "LAM_DDT_MODE", "variable"))),
+                combo_mode=combo_mode,
             )
             scenario = build_episode_scenario(
                 cfg_eval_base,
@@ -382,6 +422,7 @@ def main():
                 episode_combos=combos,
                 episode_combo_seq=seq,
                 machine_curve_ids=machine_curve_ids,
+                combo_mode=combo_mode,
             )
         scenario_combos = list(getattr(scenario, "combos", []))
         scenario_combo_seq = list(getattr(scenario, "combo_seq", []))
