@@ -24,16 +24,19 @@ from run_experiment import (
     effective_base_degradation_rate,
     effective_degradation_bounds,
     filter_non_improving_im,
+    maintenance_cm_preference_penalty,
+    maintenance_im_history_features,
     maintenance_low_gain_penalty,
     maintenance_prior_penalty,
     maintenance_reward,
+    maintenance_state_dim_for_context,
     normalize_jobs_target_for_combo_mode,
     select_maintenance_action,
 )
 from src.agents import PPOSchedulerAgent, THDQNAgent
 from src.compare import combo_dominant_maps, compare_mode_results, summarize_combo_conditioned_behavior, summarize_scheduling_strategy
 from src.env import EventDrivenShopEnv
-from src.viz import plot_rul_curves, plot_rule_vs_features
+from src.viz import plot_gantt, plot_rul_curves, plot_rule_vs_features
 
 
 class _RecoveryEnvStub:
@@ -136,6 +139,7 @@ class _ImGainEnvStub(_RolloutEnvStub):
     def __init__(self, allow_im: bool):
         super().__init__()
         self.allow_im = bool(allow_im)
+        self.machines = {0: SimpleNamespace(maint_rul_baseline=0.9, im_since_cm=0, im_damage=0.0)}
 
     def im_has_positive_gain(self, mid: int, h: float, baseline_rul=None) -> bool:
         return self.allow_im
@@ -258,6 +262,139 @@ class MergeRegressionTests(unittest.TestCase):
         )
         self.assertEqual(maintenance_prior_penalty(1, 0.8, cfg, enforce_region=True), 0.0)
         self.assertEqual(maintenance_prior_penalty(0, 0.8, cfg, enforce_region=False), 0.0)
+
+    def test_thdqn_dqn_unrestricted_maintenance_state_expands_to_20_dims(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "THDQN"
+        cfg.MAINT_MODE = "DQN"
+        self.assertEqual(maintenance_state_dim_for_context(cfg, "DQN", False), 20)
+        self.assertEqual(maintenance_state_dim_for_context(cfg, "DQN", True), 18)
+        cfg.SCHEDULER_MODE = "PPO"
+        self.assertEqual(maintenance_state_dim_for_context(cfg, "DQN", False), 18)
+
+        state18 = build_maintenance_state(
+            0.8, 0.0, 10.0, 0.1, 0.0, 10.0,
+            40.0, 1.5, 0.2, 0.0, 0.0,
+            0.8, 0.01, 5.0, 0.0,
+            0.1, 0.1, 0.1, 0.2,
+            state_dim=18,
+        )
+        state20 = build_maintenance_state(
+            0.8, 0.0, 10.0, 0.1, 0.0, 10.0,
+            40.0, 1.5, 0.2, 0.0, 0.0,
+            0.8, 0.01, 5.0, 0.0,
+            0.1, 0.1, 0.1, 0.2,
+            im_since_cm_norm=0.33,
+            im_damage_norm=0.66,
+            state_dim=20,
+        )
+        self.assertEqual(state18.shape[0], 18)
+        self.assertEqual(state20.shape[0], 20)
+        self.assertAlmostEqual(float(state20[-2]), 0.33, places=6)
+        self.assertAlmostEqual(float(state20[-1]), 0.66, places=6)
+
+    def test_maintenance_im_history_features_are_normalized(self):
+        cfg = SimConfig()
+        env = _ImGainEnvStub(True)
+        env.machines[0].im_since_cm = 2
+        env.machines[0].im_damage = 0.5
+        count_norm, damage_norm = maintenance_im_history_features(env, 0, cfg)
+        self.assertAlmostEqual(count_norm, 2.0 / 3.0, places=6)
+        self.assertAlmostEqual(damage_norm, 0.5 / float(cfg.IM_DAMAGE_CAP), places=6)
+
+    def test_cm_preference_penalty_only_hits_thdqn_dqn_unrestricted(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "THDQN"
+        env = _ImGainEnvStub(True)
+
+        penalty, readiness, active = maintenance_cm_preference_penalty(
+            2, 0.95, cfg,
+            maint_mode="DQN",
+            enforce_region=False,
+            env=env,
+            mid=0,
+            baseline_rul=0.9,
+            im_since_cm_norm=0.0,
+            im_damage_norm=0.0,
+            dn_imminent_breakdown=False,
+        )
+        self.assertGreater(penalty, 0.0)
+        self.assertEqual(readiness, 0.0)
+        self.assertTrue(active)
+
+        penalty_safe, _, active_safe = maintenance_cm_preference_penalty(
+            2, 0.95, cfg,
+            maint_mode="DQN",
+            enforce_region=False,
+            env=env,
+            mid=0,
+            baseline_rul=0.9,
+            im_since_cm_norm=0.0,
+            im_damage_norm=0.0,
+            dn_imminent_breakdown=True,
+        )
+        self.assertEqual(penalty_safe, 0.0)
+        self.assertFalse(active_safe)
+
+        penalty_ppo, _, active_ppo = maintenance_cm_preference_penalty(
+            2, 0.95, cfg,
+            maint_mode="DQN",
+            enforce_region=False,
+            env=env,
+            mid=0,
+            baseline_rul=0.9,
+            im_since_cm_norm=0.0,
+            im_damage_norm=0.0,
+            dn_imminent_breakdown=False,
+        )
+        cfg.SCHEDULER_MODE = "PPO"
+        penalty_ppo, _, active_ppo = maintenance_cm_preference_penalty(
+            2, 0.95, cfg,
+            maint_mode="DQN",
+            enforce_region=False,
+            env=env,
+            mid=0,
+            baseline_rul=0.9,
+            im_since_cm_norm=0.0,
+            im_damage_norm=0.0,
+            dn_imminent_breakdown=False,
+        )
+        self.assertEqual(penalty_ppo, 0.0)
+        self.assertFalse(active_ppo)
+
+    def test_im_late_penalty_rises_with_low_health_or_im_history(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "THDQN"
+        env = _ImGainEnvStub(True)
+        penalty, readiness, active = maintenance_cm_preference_penalty(
+            1, 0.12, cfg,
+            maint_mode="DQN",
+            enforce_region=False,
+            env=env,
+            mid=0,
+            baseline_rul=0.9,
+            im_since_cm_norm=0.8,
+            im_damage_norm=0.3,
+            dn_imminent_breakdown=False,
+        )
+        self.assertGreater(readiness, 0.7)
+        self.assertGreater(penalty, 0.0)
+        self.assertTrue(active)
+
+    def test_plot_gantt_supports_footer_cards_without_overlap_errors(self):
+        jobs = {
+            0: SimpleNamespace(completed=True, completion_time=10.0, due=20.0),
+        }
+        timeline_ops = [(0, 0.0, 10.0, 0, 0, "DONE")]
+        timeline_maint = [(0, 10.0, 14.0, "IM"), (0, 14.0, 20.0, "CM")]
+        schedule = [
+            (0.0, 9.0, 20.0, 1.0),
+            (9.0, 18.0, 40.0, 1.5),
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_path = Path(tmpdir) / "gantt.png"
+            plot_gantt(timeline_ops, timeline_maint, jobs, str(out_path), schedule=schedule, policy_label="Policy: Unrestricted")
+            self.assertTrue(out_path.exists())
 
     def test_maintenance_reward_uses_fixed_action_cost_and_unrestricted_prior(self):
         cfg = SimConfig()

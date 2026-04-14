@@ -173,12 +173,11 @@ def _draw_compare_card(fig, title: str, rows: List[Tuple[str, str]]):
                 fontsize=8.7, color="#24323D")
 
 
-def _draw_schedule_table(fig, combo_order, combo_colors):
+def _draw_schedule_table(fig, combo_order, combo_colors, bounds: Tuple[float, float, float, float]):
     if not combo_order:
         return
     rows = len(combo_order)
-    height = 0.16 + 0.078 * rows
-    ax = _add_card_axes(fig, (0.79, 0.31, 0.18, min(height, 0.60)))
+    ax = _add_card_axes(fig, bounds)
     ax.text(0.08, 0.90, "Load Settings", transform=ax.transAxes, ha="left", va="center",
             fontsize=9.0, color="#24323D", fontweight="semibold")
     ax.text(0.08, 0.74, "", transform=ax.transAxes)
@@ -186,10 +185,13 @@ def _draw_schedule_table(fig, combo_order, combo_colors):
             fontsize=8.6, color="#6A737B", fontweight="semibold")
     ax.text(0.39, 0.72, "DDT", transform=ax.transAxes, ha="left", va="center",
             fontsize=8.6, color="#6A737B", fontweight="semibold")
-    y = 0.64
+    y_start, y_end = 0.60, 0.14
+    step = (y_start - y_end) / max(rows - 1, 1)
+    box_h = max(0.04, min(0.07, step * 0.68 if rows > 1 else 0.06))
+    y = y_start
     for key in combo_order:
         ax.add_patch(
-            FancyBboxPatch((0.08, y - 0.035), 0.06, 0.07, transform=ax.transAxes,
+            FancyBboxPatch((0.08, y - box_h / 2.0), 0.06, box_h, transform=ax.transAxes,
                            boxstyle="round,pad=0.01,rounding_size=0.01",
                            linewidth=0.0, facecolor=combo_colors[key], alpha=0.9)
         )
@@ -197,7 +199,7 @@ def _draw_schedule_table(fig, combo_order, combo_colors):
                 fontsize=8.6, color="#24323D")
         ax.text(0.39, y, f"{key[1]:.2f}", transform=ax.transAxes, ha="left", va="center",
                 fontsize=8.6, color="#24323D")
-        y -= 0.11
+        y -= step
 
 
 def _draw_named_legend_card(fig, title: str, items: List[Tuple[str, str, Optional[str]]], bounds: Tuple[float, float, float, float]):
@@ -206,17 +208,20 @@ def _draw_named_legend_card(fig, title: str, items: List[Tuple[str, str, Optiona
     ax = _add_card_axes(fig, bounds)
     ax.text(0.08, 0.84, title, transform=ax.transAxes, ha="left", va="center",
             fontsize=9.0, color="#24323D", fontweight="semibold")
-    y = 0.62
+    y_start, y_end = 0.62, 0.18
+    step = (y_start - y_end) / max(len(items) - 1, 1)
+    box_h = max(0.07, min(0.10, step * 0.72 if len(items) > 1 else 0.09))
+    y = y_start
     for label, face, hatch in items:
         ax.add_patch(
-            FancyBboxPatch((0.08, y - 0.045), 0.10, 0.09, transform=ax.transAxes,
+            FancyBboxPatch((0.08, y - box_h / 2.0), 0.10, box_h, transform=ax.transAxes,
                            boxstyle="round,pad=0.01,rounding_size=0.01",
                            linewidth=0.8, edgecolor="#313131", facecolor=face,
                            hatch=hatch or "")
         )
         ax.text(0.24, y, label, transform=ax.transAxes, ha="left", va="center",
                 fontsize=8.5, color="#24323D")
-        y -= 0.18
+        y -= step
 
 
 def _legend_outside(ax, handles, title: Optional[str] = None, *, anchor_y: float = 1.0):
@@ -337,9 +342,9 @@ def plot_gantt(timeline_ops, timeline_maint, jobs, out_path: str,
     if has_interrupted_ops:
         maint_items.append(("INTERRUPTED", "#9E9E9E", "xx"))
 
-    fig.subplots_adjust(left=0.08, right=0.78, bottom=0.22, top=0.90)
-    _draw_schedule_table(fig, combo_order, combo_colors)
-    _draw_named_legend_card(fig, "Maintenance", maint_items, bounds=(0.79, 0.24, 0.18, 0.17 + 0.06 * len(maint_items)))
+    fig.subplots_adjust(left=0.08, right=0.98, bottom=0.34, top=0.90)
+    _draw_schedule_table(fig, combo_order, combo_colors, bounds=(0.08, 0.13, 0.34, 0.17))
+    _draw_named_legend_card(fig, "Maintenance", maint_items, bounds=(0.45, 0.13, 0.25, 0.17))
     _draw_info_card(fig, policy_label)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=200)

@@ -152,6 +152,7 @@ class SimConfig:
     MIN_MAX_H: float = 0.65             # legacy
     IM_DEGR_BOOST: float = 0.08         # legacy
     IM_DAMAGE_STEP: float = 0.1         # legacy
+    IM_DAMAGE_CAP: float = 1.0
     IM_TARGET_RUL: float = 0.8          # legacy (unused in geometric-baseline IM model)
     IM_MULT: float = 1.2               # legacy (unused in geometric-baseline IM model)
     IM_GAIN: float = 0.35              # legacy
@@ -280,6 +281,12 @@ class SimConfig:
     THDQN_LOW_STATE_MODE: str = "pruned"
     THDQN_LOW_STATE_DIM: int = 11
     MAINTENANCE_STATE_DIM: int = 18
+    THDQN_DQN_CM_PREF_FIX: bool = True
+    THDQN_DQN_MAINT_STATE_DIM: int = 20
+    THDQN_DQN_CM_PREF_H_TRIGGER: float = 0.30
+    THDQN_DQN_CM_EARLY_PENALTY: float = 6.0
+    THDQN_DQN_IM_LATE_PENALTY: float = 4.0
+    THDQN_DQN_HIGH_HEALTH_CM_H: float = 0.70
     PPO_SCHED_REWARD_GOAL: int = 2
     PPO_LR: float = 3e-4
     PPO_GAMMA: float = 0.99

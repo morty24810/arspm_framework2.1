@@ -180,6 +180,12 @@ def build_infer_summary_row(ts: str, episode_idx: int, cfg_eval: SimConfig, seed
         "im_invalid_filtered_count": int(sum(1 for row in maint_rows if bool(row.get("im_invalid_flag")))),
         "dn_veto_count": int(sum(1 for row in maint_rows if bool(row.get("dn_imminent_breakdown_veto")))),
         "cm_emergency_override_count": int(sum(1 for row in maint_rows if bool(row.get("cm_emergency_override")))),
+        "cm_preference_penalty_count": int(sum(1 for row in maint_rows if bool(row.get("cm_preference_penalty_active")))),
+        "high_health_cm_count": int(sum(
+            1 for row in maint_rows
+            if str(row.get("kind", "")).upper() == "CM"
+            and float(row.get("h", -1.0)) > float(getattr(cfg_eval, "THDQN_DQN_HIGH_HEALTH_CM_H", 0.70))
+        )),
     }
 
 

@@ -41,9 +41,13 @@ from checkpointing import CheckpointManager
 def build_maintenance_state(h, dh, eta, slack_pressure, local_urgency, avg_slack,
                             lambda_hat, ddt_hat, risk_t, win_e, win_l,
                             rul_mu, rul_sigma, t_now, t_last_maint,
-                            pf_dn, pf_im, pf_cm, current_stress):
+                            pf_dn, pf_im, pf_cm, current_stress,
+                            *,
+                            im_since_cm_norm: float = 0.0,
+                            im_damage_norm: float = 0.0,
+                            state_dim: Optional[int] = None):
     dt_last = t_now - t_last_maint
-    return np.array([
+    values = [
         h, dh, eta,
         slack_pressure, local_urgency, avg_slack,
         lambda_hat, ddt_hat,
@@ -52,7 +56,10 @@ def build_maintenance_state(h, dh, eta, slack_pressure, local_urgency, avg_slack
         dt_last,
         pf_dn, pf_im, pf_cm,
         current_stress,
-    ], dtype=np.float32)
+    ]
+    if state_dim is not None and int(state_dim) > 18:
+        values.extend([im_since_cm_norm, im_damage_norm])
+    return np.array(values, dtype=np.float32)
 
 def material_cost(action: int, cfg: SimConfig) -> float:
     if action == 1:
@@ -189,6 +196,69 @@ def filter_non_improving_im(env, mid: int, h_obs: float, allowed_actions: List[i
     return list(allowed_actions)
 
 
+def thdqn_dqn_cm_pref_fix_active(cfg: SimConfig, maint_mode: Optional[str] = None,
+                                 enforce_region: Optional[bool] = None) -> bool:
+    mode = str(maint_mode or getattr(cfg, "MAINT_MODE", "DQN")).upper()
+    scheduler_mode = str(getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
+    unrestricted = not bool(
+        getattr(cfg, "ENFORCE_REGION_POLICY", True) if enforce_region is None else enforce_region
+    )
+    return (
+        bool(getattr(cfg, "THDQN_DQN_CM_PREF_FIX", False))
+        and scheduler_mode == "THDQN"
+        and mode == "DQN"
+        and unrestricted
+    )
+
+
+def maintenance_state_dim_for_context(cfg: SimConfig, maint_mode: Optional[str] = None,
+                                      enforce_region: Optional[bool] = None) -> int:
+    if thdqn_dqn_cm_pref_fix_active(cfg, maint_mode=maint_mode, enforce_region=enforce_region):
+        return int(getattr(cfg, "THDQN_DQN_MAINT_STATE_DIM", 20))
+    return int(getattr(cfg, "MAINTENANCE_STATE_DIM", 18))
+
+
+def maintenance_im_history_features(env, mid: int, cfg: SimConfig) -> Tuple[float, float]:
+    machine = env.machines[mid]
+    im_since_cm_norm = min(float(getattr(machine, "im_since_cm", 0)) / 3.0, 1.0)
+    damage_cap = max(float(getattr(cfg, "IM_DAMAGE_CAP", 1.0)), 1e-6)
+    im_damage_norm = min(float(getattr(machine, "im_damage", 0.0)) / damage_cap, 1.0)
+    return float(im_since_cm_norm), float(im_damage_norm)
+
+
+def maintenance_cm_preference_penalty(action: int, h_for_prior: float, cfg: SimConfig, *,
+                                      maint_mode: Optional[str],
+                                      enforce_region: bool,
+                                      env=None,
+                                      mid: Optional[int] = None,
+                                      baseline_rul: Optional[float] = None,
+                                      im_since_cm_norm: float = 0.0,
+                                      im_damage_norm: float = 0.0,
+                                      dn_imminent_breakdown: bool = False) -> Tuple[float, float, bool]:
+    if not thdqn_dqn_cm_pref_fix_active(cfg, maint_mode=maint_mode, enforce_region=enforce_region):
+        return 0.0, 0.0, False
+    if int(action) not in (1, 2) or env is None or mid is None:
+        return 0.0, 0.0, False
+    if not hasattr(env, "im_has_positive_gain"):
+        return 0.0, 0.0, False
+    if not bool(env.im_has_positive_gain(mid, h_for_prior, baseline_rul=baseline_rul)):
+        return 0.0, 0.0, False
+
+    trigger_h = max(float(getattr(cfg, "THDQN_DQN_CM_PREF_H_TRIGGER", 0.30)), 1e-6)
+    low_health_score = max(0.0, min((trigger_h - float(h_for_prior)) / trigger_h, 1.0))
+    history_score = max(float(im_since_cm_norm), float(im_damage_norm))
+    cm_readiness = max(low_health_score, history_score)
+
+    if int(action) == 2:
+        if dn_imminent_breakdown:
+            return 0.0, float(cm_readiness), False
+        penalty = float(getattr(cfg, "THDQN_DQN_CM_EARLY_PENALTY", 0.0)) * (1.0 - cm_readiness)
+        return float(penalty), float(cm_readiness), bool(penalty > 0.0)
+
+    penalty = float(getattr(cfg, "THDQN_DQN_IM_LATE_PENALTY", 0.0)) * cm_readiness
+    return float(penalty), float(cm_readiness), bool(penalty > 0.0)
+
+
 def pomcp_unrestricted_safety_filter_enabled(mode: str, cfg: SimConfig, enforce_region: bool) -> bool:
     return (
         str(mode).upper() == "POMCP"
@@ -259,7 +329,11 @@ def maintenance_reward(action: int, dur: float, local_urgency: float,
                        enforce_region: bool,
                        env=None,
                        mid: Optional[int] = None,
-                       baseline_rul: Optional[float] = None) -> float:
+                       baseline_rul: Optional[float] = None,
+                       maint_mode: Optional[str] = None,
+                       im_since_cm_norm: float = 0.0,
+                       im_damage_norm: float = 0.0,
+                       dn_imminent_breakdown: bool = False) -> float:
     downtime_cost = float(dur) * float(local_urgency)
     maint_cost = 0.0
     if action == 1:
@@ -277,7 +351,23 @@ def maintenance_reward(action: int, dur: float, local_urgency: float,
         mid=mid,
         baseline_rul=baseline_rul,
     )
-    return -(downtime_cost + maint_cost + dn_breakdown_cost + violation + prior_penalty + low_gain_penalty)
+    cm_pref_penalty, _, _ = maintenance_cm_preference_penalty(
+        action,
+        h_for_prior,
+        cfg,
+        maint_mode=maint_mode,
+        enforce_region=enforce_region,
+        env=env,
+        mid=mid,
+        baseline_rul=baseline_rul,
+        im_since_cm_norm=im_since_cm_norm,
+        im_damage_norm=im_damage_norm,
+        dn_imminent_breakdown=dn_imminent_breakdown,
+    )
+    return -(
+        downtime_cost + maint_cost + dn_breakdown_cost + violation +
+        prior_penalty + low_gain_penalty + cm_pref_penalty
+    )
 
 def scheduling_reward(goal: int, tard, maint, prev_tard, prev_maint):
     # incremental rewards, 4 goals
@@ -896,6 +986,10 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
             rec.setdefault("im_invalid_flag", False)
             rec.setdefault("dn_imminent_breakdown_veto", False)
             rec.setdefault("cm_emergency_override", False)
+            rec.setdefault("im_since_cm_norm", None)
+            rec.setdefault("im_damage_norm", None)
+            rec.setdefault("cm_readiness", None)
+            rec.setdefault("cm_preference_penalty_active", False)
             rec.setdefault("safety_filtered_actions", "")
             if rec.get("event") == "maintenance":
                 mid_val = rec.get("mid")
@@ -968,6 +1062,10 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "delta_t_since_last_maint": float(env.time - m.last_maint_end),
                                     "lambda_hat": float(lambda_hat),
                                     "ddt_hat": float(ddt_hat),
+                                    "im_since_cm_norm": float(rec.get("im_since_cm_norm", 0.0)),
+                                    "im_damage_norm": float(rec.get("im_damage_norm", 0.0)),
+                                    "cm_readiness": float(rec.get("cm_readiness", 0.0)),
+                                    "cm_preference_penalty_active": bool(rec.get("cm_preference_penalty_active", False)),
                                     "im_invalid_flag": bool(rec.get("action_meta", {}).get("im_invalid_flag", False)),
                                     "dn_imminent_breakdown_veto": bool(rec.get("action_meta", {}).get("dn_imminent_breakdown_veto", False)),
                                     "cm_emergency_override": bool(rec.get("action_meta", {}).get("cm_emergency_override", False)),
@@ -1026,6 +1124,10 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "delta_t_since_last_maint": float(env.time - m.last_maint_end),
                                     "lambda_hat": float(lambda_hat),
                                     "ddt_hat": float(ddt_hat),
+                                    "im_since_cm_norm": float(rec.get("im_since_cm_norm", 0.0)),
+                                    "im_damage_norm": float(rec.get("im_damage_norm", 0.0)),
+                                    "cm_readiness": float(rec.get("cm_readiness", 0.0)),
+                                    "cm_preference_penalty_active": bool(rec.get("cm_preference_penalty_active", False)),
                                     "im_invalid_flag": bool(rec.get("action_meta", {}).get("im_invalid_flag", False)),
                                     "dn_imminent_breakdown_veto": bool(rec.get("action_meta", {}).get("dn_imminent_breakdown_veto", False)),
                                     "cm_emergency_override": bool(rec.get("action_meta", {}).get("cm_emergency_override", False)),
@@ -1093,13 +1195,34 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         dn_terms = compute_breakdown_reward_terms(
                             env, mid, local_urgency, current_stress, h_true=h_true
                         )
+                        state_dim = int(getattr(cfg, "MAINTENANCE_STATE_DIM", 18))
+                        im_since_cm_norm, im_damage_norm = maintenance_im_history_features(env, mid, cfg)
+                        dn_imminent_breakdown = bool(dn_terms["would_hard_breakdown"]) or (
+                            float(dn_terms["h_end_true"]) <= float(getattr(cfg, "HARD_BREAKDOWN_RUL", 0.05))
+                        )
                         s = build_maintenance_state(h, dh, eta, slack_pressure, local_urgency, avg_slack,
                                                     lambda_hat, ddt_hat, risk_t, win_e, win_l,
                                                     rul_mu, rul_sigma, env.time, m.last_maint_end,
-                                                    pf_dn, pf_im, pf_cm, current_stress)
+                                                    pf_dn, pf_im, pf_cm, current_stress,
+                                                    im_since_cm_norm=im_since_cm_norm,
+                                                    im_damage_norm=im_damage_norm,
+                                                    state_dim=state_dim)
                         a, action_meta = select_maintenance_action(
                             maint_mode, maint_agent, pomcp, pomcp_beliefs, env, mid, h, s,
                             slack_pressure, current_stress, local_urgency, cfg, belief_rng, explore=False
+                        )
+                        _, cm_readiness, cm_pref_active = maintenance_cm_preference_penalty(
+                            a,
+                            h,
+                            cfg,
+                            maint_mode=maint_mode,
+                            enforce_region=enforce_region,
+                            env=env,
+                            mid=mid,
+                            baseline_rul=m.maint_rul_baseline,
+                            im_since_cm_norm=im_since_cm_norm,
+                            im_damage_norm=im_damage_norm,
+                            dn_imminent_breakdown=dn_imminent_breakdown,
                         )
                         if a == 0:
                             if p_fail_plot is not None:
@@ -1134,6 +1257,10 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "delta_t_since_last_maint": float(env.time - m.last_maint_end),
                                     "lambda_hat": float(lambda_hat),
                                     "ddt_hat": float(ddt_hat),
+                                    "im_since_cm_norm": float(im_since_cm_norm),
+                                    "im_damage_norm": float(im_damage_norm),
+                                    "cm_readiness": float(cm_readiness),
+                                    "cm_preference_penalty_active": bool(cm_pref_active),
                                     "im_invalid_flag": bool(action_meta.get("im_invalid_flag", False)),
                                     "dn_imminent_breakdown_veto": bool(action_meta.get("dn_imminent_breakdown_veto", False)),
                                     "cm_emergency_override": bool(action_meta.get("cm_emergency_override", False)),
@@ -1160,6 +1287,10 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                 "risk_t": risk_t,
                                 "t_e": t_e,
                                 "t_l": t_l,
+                                "im_since_cm_norm": float(im_since_cm_norm),
+                                "im_damage_norm": float(im_damage_norm),
+                                "cm_readiness": float(cm_readiness),
+                                "cm_preference_penalty_active": bool(cm_pref_active),
                                 "action_meta": dict(action_meta),
                             }
                             if env.time >= t_e or (enforce_region and h < cfg.Hy):
@@ -1202,6 +1333,10 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                         "delta_t_since_last_maint": float(env.time - m.last_maint_end),
                                         "lambda_hat": float(lambda_hat),
                                         "ddt_hat": float(ddt_hat),
+                                        "im_since_cm_norm": float(rec.get("im_since_cm_norm", 0.0)),
+                                        "im_damage_norm": float(rec.get("im_damage_norm", 0.0)),
+                                        "cm_readiness": float(rec.get("cm_readiness", 0.0)),
+                                        "cm_preference_penalty_active": bool(rec.get("cm_preference_penalty_active", False)),
                                         "im_invalid_flag": bool(rec.get("action_meta", {}).get("im_invalid_flag", False)),
                                         "dn_imminent_breakdown_veto": bool(rec.get("action_meta", {}).get("dn_imminent_breakdown_veto", False)),
                                         "cm_emergency_override": bool(rec.get("action_meta", {}).get("cm_emergency_override", False)),
@@ -1342,7 +1477,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         "im_count", "im_damage", "risk_h", "risk_trend", "im_longterm_penalty", "opportunity_cost",
                         "p_fail", "expected_fail_cost", "downtime_cost", "delta_t_since_last_maint",
                         "lambda_hat", "ddt_hat", "lambda_true_segment", "ddt_true_segment", "sched_lambda", "sched_ddt", "sched_regime_feature_mode", "combo_segment", "combo_level_idx",
-                        "im_invalid_flag", "dn_imminent_breakdown_veto", "cm_emergency_override", "safety_filtered_actions",
+                        "im_invalid_flag", "dn_imminent_breakdown_veto", "cm_emergency_override", "im_since_cm_norm", "im_damage_norm", "cm_readiness", "cm_preference_penalty_active", "safety_filtered_actions",
                         "goal", "rule", "dispatched", "op", "job_due", "overdue",
                         "local_urgency", "breakdown_flag", "breakdown_kind", "breakdown_cost", "breakdown_count", "hard_breakdown_count",
                         "stochastic_breakdown_count", "requeued_op_count", "interrupted_proc_time",
@@ -1361,7 +1496,8 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                             row.get("lambda_hat"), row.get("ddt_hat"), row.get("lambda_true_segment"), row.get("ddt_true_segment"),
                             row.get("sched_lambda"), row.get("sched_ddt"), row.get("sched_regime_feature_mode"),
                             row.get("combo_segment"), row.get("combo_level_idx"),
-                            row.get("im_invalid_flag"), row.get("dn_imminent_breakdown_veto"), row.get("cm_emergency_override"), row.get("safety_filtered_actions"),
+                            row.get("im_invalid_flag"), row.get("dn_imminent_breakdown_veto"), row.get("cm_emergency_override"),
+                            row.get("im_since_cm_norm"), row.get("im_damage_norm"), row.get("cm_readiness"), row.get("cm_preference_penalty_active"), row.get("safety_filtered_actions"),
                             row.get("goal"), row.get("rule"), row.get("dispatched"),
                             json.dumps(row.get("op"), separators=(",", ":"), ensure_ascii=True) if row.get("op") is not None else "",
                             row.get("job_due"), row.get("overdue"),
@@ -1609,6 +1745,12 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
     im_invalid_filtered_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("im_invalid_flag")))
     dn_veto_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("dn_imminent_breakdown_veto")))
     cm_emergency_override_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("cm_emergency_override")))
+    cm_preference_penalty_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("cm_preference_penalty_active")))
+    high_health_cm_h = float(getattr(cfg_env, "THDQN_DQN_HIGH_HEALTH_CM_H", 0.70))
+    high_health_cm_count = sum(
+        1 for row in extract_maintenance_rows(decision_log)
+        if str(row.get("kind", "")).upper() == "CM" and float(row.get("h", -1.0)) > high_health_cm_h
+    )
     return {
         "seed": int(seed),
         "maint_mode": str(mode),
@@ -1660,6 +1802,8 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "im_invalid_filtered_count": int(im_invalid_filtered_count),
         "dn_veto_count": int(dn_veto_count),
         "cm_emergency_override_count": int(cm_emergency_override_count),
+        "cm_preference_penalty_count": int(cm_preference_penalty_count),
+        "high_health_cm_count": int(high_health_cm_count),
         "maint_dn": int(maint_counts.get("DN", 0)),
         "maint_im": int(maint_counts.get("IM", 0)),
         "maint_cm": int(maint_counts.get("CM", 0)),
@@ -1873,6 +2017,11 @@ def train_one_mode(
     cfg.MAINT_MODE = str(mode).upper()
     cfg.CKPT_DIR = str(ckpt_dir)
     cfg.ENFORCE_REGION_POLICY = bool(train_enforce_region)
+    cfg.MAINTENANCE_STATE_DIM = maintenance_state_dim_for_context(
+        cfg,
+        maint_mode=cfg.MAINT_MODE,
+        enforce_region=train_enforce_region,
+    )
     stamp_effective_degradation_config(cfg)
     set_seed(derive_seed(seed, train_policy_tag, cfg.SCHEDULER_MODE, mode, "global_init"))
 
@@ -1954,6 +2103,9 @@ def train_one_mode(
                             breakdown_terms = compute_breakdown_reward_terms(
                                 env, mid, local_urgency, current_stress, h_true=env.peek_rul_true(mid)
                             )
+                            dn_imminent_breakdown = bool(breakdown_terms["would_hard_breakdown"]) or (
+                                float(breakdown_terms["h_end_true"]) <= float(getattr(cfg, "HARD_BREAKDOWN_RUL", 0.05))
+                            )
                             if action_now == 0:
                                 dur, kind, post_rul = 0.0, "DN", None
                             else:
@@ -1972,6 +2124,10 @@ def train_one_mode(
                                 env=env,
                                 mid=mid,
                                 baseline_rul=env.machines[mid].maint_rul_baseline,
+                                maint_mode=cfg.MAINT_MODE,
+                                im_since_cm_norm=float(rec.get("im_since_cm_norm", 0.0)),
+                                im_damage_norm=float(rec.get("im_damage_norm", 0.0)),
+                                dn_imminent_breakdown=dn_imminent_breakdown,
                             )
                             slack_samples.append(avg_slack)
                             pressure_samples.append(slack_pressure)
@@ -2019,10 +2175,15 @@ def train_one_mode(
                             pf_dn2 = max(0.0, min(1.0, pf_dn2))
                             pf_im2 = max(0.0, min(1.0, pf_im2))
                             pf_cm2 = max(0.0, min(1.0, pf_cm2))
+                            state_dim = int(getattr(cfg, "MAINTENANCE_STATE_DIM", 18))
+                            im_since_cm_norm2, im_damage_norm2 = maintenance_im_history_features(env, mid, cfg)
                             sp = build_maintenance_state(h2, dh2, eta2, slack_pressure, local_urgency, avg_slack,
                                                         lambda_hat, ddt_hat, risk2, win_e2, win_l2,
                                                         rul_mu2, rul_sigma, env.time, env.machines[mid].last_maint_end,
-                                                        pf_dn2, pf_im2, pf_cm2, current_stress)
+                                                        pf_dn2, pf_im2, pf_cm2, current_stress,
+                                                        im_since_cm_norm=im_since_cm_norm2,
+                                                        im_damage_norm=im_damage_norm2,
+                                                        state_dim=state_dim)
                             if maint_agent is not None:
                                 maint_agent.buf.add(rec["state"], executed_action, r, sp, 0.0)
                                 maint_agent.learn()
@@ -2072,10 +2233,15 @@ def train_one_mode(
                         pf_dn = max(0.0, min(1.0, pf_dn))
                         pf_im = max(0.0, min(1.0, pf_im))
                         pf_cm = max(0.0, min(1.0, pf_cm))
+                        state_dim = int(getattr(cfg, "MAINTENANCE_STATE_DIM", 18))
+                        im_since_cm_norm, im_damage_norm = maintenance_im_history_features(env, mid, cfg)
                         s = build_maintenance_state(h, dh, eta, slack_pressure, local_urgency, avg_slack,
                                                     lambda_hat, ddt_hat, risk_t, win_e, win_l,
                                                     rul_mu, rul_sigma, env.time, m.last_maint_end,
-                                                    pf_dn, pf_im, pf_cm, current_stress)
+                                                    pf_dn, pf_im, pf_cm, current_stress,
+                                                    im_since_cm_norm=im_since_cm_norm,
+                                                    im_damage_norm=im_damage_norm,
+                                                    state_dim=state_dim)
                         a, action_meta = select_maintenance_action(
                             cfg.MAINT_MODE, maint_agent, episode_pomcp, pomcp_beliefs, env, mid, h, s,
                             slack_pressure, current_stress, local_urgency, cfg, belief_rng, explore=True
@@ -2093,6 +2259,9 @@ def train_one_mode(
                             breakdown_terms = compute_breakdown_reward_terms(
                                 env, mid, local_urgency, current_stress, h_true=env.peek_rul_true(mid)
                             )
+                            dn_imminent_breakdown = bool(breakdown_terms["would_hard_breakdown"]) or (
+                                float(breakdown_terms["h_end_true"]) <= float(getattr(cfg, "HARD_BREAKDOWN_RUL", 0.05))
+                            )
                             r = maintenance_reward(
                                 a,
                                 0.0,
@@ -2105,11 +2274,18 @@ def train_one_mode(
                                 env=env,
                                 mid=mid,
                                 baseline_rul=m.maint_rul_baseline,
+                                maint_mode=cfg.MAINT_MODE,
+                                im_since_cm_norm=im_since_cm_norm,
+                                im_damage_norm=im_damage_norm,
+                                dn_imminent_breakdown=dn_imminent_breakdown,
                             )
                             sp = build_maintenance_state(h, 0.0, eta, slack_pressure, local_urgency, avg_slack,
                                                         lambda_hat, ddt_hat, risk_t, win_e, win_l,
                                                         rul_mu, rul_sigma, env.time, m.last_maint_end,
-                                                        pf_dn, pf_im, pf_cm, current_stress)
+                                                        pf_dn, pf_im, pf_cm, current_stress,
+                                                        im_since_cm_norm=im_since_cm_norm,
+                                                        im_damage_norm=im_damage_norm,
+                                                        state_dim=state_dim)
                             if maint_agent is not None:
                                 maint_agent.buf.add(s, a, r, sp, 0.0)
                                 maint_agent.learn()
@@ -2123,6 +2299,8 @@ def train_one_mode(
                                 "risk_t": risk_t,
                                 "t_e": t_e,
                                 "t_l": t_l,
+                                "im_since_cm_norm": float(im_since_cm_norm),
+                                "im_damage_norm": float(im_damage_norm),
                                 "action_meta": dict(action_meta),
                             }
                             if env.time >= t_e or (enforce_region_train and h < cfg.Hy):
@@ -2132,6 +2310,9 @@ def train_one_mode(
                                 action_now = enforce_action_by_region(rec["action"], h_now, cfg, enforce_region_train)
                                 breakdown_terms = compute_breakdown_reward_terms(
                                     env, mid, local_urgency, current_stress, h_true=env.peek_rul_true(mid)
+                                )
+                                dn_imminent_breakdown = bool(breakdown_terms["would_hard_breakdown"]) or (
+                                    float(breakdown_terms["h_end_true"]) <= float(getattr(cfg, "HARD_BREAKDOWN_RUL", 0.05))
                                 )
                                 dur, kind, post_rul = env.apply_maintenance(mid, action_now, h=h_now)
                                 executed_action = 0 if kind == "DN" else int(action_now)
@@ -2148,6 +2329,10 @@ def train_one_mode(
                                     env=env,
                                     mid=mid,
                                     baseline_rul=env.machines[mid].maint_rul_baseline,
+                                    maint_mode=cfg.MAINT_MODE,
+                                    im_since_cm_norm=float(rec.get("im_since_cm_norm", 0.0)),
+                                    im_damage_norm=float(rec.get("im_damage_norm", 0.0)),
+                                    dn_imminent_breakdown=dn_imminent_breakdown,
                                 )
                                 slack_samples.append(avg_slack)
                                 pressure_samples.append(slack_pressure)
@@ -2194,10 +2379,14 @@ def train_one_mode(
                                 pf_dn2 = max(0.0, min(1.0, pf_dn2))
                                 pf_im2 = max(0.0, min(1.0, pf_im2))
                                 pf_cm2 = max(0.0, min(1.0, pf_cm2))
+                                im_since_cm_norm2, im_damage_norm2 = maintenance_im_history_features(env, mid, cfg)
                                 sp = build_maintenance_state(h2, dh2, eta2, slack_pressure, local_urgency, avg_slack,
                                                             lambda_hat, ddt_hat, risk2, win_e2, win_l2,
                                                             rul_mu2, rul_sigma, env.time, m.last_maint_end,
-                                                            pf_dn2, pf_im2, pf_cm2, current_stress)
+                                                            pf_dn2, pf_im2, pf_cm2, current_stress,
+                                                            im_since_cm_norm=im_since_cm_norm2,
+                                                            im_damage_norm=im_damage_norm2,
+                                                            state_dim=state_dim)
                                 if maint_agent is not None:
                                     maint_agent.buf.add(rec["state"], executed_action, r, sp, 0.0)
                                     maint_agent.learn()
@@ -2458,6 +2647,12 @@ def train_one_mode(
         "im_invalid_filtered_count": int(sum(1 for row in official_maint_rows if bool(row.get("im_invalid_flag")))),
         "dn_veto_count": int(sum(1 for row in official_maint_rows if bool(row.get("dn_imminent_breakdown_veto")))),
         "cm_emergency_override_count": int(sum(1 for row in official_maint_rows if bool(row.get("cm_emergency_override")))),
+        "cm_preference_penalty_count": int(sum(1 for row in official_maint_rows if bool(row.get("cm_preference_penalty_active")))),
+        "high_health_cm_count": int(sum(
+            1 for row in official_maint_rows
+            if str(row.get("kind", "")).upper() == "CM"
+            and float(row.get("h", -1.0)) > float(getattr(cfg, "THDQN_DQN_HIGH_HEALTH_CM_H", 0.70))
+        )),
     }
     write_summary_files(outdir, f"summary_{ts}_{maint_mode_tag}_{train_policy_tag}", summary_row)
 
