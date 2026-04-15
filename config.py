@@ -291,6 +291,7 @@ class SimConfig:
     THDQN_DQN_CM_EARLY_PENALTY: float = 6.0
     THDQN_DQN_IM_LATE_PENALTY: float = 4.0
     THDQN_DQN_HIGH_HEALTH_CM_H: float = 0.70
+    THDQN_DQN_POST_IM_GRACE_H: float = 0.60
     PPO_SCHED_REWARD_GOAL: int = 2
     PPO_LR: float = 3e-4
     PPO_GAMMA: float = 0.99

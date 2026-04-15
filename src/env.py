@@ -64,6 +64,7 @@ class Machine:
     crossed_Hx_time: Optional[float] = None
     maint_rul_baseline: float = 1.0
     im_grace_until: float = 0.0
+    post_im_grace_decisions: int = 0
 
 class EventDrivenShopEnv:
     """
@@ -941,6 +942,7 @@ class EventDrivenShopEnv:
             self.machine_operating_idx[mid] = 0
             self.machine_operating_frac[mid] = 0.0
             m.im_grace_until = 0.0
+            m.post_im_grace_decisions = 0
 
         if action == 0:
             log_damage()
@@ -986,6 +988,7 @@ class EventDrivenShopEnv:
         m.maint_count_im += 1
         m.im_since_cm += 1
         m.total_im_count += 1
+        m.post_im_grace_decisions = 1
 
         # legacy behavior (commented): fixed-target repair.
         # target_rul = max(0.0, min(1.0, float(self.cfg.IM_TARGET_RUL)))
@@ -1183,6 +1186,7 @@ class EventDrivenShopEnv:
             m.crossed_Hx_time = None
             m.maint_rul_baseline = 1.0
             m.im_grace_until = 0.0
+            m.post_im_grace_decisions = 0
             self.machine_operating_idx[mid] = 0
             self.machine_operating_frac[mid] = 0.0
 

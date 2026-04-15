@@ -26,9 +26,11 @@ from run_experiment import (
     filter_non_improving_im,
     maintenance_agent_arch_for_context,
     maintenance_agent_store_transition,
+    maintenance_dn_imminent_breakdown,
     maintenance_cm_preference_penalty,
     maintenance_hier_metrics,
     maintenance_hier_rewards,
+    maintenance_im_history_snapshot,
     maintenance_im_history_features,
     maintenance_low_gain_penalty,
     maintenance_prior_penalty,
@@ -143,10 +145,14 @@ class _ImGainEnvStub(_RolloutEnvStub):
     def __init__(self, allow_im: bool):
         super().__init__()
         self.allow_im = bool(allow_im)
-        self.machines = {0: SimpleNamespace(maint_rul_baseline=0.9, im_since_cm=0, im_damage=0.0)}
+        self.machines = {0: SimpleNamespace(maint_rul_baseline=0.9, im_since_cm=0, im_damage=0.0, post_im_grace_decisions=0)}
 
     def im_has_positive_gain(self, mid: int, h: float, baseline_rul=None) -> bool:
         return self.allow_im
+
+    @staticmethod
+    def peek_rul_true(mid: int) -> float:
+        return 0.8
 
 
 class _LatePreferenceEnvStub(_ImGainEnvStub):
@@ -303,8 +309,21 @@ class MergeRegressionTests(unittest.TestCase):
         env.machines[0].im_since_cm = 2
         env.machines[0].im_damage = 0.5
         count_norm, damage_norm = maintenance_im_history_features(env, 0, cfg)
-        self.assertAlmostEqual(count_norm, 2.0 / 3.0, places=6)
+        self.assertAlmostEqual(count_norm, 0.5, places=6)
         self.assertAlmostEqual(damage_norm, 0.5 / float(cfg.IM_DAMAGE_CAP), places=6)
+
+    def test_maintenance_im_history_snapshot_preserves_single_im_grace_signal(self):
+        cfg = SimConfig()
+        env = _ImGainEnvStub(True)
+        env.machines[0].im_since_cm = 1
+        snap = maintenance_im_history_snapshot(env, 0, cfg)
+        self.assertEqual(snap["im_since_cm_raw"], 1.0)
+        self.assertAlmostEqual(snap["im_since_cm_norm"], 1.0 / 3.0, places=6)
+        self.assertEqual(snap["im_repeat_norm"], 0.0)
+
+        env.machines[0].im_since_cm = 3
+        snap_late = maintenance_im_history_snapshot(env, 0, cfg)
+        self.assertEqual(snap_late["im_repeat_norm"], 1.0)
 
     def test_cm_preference_penalty_only_hits_thdqn_dqn_unrestricted(self):
         cfg = SimConfig()
@@ -500,6 +519,69 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertLess(type_reward, -10.0)
         self.assertTrue(metrics["gate_penalty_active"])
         self.assertTrue(metrics["type_penalty_active"])
+
+    def test_select_maintenance_action_forces_dn_for_one_post_im_grace_decision(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "THDQN"
+        cfg.MAINT_MODE = "DQN"
+        cfg.ENFORCE_REGION_POLICY = False
+        env = _ImGainEnvStub(True)
+        env.machines[0].post_im_grace_decisions = 1
+        agent = HierMaintenanceAgentDDQN(state_dim=20, cfg=cfg, rng=random.Random(0), device=torch.device("cpu"))
+        state = np.zeros(20, dtype=np.float32)
+
+        action, meta = select_maintenance_action(
+            "DQN",
+            agent,
+            None,
+            None,
+            env,
+            0,
+            0.8,
+            state,
+            0.1,
+            0.2,
+            0.1,
+            cfg,
+            random.Random(0),
+            explore=False,
+        )
+
+        self.assertEqual(action, 0)
+        self.assertTrue(meta["post_im_grace_active"])
+        self.assertTrue(meta["post_im_grace_forced_dn"])
+        self.assertEqual(env.machines[0].post_im_grace_decisions, 0)
+
+    def test_select_maintenance_action_skips_grace_force_when_dn_is_imminent_breakdown(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "THDQN"
+        cfg.MAINT_MODE = "DQN"
+        cfg.ENFORCE_REGION_POLICY = False
+        env = _HardBreakdownVetoEnvStub()
+        env.machines[0].post_im_grace_decisions = 1
+        agent = HierMaintenanceAgentDDQN(state_dim=20, cfg=cfg, rng=random.Random(0), device=torch.device("cpu"))
+        state = np.zeros(20, dtype=np.float32)
+
+        _, meta = select_maintenance_action(
+            "DQN",
+            agent,
+            None,
+            None,
+            env,
+            0,
+            0.8,
+            state,
+            0.1,
+            0.2,
+            0.1,
+            cfg,
+            random.Random(0),
+            explore=False,
+        )
+
+        self.assertTrue(meta["post_im_grace_active"])
+        self.assertFalse(meta["post_im_grace_forced_dn"])
+        self.assertEqual(env.machines[0].post_im_grace_decisions, 0)
 
     def test_hier_maintenance_transition_storage_splits_gate_and_type_buffers(self):
         cfg = SimConfig()
