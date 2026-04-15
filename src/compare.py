@@ -90,6 +90,16 @@ def _dominant_from_counts(counts: Dict[str, int]) -> Dict[str, Any]:
     }
 
 
+def _shares_from_counts(counts: Dict[str, int]) -> Dict[str, float]:
+    total = int(sum(int(v) for v in counts.values()))
+    if total <= 0:
+        return {str(key): 0.0 for key in counts.keys()}
+    return {
+        str(key): float(int(value) / total)
+        for key, value in counts.items()
+    }
+
+
 def summarize_combo_conditioned_behavior(decision_log: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     combo_summary: Dict[str, Dict[str, Any]] = {}
     for row in decision_log or []:
@@ -131,6 +141,9 @@ def summarize_combo_conditioned_behavior(decision_log: List[Dict[str, Any]]) -> 
     for entry in combo_summary.values():
         entry["dominant_rule"] = _dominant_from_counts(entry["rule_counts"])
         entry["dominant_goal"] = _dominant_from_counts(entry["goal_counts"])
+        entry["rule_shares"] = _shares_from_counts(entry["rule_counts"])
+        entry["goal_shares"] = _shares_from_counts(entry["goal_counts"])
+        entry["maint_shares"] = _shares_from_counts(entry["maint_counts"])
     return combo_summary
 
 

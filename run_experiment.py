@@ -113,6 +113,92 @@ def build_scheduler_mode_label(scheduler_mode: str) -> str:
     return f"Scheduler: {str(scheduler_mode).upper()}"
 
 
+def effective_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = None) -> str:
+    raw = profile_override if profile_override is not None else getattr(cfg, "EXPERIMENT_PROFILE", "default")
+    profile = str(raw).strip().lower()
+    return profile or "default"
+
+
+def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = None) -> SimConfig:
+    profile = effective_experiment_profile(cfg, profile_override)
+    cfg.EXPERIMENT_PROFILE = profile
+    if profile == "default":
+        return cfg
+    if profile == "thesis_ppo_maint":
+        cfg.TRAIN_SCHEDULER_MODES = ("PPO",)
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("DQN", "POMCP")
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        return cfg
+    raise ValueError(f"unsupported experiment profile: {profile}")
+
+
+def maintenance_family_for_mode(maint_mode: str) -> str:
+    mode = str(maint_mode).upper()
+    if mode == "DQN":
+        return "learning"
+    if mode == "POMCP":
+        return "planning"
+    return "other"
+
+
+def scheduler_fixed_mode_for_profile(cfg: SimConfig) -> str:
+    profile = effective_experiment_profile(cfg)
+    if profile == "thesis_ppo_maint":
+        return "PPO"
+    return ""
+
+
+def comparison_role_for_profile(
+    cfg: SimConfig,
+    *,
+    compare_type: str,
+    scheduler_mode: Optional[str],
+    train_policy_tag: Optional[str],
+    eval_policy_tag: Optional[str],
+) -> str:
+    profile = effective_experiment_profile(cfg)
+    if profile != "thesis_ppo_maint":
+        return "supplement"
+    unrestricted_tag = build_policy_tag(cfg, False)
+    if (
+        str(compare_type) == "full_system"
+        and str(scheduler_mode or "").upper() == "PPO"
+        and str(train_policy_tag or "") == unrestricted_tag
+        and str(eval_policy_tag or "") == unrestricted_tag
+    ):
+        return "main_experiment"
+    return "supplement"
+
+
+def experiment_result_metadata(
+    cfg: SimConfig,
+    *,
+    maint_mode: str,
+    compare_type: str,
+    scheduler_mode: Optional[str],
+    train_policy_tag: Optional[str],
+    eval_policy_tag: Optional[str],
+    include_maint_family: bool = True,
+) -> Dict[str, Any]:
+    payload = {
+        "experiment_profile": effective_experiment_profile(cfg),
+        "scheduler_fixed_mode": scheduler_fixed_mode_for_profile(cfg),
+        "comparison_role": comparison_role_for_profile(
+            cfg,
+            compare_type=compare_type,
+            scheduler_mode=scheduler_mode,
+            train_policy_tag=train_policy_tag,
+            eval_policy_tag=eval_policy_tag,
+        ),
+    }
+    if include_maint_family:
+        payload["maint_family"] = maintenance_family_for_mode(maint_mode)
+    return payload
+
+
 def apply_machine_set_mode(cfg: SimConfig) -> tuple[str, list[int]]:
     mode, machine_curve_ids, num_machines = resolve_machine_set(cfg)
     cfg.MACHINE_SET_MODE = mode
@@ -2100,6 +2186,7 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
     dominant_rule_by_combo, dominant_goal_by_combo = combo_dominant_maps(combo_behavior)
     env = final_result.get("env")
     cfg_env = getattr(env, "cfg", None)
+    scheduler_mode = str(final_result.get("scheduler_mode", "THDQN")).upper()
     im_invalid_filtered_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("im_invalid_flag")))
     dn_veto_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("dn_imminent_breakdown_veto")))
     cm_emergency_override_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("cm_emergency_override")))
@@ -2122,10 +2209,18 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
     )
     return {
         "seed": int(seed),
+        **experiment_result_metadata(
+            cfg_env if cfg_env is not None else SimConfig(),
+            maint_mode=mode,
+            compare_type=compare_type,
+            scheduler_mode=scheduler_mode,
+            train_policy_tag=train_policy_tag,
+            eval_policy_tag=eval_policy_tag,
+        ),
         "maint_mode": str(mode),
         "maint_mode_tag": build_maint_mode_tag(mode),
-        "scheduler_mode": str(final_result.get("scheduler_mode", "THDQN")).upper(),
-        "scheduler_mode_tag": build_scheduler_mode_tag(final_result.get("scheduler_mode", "THDQN")),
+        "scheduler_mode": scheduler_mode,
+        "scheduler_mode_tag": build_scheduler_mode_tag(scheduler_mode),
         "sched_regime_feature_mode": str(final_result.get("sched_regime_feature_mode", getattr(getattr(env, "cfg", None), "SCHED_REGIME_FEATURE_MODE", "observer"))).lower(),
         "policy_tag": eval_policy_tag,
         "train_policy_tag": train_policy_tag,
@@ -3058,6 +3153,14 @@ def train_one_mode(
     summary_row = {
         "timestamp": ts,
         "seed": int(seed),
+        **experiment_result_metadata(
+            base_cfg,
+            maint_mode=cfg.MAINT_MODE,
+            compare_type="full_system",
+            scheduler_mode=cfg.SCHEDULER_MODE,
+            train_policy_tag=train_policy_tag,
+            eval_policy_tag=train_policy_tag,
+        ),
         "policy_tag": train_policy_tag,
         "train_policy_tag": train_policy_tag,
         "eval_policy_tag": train_policy_tag,
@@ -3186,6 +3289,13 @@ def train_one_mode(
             "eval_policy_tag": diag_policy_tag,
             "policy_label": diag_label,
             "compare_type": "ood_diagnostic",
+            "comparison_role": comparison_role_for_profile(
+                base_cfg,
+                compare_type="ood_diagnostic",
+                scheduler_mode=cfg.SCHEDULER_MODE,
+                train_policy_tag=train_policy_tag,
+                eval_policy_tag=diag_policy_tag,
+            ),
             "enforce_region_policy": int(diag_enforce),
             "tard": float(diag_metrics["tard"]),
             "maint": float(diag_metrics["maint"]),
@@ -3244,8 +3354,9 @@ def train_one_mode(
     }
 
 
-def main():
+def main(profile_override: Optional[str] = None):
     cfg = SimConfig()
+    apply_experiment_profile(cfg, profile_override)
     validate_region_thresholds(cfg)
     if torch.backends.mps.is_available():
         device = torch.device("mps")
@@ -3344,6 +3455,18 @@ def main():
                         seed=int(seed),
                         policy_tag=train_policy_tag,
                         policy_label=train_policy_label,
+                        **experiment_result_metadata(
+                            cfg,
+                            maint_mode="DQN",
+                            compare_type="full_system",
+                            scheduler_mode=scheduler_mode,
+                            train_policy_tag=train_policy_tag,
+                            eval_policy_tag=train_policy_tag,
+                            include_maint_family=False,
+                        ),
+                        maint_family="mixed",
+                        primary_maint_family=maintenance_family_for_mode("DQN"),
+                        compare_maint_family=maintenance_family_for_mode("POMCP"),
                         scheduler_mode=scheduler_mode,
                         scheduler_mode_tag=scheduler_tag,
                     )
@@ -3400,6 +3523,18 @@ def main():
                                 seed=int(seed),
                                 policy_tag=train_policy_tag,
                                 policy_label=train_policy_label,
+                                **experiment_result_metadata(
+                                    cfg,
+                                    maint_mode="DQN",
+                                    compare_type="maint_only",
+                                    scheduler_mode=scheduler_mode,
+                                    train_policy_tag=train_policy_tag,
+                                    eval_policy_tag=train_policy_tag,
+                                    include_maint_family=False,
+                                ),
+                                maint_family="mixed",
+                                primary_maint_family=maintenance_family_for_mode("DQN"),
+                                compare_maint_family=maintenance_family_for_mode("POMCP"),
                                 scheduler_mode=scheduler_mode,
                                 scheduler_mode_tag=scheduler_tag,
                             )
@@ -3435,6 +3570,14 @@ def main():
                         seed=int(seed),
                         policy_tag=train_policy_tag,
                         policy_label=train_policy_label,
+                        **experiment_result_metadata(
+                            cfg,
+                            maint_mode=str(mode),
+                            compare_type="scheduler_full_system",
+                            scheduler_mode="PPO",
+                            train_policy_tag=train_policy_tag,
+                            eval_policy_tag=train_policy_tag,
+                        ),
                         maint_mode=str(mode),
                         maint_mode_tag=build_maint_mode_tag(mode),
                         primary_scheduler_mode="THDQN",
@@ -3478,6 +3621,14 @@ def main():
                         seed=int(seed),
                         policy_tag=f"{constrained_tag}__to__{unrestricted_tag}",
                         policy_label="Route delta: unrestricted - constrained",
+                        **experiment_result_metadata(
+                            cfg,
+                            maint_mode=str(mode),
+                            compare_type="full_system_route_compare",
+                            scheduler_mode=scheduler_mode,
+                            train_policy_tag=constrained_tag,
+                            eval_policy_tag=unrestricted_tag,
+                        ),
                         scheduler_mode=scheduler_mode,
                         scheduler_mode_tag=build_scheduler_mode_tag(scheduler_mode),
                         maint_mode=str(mode),
@@ -3514,6 +3665,14 @@ def main():
                             seed=int(seed),
                             policy_tag=f"{constrained_tag}__to__{unrestricted_tag}",
                             policy_label="Route delta: unrestricted - constrained",
+                            **experiment_result_metadata(
+                                cfg,
+                                maint_mode=str(mode),
+                                compare_type="maint_only_route_compare",
+                                scheduler_mode=scheduler_mode,
+                                train_policy_tag=constrained_tag,
+                                eval_policy_tag=unrestricted_tag,
+                            ),
                             scheduler_mode=scheduler_mode,
                             scheduler_mode_tag=build_scheduler_mode_tag(scheduler_mode),
                             maint_mode=str(mode),

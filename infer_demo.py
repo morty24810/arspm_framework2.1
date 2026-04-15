@@ -16,6 +16,7 @@ from src.pomcp import POMCPPlanner
 from src.compare import combo_dominant_maps, compare_mode_results, summarize_combo_conditioned_behavior, summarize_scheduling_strategy, write_mode_comparison_outputs
 from checkpointing import load_checkpoint, load_maintenance_only
 from run_experiment import (
+    apply_experiment_profile,
     apply_machine_set_mode,
     build_degradation_and_rul,
     build_episode_combos,
@@ -28,6 +29,7 @@ from run_experiment import (
     build_maint_mode_tag,
     effective_base_degradation_rate,
     effective_degradation_rate_scale,
+    experiment_result_metadata,
     make_rng,
     normalize_jobs_target_for_combo_mode,
     write_summary_files,
@@ -107,6 +109,8 @@ def make_sched_agent(cfg: SimConfig, seed: int, device: torch.device,
 
 def build_infer_route_result(metrics: Dict[str, Any], env: Any, overdue_stats: Dict[str, Any],
                              policy_label: str, maint_mode_tag: str) -> Dict[str, Any]:
+    cfg_env = getattr(env, "cfg", None)
+    maint_mode = maint_mode_tag.replace("maint_", "").upper()
     return {
         "metrics": metrics,
         "env": env,
@@ -114,6 +118,14 @@ def build_infer_route_result(metrics: Dict[str, Any], env: Any, overdue_stats: D
         "policy_label": policy_label,
         "decision_log": list(getattr(env, "last_decision_log", [])),
         "maint_mode_tag": maint_mode_tag,
+        **experiment_result_metadata(
+            cfg_env if cfg_env is not None else SimConfig(),
+            maint_mode=maint_mode,
+            compare_type="full_system",
+            scheduler_mode=str(getattr(env, "last_scheduler_mode", "THDQN")).upper(),
+            train_policy_tag=getattr(env, "last_train_policy_tag", None),
+            eval_policy_tag=getattr(env, "last_eval_policy_tag", None),
+        ),
         "scheduler_mode": str(getattr(env, "last_scheduler_mode", "THDQN")).upper(),
         "scheduler_mode_tag": f"sched_{str(getattr(env, 'last_scheduler_mode', 'THDQN')).lower()}",
         "sched_regime_feature_mode": str(getattr(env, "last_sched_regime_feature_mode", getattr(getattr(env, "cfg", None), "SCHED_REGIME_FEATURE_MODE", "observer"))).lower(),
@@ -133,6 +145,14 @@ def build_infer_summary_row(ts: str, episode_idx: int, cfg_eval: SimConfig, seed
     return {
         "timestamp": ts,
         "episode": int(episode_idx),
+        **experiment_result_metadata(
+            cfg_eval,
+            maint_mode=maint_mode,
+            compare_type="full_system",
+            scheduler_mode=cfg_eval.SCHEDULER_MODE,
+            train_policy_tag=policy_tag,
+            eval_policy_tag=policy_tag,
+        ),
         "policy_tag": policy_tag,
         "policy_label": policy_label,
         "maint_mode": str(maint_mode),
@@ -308,6 +328,7 @@ def main():
                 setattr(cfg, key, value)
             except Exception:
                 pass
+    apply_experiment_profile(cfg)
     validate_region_thresholds(cfg)
     cfg.SEED = int(cfg.SEED if args.seed is None else args.seed)
     _, resolved_machine_curve_ids = apply_machine_set_mode(cfg)

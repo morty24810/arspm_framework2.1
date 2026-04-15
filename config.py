@@ -24,6 +24,12 @@ def resolve_machine_set(cfg: "SimConfig") -> tuple[str, tuple[int, ...], int]:
 
 @dataclass
 class SimConfig:
+    # --- experiment profile ---
+    # "default": preserve the repo's general paired experiment behavior
+    # "thesis_ppo_maint": thesis main experiment with fixed PPO scheduler and
+    # unrestricted maintenance comparison (DQN vs POMCP)
+    EXPERIMENT_PROFILE: str = "default"
+
     # --- data / artifact paths ---
     TRAIN_CSV: str = "Train_Data_CSV.csv"
     TEST_CSV: str = "Test_Data_CSV.csv"

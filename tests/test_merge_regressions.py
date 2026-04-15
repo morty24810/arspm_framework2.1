@@ -19,6 +19,7 @@ from infer_demo import (
 from run_experiment import (
     _sync_idle_after_maintenance,
     _build_run_record,
+    apply_experiment_profile,
     build_episode_combos,
     build_maintenance_state,
     effective_base_degradation_rate,
@@ -488,6 +489,7 @@ class MergeRegressionTests(unittest.TestCase):
     def test_stress_enabled_full_matrix_defaults(self):
         cfg = SimConfig()
 
+        self.assertEqual(cfg.EXPERIMENT_PROFILE, "default")
         self.assertEqual(cfg.EXPERIMENT_SEEDS, (42,))
         self.assertFalse(cfg.ENABLE_MAINT_ONLY_COMPARE)
         self.assertFalse(cfg.FAIL_STOCHASTIC)
@@ -498,6 +500,18 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(cfg.DEGRADATION_RATE_SCALE, 1.30)
         self.assertEqual(cfg.SCHEDULER_STATE_DIM, 15)
         self.assertEqual(cfg.MAINTENANCE_STATE_DIM, 18)
+
+    def test_thesis_ppo_maint_profile_overrides_only_main_experiment_matrix(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_ppo_maint")
+
+        self.assertEqual(cfg.EXPERIMENT_PROFILE, "thesis_ppo_maint")
+        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("PPO",))
+        self.assertEqual(cfg.TRAIN_POLICY_ROUTES, ("region_off",))
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN", "POMCP"))
+        self.assertEqual(cfg.SCHED_REGIME_FEATURE_MODE, "oracle")
+        self.assertFalse(cfg.ENABLE_MAINT_ONLY_COMPARE)
+        self.assertFalse(cfg.ENABLE_OOD_DIAGNOSTIC_EVAL)
 
     def test_hier_maintenance_arch_only_enables_for_thdqn_dqn_unrestricted(self):
         cfg = SimConfig()
@@ -1088,6 +1102,8 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(summary["lam=20.0|ddt=1.00"]["rule_counts"]["2"], 2)
         self.assertEqual(summary["lam=20.0|ddt=1.00"]["goal_counts"]["0"], 2)
         self.assertEqual(summary["lam=20.0|ddt=1.00"]["maint_counts"]["IM"], 1)
+        self.assertAlmostEqual(summary["lam=20.0|ddt=1.00"]["rule_shares"]["2"], 1.0)
+        self.assertAlmostEqual(summary["lam=20.0|ddt=1.00"]["maint_shares"]["IM"], 1.0)
         self.assertEqual(summary["lam=60.0|ddt=2.00"]["dominant_rule"]["label"], "5")
         self.assertEqual(dominant_rule_by_combo["lam=60.0|ddt=2.00"]["label"], "5")
         self.assertEqual(dominant_goal_by_combo["lam=20.0|ddt=1.00"]["label"], "0")
@@ -1130,6 +1146,10 @@ class MergeRegressionTests(unittest.TestCase):
 
         row = _build_run_record(42, "DQN", "region_off_unrestricted", "region_off_unrestricted", result)
 
+        self.assertEqual(row["experiment_profile"], "default")
+        self.assertEqual(row["scheduler_fixed_mode"], "")
+        self.assertEqual(row["maint_family"], "learning")
+        self.assertEqual(row["comparison_role"], "supplement")
         self.assertEqual(row["train_combo_mode"], "episode_fixed")
         self.assertEqual(row["eval_combo_mode"], "grid_full")
         self.assertEqual(row["lam_ddt_mode"], "variable")
@@ -1138,6 +1158,47 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(row["cm_emergency_override_count"], 1)
         self.assertIn("lam=20.0|ddt=1.00", row["combo_behavior"])
         self.assertIn("lam=20.0|ddt=1.00", row["dominant_rule_by_combo"])
+
+    def test_top_level_run_record_marks_thesis_profile_rows_as_main_experiment(self):
+        env = _CompareEnvStub(0, 0.0, 0, 0.0, 12.0)
+        env.cfg = SimConfig()
+        apply_experiment_profile(env.cfg, "thesis_ppo_maint")
+        env.machine_replay_to_label_scale = {0: 1.0}
+        env.last_decision_log = [
+            {
+                "event": "maintenance",
+                "mid": 0,
+                "kind": "DN",
+                "lambda_true_segment": 20.0,
+                "ddt_true_segment": 1.0,
+            },
+            {
+                "event": "scheduling",
+                "goal": None,
+                "rule": 3,
+                "dispatched": True,
+                "current_stress": 0.1,
+                "lambda_true_segment": 20.0,
+                "ddt_true_segment": 1.0,
+            },
+        ]
+        env.episode_scenario = SimpleNamespace(combos=[(20.0, 1.0)], combo_seq=[0])
+        result = {
+            "metrics": {"tard": 1.0, "maint": 2.0, "total": 3.0},
+            "policy_label": "label",
+            "decision_log": list(env.last_decision_log),
+            "scheduler_mode": "PPO",
+            "sched_regime_feature_mode": "oracle",
+            "env": env,
+            "overdue": {"ratio_ops": 0.0, "ratio_time": 0.0},
+        }
+
+        row = _build_run_record(42, "POMCP", "region_off_unrestricted", "region_off_unrestricted", result)
+
+        self.assertEqual(row["experiment_profile"], "thesis_ppo_maint")
+        self.assertEqual(row["scheduler_fixed_mode"], "PPO")
+        self.assertEqual(row["maint_family"], "planning")
+        self.assertEqual(row["comparison_role"], "main_experiment")
 
     def test_infer_route_results_keep_env_for_compare_metrics(self):
         primary_env = _CompareEnvStub(2, 18.0, 3, 4.5, 11.0)
