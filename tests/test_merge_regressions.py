@@ -309,7 +309,7 @@ class MergeRegressionTests(unittest.TestCase):
         env.machines[0].im_since_cm = 2
         env.machines[0].im_damage = 0.5
         count_norm, damage_norm = maintenance_im_history_features(env, 0, cfg)
-        self.assertAlmostEqual(count_norm, 0.5, places=6)
+        self.assertAlmostEqual(count_norm, 0.0, places=6)
         self.assertAlmostEqual(damage_norm, 0.5 / float(cfg.IM_DAMAGE_CAP), places=6)
 
     def test_maintenance_im_history_snapshot_preserves_single_im_grace_signal(self):
@@ -321,9 +321,17 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(snap["im_since_cm_norm"], 1.0 / 3.0, places=6)
         self.assertEqual(snap["im_repeat_norm"], 0.0)
 
+        env.machines[0].im_since_cm = 2
+        snap_second = maintenance_im_history_snapshot(env, 0, cfg)
+        self.assertEqual(snap_second["im_repeat_norm"], 0.0)
+
         env.machines[0].im_since_cm = 3
         snap_late = maintenance_im_history_snapshot(env, 0, cfg)
-        self.assertEqual(snap_late["im_repeat_norm"], 1.0)
+        self.assertEqual(snap_late["im_repeat_norm"], 0.5)
+
+        env.machines[0].im_since_cm = 4
+        snap_saturated = maintenance_im_history_snapshot(env, 0, cfg)
+        self.assertEqual(snap_saturated["im_repeat_norm"], 1.0)
 
     def test_cm_preference_penalty_only_hits_thdqn_dqn_unrestricted(self):
         cfg = SimConfig()

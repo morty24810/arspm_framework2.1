@@ -238,7 +238,7 @@ def maintenance_im_history_snapshot(env, mid: int, cfg: SimConfig) -> Dict[str, 
     machine = env.machines[mid]
     im_since_cm_raw = max(0, int(getattr(machine, "im_since_cm", 0)))
     im_since_cm_norm = min(float(im_since_cm_raw) / 3.0, 1.0)
-    im_repeat_norm = max(0.0, min((float(im_since_cm_raw) - 1.0) / 2.0, 1.0))
+    im_repeat_norm = max(0.0, min((float(im_since_cm_raw) - 2.0) / 2.0, 1.0))
     damage_cap = max(float(getattr(cfg, "IM_DAMAGE_CAP", 1.0)), 1e-6)
     im_damage_norm = min(float(getattr(machine, "im_damage", 0.0)) / damage_cap, 1.0)
     return {
@@ -1375,8 +1375,8 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "slack_pressure": float(slack_pressure),
                                     "current_stress": float(current_stress),
                                     "local_urgency": float(local_urgency),
-                                    "im_count": 0,
-                                    "im_damage": 0.0,
+                                    "im_count": int(rec.get("im_since_cm_raw", 0)),
+                                    "im_damage": float(rec.get("im_damage", 0.0)),
                                     "risk_h": float(risk_now),
                                     "risk_trend": 0.0,
                                     "im_longterm_penalty": 0.0,
@@ -1388,8 +1388,17 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "lambda_hat": float(lambda_hat),
                                     "ddt_hat": float(ddt_hat),
                                     "im_since_cm_norm": float(rec.get("im_since_cm_norm", 0.0)),
+                                    "im_repeat_norm": float(rec.get("im_repeat_norm", 0.0)),
+                                    "im_since_cm_raw": int(rec.get("im_since_cm_raw", 0)),
                                     "im_damage_norm": float(rec.get("im_damage_norm", 0.0)),
+                                    "maint_gate_action": str(rec.get("action_meta", {}).get("maint_gate_action", "")),
+                                    "maint_type_action": str(rec.get("action_meta", {}).get("maint_type_action", "")),
+                                    "maint_need_score": float(rec.get("maint_need_score", 0.0)),
                                     "cm_readiness": float(rec.get("cm_readiness", 0.0)),
+                                    "gate_penalty_active": bool(rec.get("gate_penalty_active", False)),
+                                    "type_penalty_active": bool(rec.get("type_penalty_active", False)),
+                                    "post_im_grace_active": bool(rec.get("action_meta", {}).get("post_im_grace_active", False)),
+                                    "post_im_grace_forced_dn": bool(rec.get("action_meta", {}).get("post_im_grace_forced_dn", False)),
                                     "cm_preference_penalty_active": bool(rec.get("cm_preference_penalty_active", False)),
                                     "im_invalid_flag": bool(rec.get("action_meta", {}).get("im_invalid_flag", False)),
                                     "dn_imminent_breakdown_veto": bool(rec.get("action_meta", {}).get("dn_imminent_breakdown_veto", False)),
