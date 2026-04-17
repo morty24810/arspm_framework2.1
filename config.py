@@ -26,8 +26,10 @@ def resolve_machine_set(cfg: "SimConfig") -> tuple[str, tuple[int, ...], int]:
 class SimConfig:
     # --- experiment profile ---
     # "default": preserve the repo's general paired experiment behavior
-    # "thesis_ppo_maint": thesis main experiment with fixed PPO scheduler and
-    # unrestricted maintenance comparison (DQN vs POMCP)
+    # "thesis_ppo_maint": thesis main experiment with fixed PPO scheduler,
+    # unrestricted maintenance comparison (DQN vs POMCP), and long horizon
+    # "thesis_ppo_maint_short": short-horizon PPO maintenance comparison
+    # "thesis_ppo_reward_ablation": fixed PPO+DQN long-horizon reward ablation
     EXPERIMENT_PROFILE: str = "default"
 
     # --- data / artifact paths ---
@@ -299,6 +301,11 @@ class SimConfig:
     THDQN_DQN_HIGH_HEALTH_CM_H: float = 0.70
     THDQN_DQN_POST_IM_GRACE_H: float = 0.60
     PPO_SCHED_REWARD_GOAL: int = 2
+    PPO_SCHED_REWARD_VERSION: str = "legacy_balanced"
+    PPO_EFFICIENCY_MAINT_W: float = 0.15
+    PPO_EFFICIENCY_OVERDUE_W: float = 2.0
+    PPO_EFFICIENCY_SLACK_W: float = 1.0
+    PPO_EFFICIENCY_FAILRISK_W: float = 0.5
     PPO_LR: float = 3e-4
     PPO_GAMMA: float = 0.99
     PPO_GAE_LAMBDA: float = 0.95

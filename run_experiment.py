@@ -20,6 +20,7 @@ from src.env import EventDrivenShopEnv, EpisodeScenario, JobTemplate, OperationT
 from src.agents import HierMaintenanceAgentDDQN, MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
 from src.compare import (
     combo_dominant_maps,
+    combo_rule_diversity_metrics,
     compare_mode_results,
     write_mode_comparison_outputs,
     extract_maintenance_rows,
@@ -113,6 +114,13 @@ def build_scheduler_mode_label(scheduler_mode: str) -> str:
     return f"Scheduler: {str(scheduler_mode).upper()}"
 
 
+def canonical_scheduler_mode(scheduler_mode: Optional[str]) -> str:
+    mode = str(scheduler_mode or "THDQN").strip().upper()
+    if mode.startswith("PPO"):
+        return "PPO"
+    return "THDQN"
+
+
 def effective_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = None) -> str:
     raw = profile_override if profile_override is not None else getattr(cfg, "EXPERIMENT_PROFILE", "default")
     profile = str(raw).strip().lower()
@@ -129,6 +137,37 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
         cfg.TRAIN_POLICY_ROUTES = ("region_off",)
         cfg.TRAIN_MAINT_MODES = ("DQN", "POMCP")
         cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 200
+        cfg.COMBO_SEGMENT_JOBS = 18
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        return cfg
+    if profile == "thesis_ppo_maint_short":
+        cfg.TRAIN_SCHEDULER_MODES = ("PPO",)
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("DQN", "POMCP")
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 100
+        cfg.COMBO_SEGMENT_JOBS = 9
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        return cfg
+    if profile == "thesis_ppo_reward_ablation":
+        cfg.TRAIN_SCHEDULER_MODES = ("PPO_LEGACY", "PPO_EFFICIENCY")
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("DQN",)
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 200
+        cfg.COMBO_SEGMENT_JOBS = 18
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
         cfg.ENABLE_MAINT_ONLY_COMPARE = False
         cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
         return cfg
@@ -146,9 +185,27 @@ def maintenance_family_for_mode(maint_mode: str) -> str:
 
 def scheduler_fixed_mode_for_profile(cfg: SimConfig) -> str:
     profile = effective_experiment_profile(cfg)
-    if profile == "thesis_ppo_maint":
+    if profile in {"thesis_ppo_maint", "thesis_ppo_maint_short", "thesis_ppo_reward_ablation"}:
         return "PPO"
     return ""
+
+
+def horizon_mode_for_profile(cfg: SimConfig) -> str:
+    profile = effective_experiment_profile(cfg)
+    if profile in {"thesis_ppo_maint", "thesis_ppo_reward_ablation"}:
+        return "long"
+    if profile == "thesis_ppo_maint_short":
+        return "short"
+    return ""
+
+
+def scheduler_reward_version_for_mode(cfg: SimConfig, scheduler_mode: Optional[str] = None) -> str:
+    mode = str(scheduler_mode or getattr(cfg, "SCHEDULER_MODE", "THDQN")).strip().upper()
+    if mode == "PPO_LEGACY":
+        return "legacy_balanced"
+    if mode == "PPO_EFFICIENCY":
+        return "efficiency_balanced"
+    return str(getattr(cfg, "PPO_SCHED_REWARD_VERSION", "legacy_balanced")).strip().lower() or "legacy_balanced"
 
 
 def comparison_role_for_profile(
@@ -160,17 +217,73 @@ def comparison_role_for_profile(
     eval_policy_tag: Optional[str],
 ) -> str:
     profile = effective_experiment_profile(cfg)
-    if profile != "thesis_ppo_maint":
+    if profile not in {"thesis_ppo_maint", "thesis_ppo_maint_short", "thesis_ppo_reward_ablation"}:
         return "supplement"
     unrestricted_tag = build_policy_tag(cfg, False)
     if (
+        profile == "thesis_ppo_maint"
+        and
         str(compare_type) == "full_system"
-        and str(scheduler_mode or "").upper() == "PPO"
+        and canonical_scheduler_mode(scheduler_mode) == "PPO"
         and str(train_policy_tag or "") == unrestricted_tag
         and str(eval_policy_tag or "") == unrestricted_tag
     ):
         return "main_experiment"
     return "supplement"
+
+
+def compute_eval_jobs_target(cfg: SimConfig) -> int:
+    eval_combo_mode = str(getattr(cfg, "EVAL_COMBO_MODE", getattr(cfg, "LAM_DDT_MODE", "variable"))).strip().lower()
+    if eval_combo_mode == "grid_full":
+        return compute_grid_full_jobs_target(cfg)
+    return int(cfg.EVAL_JOBS_TARGET * 2)
+
+
+def summarize_final_machine_health(env: Any) -> Dict[str, float]:
+    if env is None or not hasattr(env, "machines"):
+        return {
+            "final_health_mean": 0.0,
+            "final_health_min": 0.0,
+            "final_health_p25": 0.0,
+            "final_low_health_count_h20": 0.0,
+            "final_low_health_count_h10": 0.0,
+        }
+    values: List[float] = []
+    machines = getattr(env, "machines", [])
+    if isinstance(machines, dict):
+        machine_iter = list(machines.values())
+    else:
+        machine_iter = list(machines)
+    for machine in machine_iter:
+        mid = getattr(machine, "mid", None)
+        if mid is None:
+            continue
+        try:
+            if hasattr(env, "peek_rul_true"):
+                h_val = float(env.peek_rul_true(mid))
+            elif hasattr(env, "maintenance_decision_point"):
+                h_val = float(env.maintenance_decision_point(mid))
+            else:
+                continue
+        except Exception:
+            continue
+        values.append(h_val)
+    if not values:
+        return {
+            "final_health_mean": 0.0,
+            "final_health_min": 0.0,
+            "final_health_p25": 0.0,
+            "final_low_health_count_h20": 0.0,
+            "final_low_health_count_h10": 0.0,
+        }
+    arr = np.asarray(values, dtype=np.float64)
+    return {
+        "final_health_mean": float(np.mean(arr)),
+        "final_health_min": float(np.min(arr)),
+        "final_health_p25": float(np.percentile(arr, 25.0)),
+        "final_low_health_count_h20": float(np.sum(arr < 0.20)),
+        "final_low_health_count_h10": float(np.sum(arr < 0.10)),
+    }
 
 
 def experiment_result_metadata(
@@ -185,7 +298,11 @@ def experiment_result_metadata(
 ) -> Dict[str, Any]:
     payload = {
         "experiment_profile": effective_experiment_profile(cfg),
+        "horizon_mode": horizon_mode_for_profile(cfg),
+        "train_jobs_target_effective": int(compute_train_jobs_target(cfg)),
+        "eval_jobs_target_effective": int(compute_eval_jobs_target(cfg)),
         "scheduler_fixed_mode": scheduler_fixed_mode_for_profile(cfg),
+        "scheduler_reward_version": scheduler_reward_version_for_mode(cfg, scheduler_mode),
         "comparison_role": comparison_role_for_profile(
             cfg,
             compare_type=compare_type,
@@ -246,6 +363,49 @@ def scheduler_act(sched_agent, state: np.ndarray, *, explore: bool):
         return goal, int(rule), {"logprob": float(logprob), "value": float(value)}
     goal, rule = sched_agent.act(state, explore=explore)
     return int(goal), int(rule), {}
+
+
+def scheduling_reward(
+    cfg: SimConfig,
+    scheduler_mode: str,
+    goal: int,
+    tard,
+    maint,
+    prev_tard,
+    prev_maint,
+    *,
+    state_before: Optional[np.ndarray] = None,
+    state_after: Optional[np.ndarray] = None,
+):
+    dtard = tard - prev_tard
+    dmaint = maint - prev_maint
+    reward_version = scheduler_reward_version_for_mode(cfg, scheduler_mode)
+    if canonical_scheduler_mode(scheduler_mode) != "PPO" or reward_version == "legacy_balanced":
+        if goal == 0:
+            return -dtard
+        if goal == 1:
+            return -dmaint
+        if goal == 2:
+            return -(dtard + 0.3 * dmaint)
+        return -(0.3 * dtard + dmaint)
+
+    overdue_up = 0.0
+    slack_up = 0.0
+    fail_risk_up = 0.0
+    if state_before is not None and state_after is not None:
+        s0 = np.asarray(state_before, dtype=np.float32)
+        s1 = np.asarray(state_after, dtype=np.float32)
+        if s0.shape[0] >= 14 and s1.shape[0] >= 14:
+            overdue_up = max(0.0, float(s1[10] - s0[10]))
+            slack_up = max(0.0, float(s1[8] - s0[8]))
+            fail_risk_up = max(0.0, float(s1[13] - s0[13]))
+    return -(
+        1.0 * float(dtard)
+        + float(getattr(cfg, "PPO_EFFICIENCY_MAINT_W", 0.15)) * float(dmaint)
+        + float(getattr(cfg, "PPO_EFFICIENCY_OVERDUE_W", 2.0)) * float(overdue_up)
+        + float(getattr(cfg, "PPO_EFFICIENCY_SLACK_W", 1.0)) * float(slack_up)
+        + float(getattr(cfg, "PPO_EFFICIENCY_FAILRISK_W", 0.5)) * float(fail_risk_up)
+    )
 
 
 def combo_grid(cfg: SimConfig) -> List[Tuple[float, float]]:
@@ -708,18 +868,6 @@ def maintenance_hier_rewards(base_reward: float, action_meta: Dict[str, Any],
         return gate_reward, None
     type_reward = float(base_reward) - float(hier_metrics.get("type_penalty", 0.0))
     return gate_reward, type_reward
-
-def scheduling_reward(goal: int, tard, maint, prev_tard, prev_maint):
-    # incremental rewards, 4 goals
-    dtard = tard - prev_tard
-    dmaint = maint - prev_maint
-    if goal == 0:   # tardiness-focused
-        return -dtard
-    if goal == 1:   # utilization proxy via penalizing maintenance (rough)
-        return -dmaint
-    if goal == 2:   # balanced (tardiness-heavy)
-        return -(dtard + 0.3*dmaint)
-    return -(0.3*dtard + dmaint)  # balanced (maint-heavy)
 
 def summarize_overdue_ops(timeline_ops, jobs):
     completed_ops = [seg for seg in timeline_ops if len(seg) < 6 or seg[5] == "DONE"]
@@ -2148,7 +2296,7 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
     return int(enforce_action_by_region(fallback_action, h_obs, cfg, enforce_region)), action_meta
 
 def _make_scheduler_agent(cfg: SimConfig, seed: int, device):
-    scheduler_mode = str(getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
+    scheduler_mode = canonical_scheduler_mode(getattr(cfg, "SCHEDULER_MODE", "THDQN"))
     state_dim = int(getattr(cfg, "SCHEDULER_STATE_DIM", 15))
     if scheduler_mode == "PPO":
         return PPOSchedulerAgent(
@@ -2184,8 +2332,10 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
     schedule_summary = summarize_scheduling_strategy(decision_log, env=final_result.get("env"))
     combo_behavior = summarize_combo_conditioned_behavior(decision_log)
     dominant_rule_by_combo, dominant_goal_by_combo = combo_dominant_maps(combo_behavior)
+    rule_diversity = combo_rule_diversity_metrics(combo_behavior)
     env = final_result.get("env")
     cfg_env = getattr(env, "cfg", None)
+    health_summary = summarize_final_machine_health(env)
     scheduler_mode = str(final_result.get("scheduler_mode", "THDQN")).upper()
     im_invalid_filtered_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("im_invalid_flag")))
     dn_veto_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("dn_imminent_breakdown_veto")))
@@ -2263,6 +2413,14 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "combo_behavior": combo_behavior,
         "dominant_rule_by_combo": dominant_rule_by_combo,
         "dominant_goal_by_combo": dominant_goal_by_combo,
+        "rule_distinct_count": int(rule_diversity["rule_distinct_count"]),
+        "rule_avg_dominant_share": float(rule_diversity["rule_avg_dominant_share"]),
+        "rule_mean_pairwise_jsd": float(rule_diversity["rule_mean_pairwise_jsd"]),
+        "final_health_mean": float(health_summary["final_health_mean"]),
+        "final_health_min": float(health_summary["final_health_min"]),
+        "final_health_p25": float(health_summary["final_health_p25"]),
+        "final_low_health_count_h20": int(health_summary["final_low_health_count_h20"]),
+        "final_low_health_count_h10": int(health_summary["final_low_health_count_h10"]),
         "im_invalid_filtered_count": int(im_invalid_filtered_count),
         "dn_veto_count": int(dn_veto_count),
         "cm_emergency_override_count": int(cm_emergency_override_count),
@@ -2320,6 +2478,9 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
         "breakdown_count", "breakdown_cost",
         "requeued_op_count", "interrupted_proc_time",
         "current_stress_mean", "current_stress_max",
+        "final_health_mean", "final_health_min", "final_health_p25",
+        "final_low_health_count_h20", "final_low_health_count_h10",
+        "rule_distinct_count", "rule_avg_dominant_share", "rule_mean_pairwise_jsd",
     ]
     for mode in ("DQN", "POMCP"):
         mode_rows = [row for row in policy_rows if row["maint_mode"] == mode]
@@ -2344,6 +2505,14 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
         "interrupted_proc_time": "delta_interrupted_proc_time",
         "current_stress_mean": "delta_current_stress_mean",
         "current_stress_max": "delta_current_stress_max",
+        "final_health_mean": "delta_final_health_mean",
+        "final_health_min": "delta_final_health_min",
+        "final_health_p25": "delta_final_health_p25",
+        "final_low_health_count_h20": "delta_final_low_health_count_h20",
+        "final_low_health_count_h10": "delta_final_low_health_count_h10",
+        "rule_distinct_count": "delta_rule_distinct_count",
+        "rule_avg_dominant_share": "delta_rule_avg_dominant_share",
+        "rule_mean_pairwise_jsd": "delta_rule_mean_pairwise_jsd",
     }
     for out_metric, source_key in delta_map.items():
         stats = _calc_mean_std([float(row[source_key]) for row in compare_policy_rows])
@@ -2397,6 +2566,14 @@ def _finalize_compare_summary(summary: Dict[str, Any], **extra: Any) -> Dict[str
     finalized["delta_breakdown_cost"] = float(delta_metrics.get("breakdown_cost", 0.0))
     finalized["delta_requeued_op_count"] = float(delta_metrics.get("requeued_op_count", 0.0))
     finalized["delta_interrupted_proc_time"] = float(delta_metrics.get("interrupted_proc_time", 0.0))
+    finalized["delta_rule_distinct_count"] = float(delta_metrics.get("rule_distinct_count", 0.0))
+    finalized["delta_rule_avg_dominant_share"] = float(delta_metrics.get("rule_avg_dominant_share", 0.0))
+    finalized["delta_rule_mean_pairwise_jsd"] = float(delta_metrics.get("rule_mean_pairwise_jsd", 0.0))
+    finalized["delta_final_health_mean"] = float(delta_metrics.get("final_health_mean", 0.0))
+    finalized["delta_final_health_min"] = float(delta_metrics.get("final_health_min", 0.0))
+    finalized["delta_final_health_p25"] = float(delta_metrics.get("final_health_p25", 0.0))
+    finalized["delta_final_low_health_count_h20"] = float(delta_metrics.get("final_low_health_count_h20", 0.0))
+    finalized["delta_final_low_health_count_h10"] = float(delta_metrics.get("final_low_health_count_h10", 0.0))
     finalized["delta_dispatch_count"] = int(delta_schedule.get("dispatch_count", 0))
     finalized["delta_current_stress_mean"] = float(delta_schedule.get("current_stress_mean", 0.0))
     finalized["delta_current_stress_max"] = float(delta_schedule.get("current_stress_max", 0.0))
@@ -2960,9 +3137,19 @@ def train_one_mode(
                 env.rule_log.append((env.time, S.copy(), None if g is None else int(g), int(rule)))
                 dispatched = env.dispatch(rule)
                 tard, maint = env.compute_costs()
-                r_s = scheduling_reward(scheduler_reward_goal(cfg, g), tard, maint, prev_tard, prev_maint)
-                prev_tard, prev_maint = tard, maint
                 S2 = env.get_global_features()
+                r_s = scheduling_reward(
+                    cfg,
+                    cfg.SCHEDULER_MODE,
+                    scheduler_reward_goal(cfg, g),
+                    tard,
+                    maint,
+                    prev_tard,
+                    prev_maint,
+                    state_before=S,
+                    state_after=S2,
+                )
+                prev_tard, prev_maint = tard, maint
                 if scheduler_has_goal_head(sched_agent):
                     sched_agent.buf_h.add(S, int(g), r_s, S2, 0.0)
                     low_s = sched_agent.build_low_state(S)
@@ -3149,6 +3336,8 @@ def train_one_mode(
     official_sched_summary = summarize_scheduling_strategy(official_decision_log, env=eval_env)
     official_combo_behavior = summarize_combo_conditioned_behavior(official_decision_log)
     official_dominant_rule_by_combo, official_dominant_goal_by_combo = combo_dominant_maps(official_combo_behavior)
+    official_rule_diversity = combo_rule_diversity_metrics(official_combo_behavior)
+    official_health_summary = summarize_final_machine_health(eval_env)
     official_maint_rows = extract_maintenance_rows(official_decision_log)
     summary_row = {
         "timestamp": ts,
@@ -3210,6 +3399,14 @@ def train_one_mode(
         "combo_behavior": official_combo_behavior,
         "dominant_rule_by_combo": official_dominant_rule_by_combo,
         "dominant_goal_by_combo": official_dominant_goal_by_combo,
+        "rule_distinct_count": int(official_rule_diversity["rule_distinct_count"]),
+        "rule_avg_dominant_share": float(official_rule_diversity["rule_avg_dominant_share"]),
+        "rule_mean_pairwise_jsd": float(official_rule_diversity["rule_mean_pairwise_jsd"]),
+        "final_health_mean": float(official_health_summary["final_health_mean"]),
+        "final_health_min": float(official_health_summary["final_health_min"]),
+        "final_health_p25": float(official_health_summary["final_health_p25"]),
+        "final_low_health_count_h20": int(official_health_summary["final_low_health_count_h20"]),
+        "final_low_health_count_h10": int(official_health_summary["final_low_health_count_h10"]),
         "im_invalid_filtered_count": int(sum(1 for row in official_maint_rows if bool(row.get("im_invalid_flag")))),
         "dn_veto_count": int(sum(1 for row in official_maint_rows if bool(row.get("dn_imminent_breakdown_veto")))),
         "cm_emergency_override_count": int(sum(1 for row in official_maint_rows if bool(row.get("cm_emergency_override")))),
@@ -3357,6 +3554,7 @@ def train_one_mode(
 def main(profile_override: Optional[str] = None):
     cfg = SimConfig()
     apply_experiment_profile(cfg, profile_override)
+    experiment_profile = effective_experiment_profile(cfg)
     validate_region_thresholds(cfg)
     if torch.backends.mps.is_available():
         device = torch.device("mps")
@@ -3546,6 +3744,53 @@ def main(profile_override: Optional[str] = None):
                                 maint_only_rows,
                                 policy_label=f"{train_policy_label} | Compare: maint_only | Scheduler anchor: DQN | Maintenance: DQN vs POMCP",
                             )
+
+            if experiment_profile == "thesis_ppo_reward_ablation":
+                reward_compare_dir = route_root / "reward_compare"
+                reward_compare_dir.mkdir(parents=True, exist_ok=True)
+                legacy_run = route_results[train_policy_tag].get("PPO_LEGACY", {}).get("DQN")
+                efficiency_run = route_results[train_policy_tag].get("PPO_EFFICIENCY", {}).get("DQN")
+                if legacy_run is not None and efficiency_run is not None:
+                    reward_summary, reward_rows = compare_mode_results(
+                        legacy_run["official_result"],
+                        efficiency_run["official_result"],
+                        "LEGACY_BALANCED",
+                        "EFFICIENCY_BALANCED",
+                        compare_type="scheduler_reward_ablation",
+                        train_policy_tag=train_policy_tag,
+                        eval_policy_tag=train_policy_tag,
+                        scheduler_anchor="DQN",
+                    )
+                    reward_summary = _finalize_compare_summary(
+                        reward_summary,
+                        seed=int(seed),
+                        policy_tag=train_policy_tag,
+                        policy_label=train_policy_label,
+                        **experiment_result_metadata(
+                            cfg,
+                            maint_mode="DQN",
+                            compare_type="scheduler_reward_ablation",
+                            scheduler_mode="PPO",
+                            train_policy_tag=train_policy_tag,
+                            eval_policy_tag=train_policy_tag,
+                        ),
+                        maint_mode="DQN",
+                        maint_mode_tag=build_maint_mode_tag("DQN"),
+                        scheduler_mode="PPO",
+                        scheduler_mode_tag=build_scheduler_mode_tag("PPO"),
+                        primary_scheduler_mode="PPO_LEGACY",
+                        compare_scheduler_mode="PPO_EFFICIENCY",
+                        primary_scheduler_reward_version="legacy_balanced",
+                        compare_scheduler_reward_version="efficiency_balanced",
+                    )
+                    all_compare_rows.append(dict(reward_summary))
+                    write_mode_comparison_outputs(
+                        reward_compare_dir,
+                        f"compare_scheduler_reward_ppo_legacy_vs_efficiency_{train_policy_tag}",
+                        reward_summary,
+                        reward_rows,
+                        policy_label=f"{train_policy_label} | Compare: scheduler_reward_ablation | PPO + DQN | legacy vs efficiency",
+                    )
 
             if "THDQN" in route_results[train_policy_tag] and "PPO" in route_results[train_policy_tag]:
                 scheduler_compare_dir = route_root / "scheduler_compare"

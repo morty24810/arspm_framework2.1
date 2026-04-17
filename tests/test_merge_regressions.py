@@ -38,10 +38,14 @@ from run_experiment import (
     maintenance_reward,
     maintenance_state_dim_for_context,
     normalize_jobs_target_for_combo_mode,
+    compute_train_jobs_target,
+    compute_eval_jobs_target,
+    scheduling_reward,
     select_maintenance_action,
+    summarize_final_machine_health,
 )
 from src.agents import HierMaintenanceAgentDDQN, MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
-from src.compare import combo_dominant_maps, compare_mode_results, summarize_combo_conditioned_behavior, summarize_scheduling_strategy
+from src.compare import combo_dominant_maps, combo_rule_diversity_metrics, compare_mode_results, summarize_combo_conditioned_behavior, summarize_scheduling_strategy
 from src.env import EventDrivenShopEnv
 from src.viz import plot_gantt, plot_rul_curves, plot_rule_vs_features
 
@@ -122,7 +126,8 @@ class _BestRewardPOMCP:
 
 class _CompareEnvStub:
     def __init__(self, breakdown_count: int, breakdown_cost: float,
-                 requeued_op_count: int, interrupted_proc_time: float, makespan: float):
+                 requeued_op_count: int, interrupted_proc_time: float, makespan: float,
+                 final_healths=None):
         self.breakdown_count = breakdown_count
         self.breakdown_cost_total = breakdown_cost
         self.requeued_op_count = requeued_op_count
@@ -130,6 +135,12 @@ class _CompareEnvStub:
         self.timeline_ops = [(0, 0.0, makespan - 1.0, 0, 0, "DONE")]
         self.timeline_maint = [(0, makespan - 1.0, makespan, "CM")]
         self.last_decision_log = []
+        final_healths = list(final_healths or [0.8, 0.6, 0.4])
+        self._final_healths = {idx: float(val) for idx, val in enumerate(final_healths)}
+        self.machines = [SimpleNamespace(mid=idx) for idx in range(len(final_healths))]
+
+    def peek_rul_true(self, mid: int) -> float:
+        return float(self._final_healths[int(mid)])
 
 
 class _ObserverStub:
@@ -510,8 +521,28 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(cfg.TRAIN_POLICY_ROUTES, ("region_off",))
         self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN", "POMCP"))
         self.assertEqual(cfg.SCHED_REGIME_FEATURE_MODE, "oracle")
+        self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
         self.assertFalse(cfg.ENABLE_MAINT_ONLY_COMPARE)
         self.assertFalse(cfg.ENABLE_OOD_DIAGNOSTIC_EVAL)
+
+    def test_thesis_ppo_maint_short_profile_preserves_short_horizon(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_ppo_maint_short")
+
+        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("PPO",))
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN", "POMCP"))
+        self.assertEqual(cfg.TRAIN_JOBS_TARGET, 100)
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 9)
+
+    def test_thesis_ppo_reward_ablation_profile_uses_two_ppo_variants(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_ppo_reward_ablation")
+
+        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("PPO_LEGACY", "PPO_EFFICIENCY"))
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN",))
+        self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
 
     def test_hier_maintenance_arch_only_enables_for_thdqn_dqn_unrestricted(self):
         cfg = SimConfig()
@@ -1108,6 +1139,59 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(dominant_rule_by_combo["lam=60.0|ddt=2.00"]["label"], "5")
         self.assertEqual(dominant_goal_by_combo["lam=20.0|ddt=1.00"]["label"], "0")
 
+    def test_combo_rule_diversity_metrics_capture_split_vs_collapsed_rules(self):
+        combo_behavior = {
+            "lam=20.0|ddt=1.00": {
+                "dominant_rule": {"label": "2", "share": 1.0},
+                "rule_shares": {"0": 0.0, "1": 0.0, "2": 1.0, "3": 0.0, "4": 0.0, "5": 0.0},
+            },
+            "lam=40.0|ddt=1.50": {
+                "dominant_rule": {"label": "4", "share": 0.75},
+                "rule_shares": {"0": 0.0, "1": 0.0, "2": 0.25, "3": 0.0, "4": 0.75, "5": 0.0},
+            },
+        }
+
+        metrics = combo_rule_diversity_metrics(combo_behavior)
+
+        self.assertEqual(metrics["rule_distinct_count"], 2.0)
+        self.assertGreater(metrics["rule_avg_dominant_share"], 0.8)
+        self.assertGreater(metrics["rule_mean_pairwise_jsd"], 0.0)
+
+    def test_efficiency_scheduler_reward_penalizes_worsening_overdue_slack_and_risk(self):
+        cfg = SimConfig()
+        cfg.PPO_SCHED_REWARD_VERSION = "efficiency_balanced"
+        s0 = np.zeros(15, dtype=np.float32)
+        s1 = np.zeros(15, dtype=np.float32)
+        s1[8] = 0.2
+        s1[10] = 0.3
+        s1[13] = 0.4
+
+        reward = scheduling_reward(
+            cfg,
+            "PPO",
+            2,
+            tard=5.0,
+            maint=2.0,
+            prev_tard=3.0,
+            prev_maint=1.0,
+            state_before=s0,
+            state_after=s1,
+        )
+
+        expected = -(2.0 + 0.15 * 1.0 + 2.0 * 0.3 + 1.0 * 0.2 + 0.5 * 0.4)
+        self.assertAlmostEqual(reward, expected)
+
+    def test_final_machine_health_summary_reports_tail_counts(self):
+        env = _CompareEnvStub(0, 0.0, 0, 0.0, 10.0, final_healths=[0.9, 0.3, 0.15, 0.05])
+
+        summary = summarize_final_machine_health(env)
+
+        self.assertAlmostEqual(summary["final_health_mean"], 0.35)
+        self.assertAlmostEqual(summary["final_health_min"], 0.05)
+        self.assertAlmostEqual(summary["final_health_p25"], 0.125)
+        self.assertEqual(summary["final_low_health_count_h20"], 2.0)
+        self.assertEqual(summary["final_low_health_count_h10"], 1.0)
+
     def test_top_level_run_record_includes_combo_modes_and_filter_counts(self):
         env = _CompareEnvStub(0, 0.0, 0, 0.0, 12.0)
         env.cfg = SimConfig()
@@ -1147,7 +1231,11 @@ class MergeRegressionTests(unittest.TestCase):
         row = _build_run_record(42, "DQN", "region_off_unrestricted", "region_off_unrestricted", result)
 
         self.assertEqual(row["experiment_profile"], "default")
+        self.assertEqual(row["horizon_mode"], "")
+        self.assertEqual(row["train_jobs_target_effective"], compute_train_jobs_target(env.cfg))
+        self.assertEqual(row["eval_jobs_target_effective"], compute_eval_jobs_target(env.cfg))
         self.assertEqual(row["scheduler_fixed_mode"], "")
+        self.assertEqual(row["scheduler_reward_version"], "legacy_balanced")
         self.assertEqual(row["maint_family"], "learning")
         self.assertEqual(row["comparison_role"], "supplement")
         self.assertEqual(row["train_combo_mode"], "episode_fixed")
@@ -1156,6 +1244,8 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(row["im_invalid_filtered_count"], 1)
         self.assertEqual(row["dn_veto_count"], 0)
         self.assertEqual(row["cm_emergency_override_count"], 1)
+        self.assertEqual(row["final_low_health_count_h20"], 0)
+        self.assertEqual(row["final_low_health_count_h10"], 0)
         self.assertIn("lam=20.0|ddt=1.00", row["combo_behavior"])
         self.assertIn("lam=20.0|ddt=1.00", row["dominant_rule_by_combo"])
 
@@ -1196,7 +1286,11 @@ class MergeRegressionTests(unittest.TestCase):
         row = _build_run_record(42, "POMCP", "region_off_unrestricted", "region_off_unrestricted", result)
 
         self.assertEqual(row["experiment_profile"], "thesis_ppo_maint")
+        self.assertEqual(row["horizon_mode"], "long")
+        self.assertEqual(row["train_jobs_target_effective"], 200)
+        self.assertEqual(row["eval_jobs_target_effective"], 162)
         self.assertEqual(row["scheduler_fixed_mode"], "PPO")
+        self.assertEqual(row["scheduler_reward_version"], "legacy_balanced")
         self.assertEqual(row["maint_family"], "planning")
         self.assertEqual(row["comparison_role"], "main_experiment")
 

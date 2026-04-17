@@ -22,6 +22,7 @@ from run_experiment import (
     build_episode_combos,
     build_episode_scenario,
     build_scenario_bank,
+    canonical_scheduler_mode,
     evaluate_once,
     build_policy_tag,
     build_policy_label,
@@ -92,7 +93,7 @@ def make_maint_agent(cfg: SimConfig, seed: int, device: torch.device) -> Mainten
 def make_sched_agent(cfg: SimConfig, seed: int, device: torch.device,
                      state_dim: int | None = None, low_state_dim: int | None = None,
                      low_state_mode: str | None = None):
-    scheduler_mode = str(getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
+    scheduler_mode = canonical_scheduler_mode(getattr(cfg, "SCHEDULER_MODE", "THDQN"))
     state_dim = int(getattr(cfg, "SCHEDULER_STATE_DIM", 15) if state_dim is None else state_dim)
     if scheduler_mode == "PPO":
         return PPOSchedulerAgent(state_dim=int(state_dim), cfg=cfg, rng=random.Random(seed), device=device)
@@ -302,8 +303,8 @@ def infer_scheduler_mode(ckpt_path: Path, map_location: torch.device) -> str:
     ckpt = torch.load(str(ckpt_path), map_location=map_location)
     meta_cfg = ckpt.get("meta", {}).get("config", {}) or {}
     scheduler_mode = str(meta_cfg.get("SCHEDULER_MODE", "")).upper()
-    if scheduler_mode in ("THDQN", "PPO"):
-        return scheduler_mode
+    if scheduler_mode:
+        return canonical_scheduler_mode(scheduler_mode)
     models = ckpt.get("models", {})
     if "sched_actor" in models or "sched_critic" in models:
         return "PPO"

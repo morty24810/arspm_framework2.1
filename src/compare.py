@@ -5,6 +5,7 @@ import json
 import math
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+import numpy as np
 
 from .viz import plot_maint_mode_comparison
 
@@ -156,6 +157,48 @@ def combo_dominant_maps(combo_behavior: Dict[str, Dict[str, Any]]) -> Tuple[Dict
     return dominant_rule_by_combo, dominant_goal_by_combo
 
 
+def combo_rule_diversity_metrics(combo_behavior: Dict[str, Dict[str, Any]]) -> Dict[str, float]:
+    labels = [str(i) for i in range(6)]
+    dominant_labels = []
+    dominant_shares = []
+    prob_vectors: List[List[float]] = []
+    for entry in (combo_behavior or {}).values():
+        dominant_rule = dict(entry.get("dominant_rule", {}) or {})
+        label = str(dominant_rule.get("label", "")).strip()
+        share = float(dominant_rule.get("share", 0.0) or 0.0)
+        if label:
+            dominant_labels.append(label)
+        dominant_shares.append(share)
+        shares = dict(entry.get("rule_shares", {}) or {})
+        vec = [float(shares.get(label, 0.0) or 0.0) for label in labels]
+        total = sum(vec)
+        if total > 0.0:
+            vec = [val / total for val in vec]
+        prob_vectors.append(vec)
+
+    def _kl(p: List[float], q: List[float]) -> float:
+        total = 0.0
+        for pi, qi in zip(p, q):
+            if pi <= 0.0:
+                continue
+            total += float(pi) * math.log(float(pi) / max(float(qi), 1e-12), 2.0)
+        return float(total)
+
+    jsd_vals: List[float] = []
+    for i in range(len(prob_vectors)):
+        for j in range(i + 1, len(prob_vectors)):
+            p = prob_vectors[i]
+            q = prob_vectors[j]
+            m = [(pi + qi) * 0.5 for pi, qi in zip(p, q)]
+            jsd_vals.append(0.5 * (_kl(p, m) + _kl(q, m)))
+
+    return {
+        "rule_distinct_count": float(len(set(dominant_labels))),
+        "rule_avg_dominant_share": float(sum(dominant_shares) / len(dominant_shares)) if dominant_shares else 0.0,
+        "rule_mean_pairwise_jsd": float(sum(jsd_vals) / len(jsd_vals)) if jsd_vals else 0.0,
+    }
+
+
 def compute_decision_log_makespan(decision_log: List[Dict[str, Any]]) -> float:
     t_end = 0.0
     for row in decision_log or []:
@@ -183,6 +226,50 @@ def _env_makespan(env: Any) -> float:
     for _, t0, t1, _ in getattr(env, "timeline_maint", []):
         t_end = max(t_end, float(t1))
     return float(t_end)
+
+
+def _env_final_health_summary(env: Any) -> Dict[str, float]:
+    if env is None or not hasattr(env, "machines"):
+        return {
+            "final_health_mean": 0.0,
+            "final_health_min": 0.0,
+            "final_health_p25": 0.0,
+            "final_low_health_count_h20": 0.0,
+            "final_low_health_count_h10": 0.0,
+        }
+    machines = getattr(env, "machines", [])
+    if isinstance(machines, dict):
+        machine_iter = list(machines.values())
+    else:
+        machine_iter = list(machines)
+    values = []
+    for machine in machine_iter:
+        mid = getattr(machine, "mid", None)
+        if mid is None:
+            continue
+        try:
+            if hasattr(env, "peek_rul_true"):
+                values.append(float(env.peek_rul_true(mid)))
+            elif hasattr(env, "maintenance_decision_point"):
+                values.append(float(env.maintenance_decision_point(mid)))
+        except Exception:
+            continue
+    if not values:
+        return {
+            "final_health_mean": 0.0,
+            "final_health_min": 0.0,
+            "final_health_p25": 0.0,
+            "final_low_health_count_h20": 0.0,
+            "final_low_health_count_h10": 0.0,
+        }
+    arr = np.asarray(values, dtype=np.float64)
+    return {
+        "final_health_mean": float(np.mean(arr)),
+        "final_health_min": float(np.min(arr)),
+        "final_health_p25": float(np.percentile(arr, 25.0)),
+        "final_low_health_count_h20": float(np.sum(arr < 0.20)),
+        "final_low_health_count_h10": float(np.sum(arr < 0.10)),
+    }
 
 
 def summarize_scheduling_strategy(decision_log: List[Dict[str, Any]], env: Any = None) -> Dict[str, Any]:
@@ -288,6 +375,8 @@ def compare_mode_results(
     compare_combo_behavior = summarize_combo_conditioned_behavior(compare_result.get("decision_log", []))
     primary_dominant_rule_by_combo, primary_dominant_goal_by_combo = combo_dominant_maps(primary_combo_behavior)
     compare_dominant_rule_by_combo, compare_dominant_goal_by_combo = combo_dominant_maps(compare_combo_behavior)
+    primary_rule_diversity = combo_rule_diversity_metrics(primary_combo_behavior)
+    compare_rule_diversity = combo_rule_diversity_metrics(compare_combo_behavior)
     primary_scheduler_mode = str(primary_result.get("scheduler_mode", getattr(primary_result.get("env"), "last_scheduler_mode", "THDQN"))).upper()
     compare_scheduler_mode = str(compare_result.get("scheduler_mode", getattr(compare_result.get("env"), "last_scheduler_mode", "THDQN"))).upper()
     primary_sched_regime_feature_mode = str(
@@ -306,6 +395,8 @@ def compare_mode_results(
     compare_metrics = compare_result["metrics"]
     primary_overdue = primary_result["overdue"]
     compare_overdue = compare_result["overdue"]
+    primary_final_health = _env_final_health_summary(primary_result.get("env"))
+    compare_final_health = _env_final_health_summary(compare_result.get("env"))
     union_count = len(union_keys)
     summary = {
         "primary_mode": primary_mode,
@@ -326,6 +417,12 @@ def compare_mode_results(
         "compare_dominant_rule_by_combo": compare_dominant_rule_by_combo,
         "primary_dominant_goal_by_combo": primary_dominant_goal_by_combo,
         "compare_dominant_goal_by_combo": compare_dominant_goal_by_combo,
+        "primary_rule_distinct_count": int(primary_rule_diversity["rule_distinct_count"]),
+        "compare_rule_distinct_count": int(compare_rule_diversity["rule_distinct_count"]),
+        "primary_rule_avg_dominant_share": float(primary_rule_diversity["rule_avg_dominant_share"]),
+        "compare_rule_avg_dominant_share": float(compare_rule_diversity["rule_avg_dominant_share"]),
+        "primary_rule_mean_pairwise_jsd": float(primary_rule_diversity["rule_mean_pairwise_jsd"]),
+        "compare_rule_mean_pairwise_jsd": float(compare_rule_diversity["rule_mean_pairwise_jsd"]),
         "primary_im_invalid_filtered_count": int(sum(1 for row in primary_rows if bool(row.get("im_invalid_flag")))),
         "compare_im_invalid_filtered_count": int(sum(1 for row in compare_rows if bool(row.get("im_invalid_flag")))),
         "primary_dn_veto_count": int(sum(1 for row in primary_rows if bool(row.get("dn_imminent_breakdown_veto")))),
@@ -347,6 +444,10 @@ def compare_mode_results(
             "breakdown_cost": float(getattr(primary_result.get("env"), "breakdown_cost_total", 0.0)),
             "requeued_op_count": float(getattr(primary_result.get("env"), "requeued_op_count", 0)),
             "interrupted_proc_time": float(getattr(primary_result.get("env"), "interrupted_proc_time", 0.0)),
+            "rule_distinct_count": float(primary_rule_diversity["rule_distinct_count"]),
+            "rule_avg_dominant_share": float(primary_rule_diversity["rule_avg_dominant_share"]),
+            "rule_mean_pairwise_jsd": float(primary_rule_diversity["rule_mean_pairwise_jsd"]),
+            **primary_final_health,
         },
         "compare_metrics": {
             "tard": float(compare_metrics["tard"]),
@@ -357,6 +458,10 @@ def compare_mode_results(
             "breakdown_cost": float(getattr(compare_result.get("env"), "breakdown_cost_total", 0.0)),
             "requeued_op_count": float(getattr(compare_result.get("env"), "requeued_op_count", 0)),
             "interrupted_proc_time": float(getattr(compare_result.get("env"), "interrupted_proc_time", 0.0)),
+            "rule_distinct_count": float(compare_rule_diversity["rule_distinct_count"]),
+            "rule_avg_dominant_share": float(compare_rule_diversity["rule_avg_dominant_share"]),
+            "rule_mean_pairwise_jsd": float(compare_rule_diversity["rule_mean_pairwise_jsd"]),
+            **compare_final_health,
         },
         "delta_compare_minus_primary": {
             "tard": float(compare_metrics["tard"] - primary_metrics["tard"]),
@@ -367,6 +472,14 @@ def compare_mode_results(
             "breakdown_cost": float(getattr(compare_result.get("env"), "breakdown_cost_total", 0.0) - getattr(primary_result.get("env"), "breakdown_cost_total", 0.0)),
             "requeued_op_count": float(getattr(compare_result.get("env"), "requeued_op_count", 0) - getattr(primary_result.get("env"), "requeued_op_count", 0)),
             "interrupted_proc_time": float(getattr(compare_result.get("env"), "interrupted_proc_time", 0.0) - getattr(primary_result.get("env"), "interrupted_proc_time", 0.0)),
+            "rule_distinct_count": float(compare_rule_diversity["rule_distinct_count"] - primary_rule_diversity["rule_distinct_count"]),
+            "rule_avg_dominant_share": float(compare_rule_diversity["rule_avg_dominant_share"] - primary_rule_diversity["rule_avg_dominant_share"]),
+            "rule_mean_pairwise_jsd": float(compare_rule_diversity["rule_mean_pairwise_jsd"] - primary_rule_diversity["rule_mean_pairwise_jsd"]),
+            "final_health_mean": float(compare_final_health["final_health_mean"] - primary_final_health["final_health_mean"]),
+            "final_health_min": float(compare_final_health["final_health_min"] - primary_final_health["final_health_min"]),
+            "final_health_p25": float(compare_final_health["final_health_p25"] - primary_final_health["final_health_p25"]),
+            "final_low_health_count_h20": float(compare_final_health["final_low_health_count_h20"] - primary_final_health["final_low_health_count_h20"]),
+            "final_low_health_count_h10": float(compare_final_health["final_low_health_count_h10"] - primary_final_health["final_low_health_count_h10"]),
         },
         "primary_schedule_summary": primary_schedule_summary,
         "compare_schedule_summary": compare_schedule_summary,
