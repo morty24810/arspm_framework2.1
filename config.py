@@ -30,6 +30,9 @@ class SimConfig:
     # unrestricted maintenance comparison (DQN vs POMCP), and long horizon
     # "thesis_ppo_maint_short": short-horizon PPO maintenance comparison
     # "thesis_ppo_reward_ablation": fixed PPO+DQN long-horizon reward ablation
+    # "thesis_ppo_sched_pure": PPO pure scheduling diagnosis, no maintenance
+    # "thesis_ppo_sched_health_gate": PPO scheduling diagnosis with external health gate
+    # "thesis_ppo_hparam_ablation": PPO scheduler hyperparameter ablation, no maintenance
     EXPERIMENT_PROFILE: str = "default"
 
     # --- data / artifact paths ---
@@ -286,6 +289,11 @@ class SimConfig:
     TRAIN_SCHEDULER_MODES: tuple = ("THDQN",)
     SCHED_REGIME_FEATURE_MODE: str = "oracle"
     SCHEDULER_STATE_DIM: int = 15
+    PPO_SCHED_STATE_MODE: str = "default"
+    SCHED_HEALTH_GATE_MODE: str = "off"
+    SCHED_HEALTH_GATE_H_END_MIN: float = 0.20
+    ENABLE_MAINTENANCE_DECISIONS: bool = True
+    DISABLE_HEALTH_SYSTEM: bool = False
     THDQN_LOW_STATE_MODE: str = "pruned"
     THDQN_LOW_STATE_DIM: int = 11
     MAINT_AGENT_ARCH: str = "flat_ddqn"

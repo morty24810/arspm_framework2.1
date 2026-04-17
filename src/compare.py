@@ -80,6 +80,16 @@ def _combo_key_from_row(row: Dict[str, Any]) -> str | None:
     return f"lam={lam:.1f}|ddt={ddt:.2f}"
 
 
+def _combo_values_from_key(combo_key: str) -> Tuple[float | None, float | None]:
+    try:
+        parts = str(combo_key).split("|")
+        lam = float(parts[0].split("=", 1)[1])
+        ddt = float(parts[1].split("=", 1)[1])
+        return lam, ddt
+    except Exception:
+        return None, None
+
+
 def _dominant_from_counts(counts: Dict[str, int]) -> Dict[str, Any]:
     total = int(sum(int(v) for v in counts.values()))
     if total <= 0:
@@ -103,6 +113,18 @@ def _shares_from_counts(counts: Dict[str, int]) -> Dict[str, float]:
 
 def summarize_combo_conditioned_behavior(decision_log: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     combo_summary: Dict[str, Dict[str, Any]] = {}
+    job_max_oid: Dict[int, int] = {}
+    for row in decision_log or []:
+        if str(row.get("event", "")).lower() != "scheduling" or not bool(row.get("dispatched")):
+            continue
+        op = _normalize_op(row.get("op"))
+        if op is None:
+            continue
+        jid = _safe_int(op.get("jid"))
+        oid = _safe_int(op.get("oid"))
+        if jid is None or oid is None:
+            continue
+        job_max_oid[jid] = max(int(oid), int(job_max_oid.get(jid, oid)))
     for row in decision_log or []:
         combo_key = _combo_key_from_row(row)
         if combo_key is None:
@@ -115,6 +137,10 @@ def summarize_combo_conditioned_behavior(decision_log: List[Dict[str, Any]]) -> 
                 "maint_counts": {"DN": 0, "IM": 0, "CM": 0},
                 "dispatch_count": 0,
                 "maintenance_count": 0,
+                "combo_tard": 0.0,
+                "combo_overdue_ops": 0,
+                "combo_total_ops": 0,
+                "_completed_job_ids": set(),
             },
         )
         event = str(row.get("event", "")).lower()
@@ -133,6 +159,19 @@ def summarize_combo_conditioned_behavior(decision_log: List[Dict[str, Any]]) -> 
                 entry["goal_counts"][goal_key] += 1
             if bool(row.get("dispatched")):
                 entry["dispatch_count"] += 1
+                op = _normalize_op(row.get("op"))
+                t1 = _safe_float(op.get("t1")) if op is not None else None
+                due = _safe_float(row.get("job_due"))
+                overdue = bool(row.get("overdue"))
+                if t1 is not None and due is not None:
+                    entry["combo_tard"] += max(float(t1) - float(due), 0.0)
+                entry["combo_total_ops"] += 1
+                if overdue:
+                    entry["combo_overdue_ops"] += 1
+                jid = _safe_int(op.get("jid")) if op is not None else None
+                oid = _safe_int(op.get("oid")) if op is not None else None
+                if jid is not None and oid is not None and int(job_max_oid.get(jid, -1)) == int(oid):
+                    entry["_completed_job_ids"].add(int(jid))
         elif event == "maintenance":
             kind = str(row.get("kind", "")).upper()
             if kind in entry["maint_counts"]:
@@ -145,6 +184,12 @@ def summarize_combo_conditioned_behavior(decision_log: List[Dict[str, Any]]) -> 
         entry["rule_shares"] = _shares_from_counts(entry["rule_counts"])
         entry["goal_shares"] = _shares_from_counts(entry["goal_counts"])
         entry["maint_shares"] = _shares_from_counts(entry["maint_counts"])
+        entry["combo_tard"] = float(entry.get("combo_tard", 0.0))
+        entry["combo_overdue_ratio_ops"] = (
+            float(entry.get("combo_overdue_ops", 0)) / max(int(entry.get("combo_total_ops", 0)), 1)
+            if int(entry.get("combo_total_ops", 0)) > 0 else 0.0
+        )
+        entry["combo_completed_jobs"] = int(len(entry.pop("_completed_job_ids", set())))
     return combo_summary
 
 
@@ -197,6 +242,129 @@ def combo_rule_diversity_metrics(combo_behavior: Dict[str, Dict[str, Any]]) -> D
         "rule_avg_dominant_share": float(sum(dominant_shares) / len(dominant_shares)) if dominant_shares else 0.0,
         "rule_mean_pairwise_jsd": float(sum(jsd_vals) / len(jsd_vals)) if jsd_vals else 0.0,
     }
+
+
+def combo_eval_rows(
+    combo_behavior: Dict[str, Dict[str, Any]],
+    *,
+    scheduler_mode: str,
+    seed: int,
+    experiment_profile: str,
+    horizon_mode: str,
+    train_policy_tag: str,
+    eval_policy_tag: str,
+    maint_mode: str,
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for combo_key in sorted((combo_behavior or {}).keys()):
+        entry = dict(combo_behavior.get(combo_key, {}) or {})
+        lam, ddt = _combo_values_from_key(combo_key)
+        dominant_rule = dict(entry.get("dominant_rule", {}) or {})
+        rows.append({
+            "seed": int(seed),
+            "experiment_profile": str(experiment_profile),
+            "horizon_mode": str(horizon_mode),
+            "train_policy_tag": str(train_policy_tag),
+            "eval_policy_tag": str(eval_policy_tag),
+            "scheduler_mode": str(scheduler_mode).upper(),
+            "maint_mode": str(maint_mode).upper(),
+            "combo_key": str(combo_key),
+            "arrival_lam": lam,
+            "ddt": ddt,
+            "dominant_rule": dominant_rule.get("label"),
+            "dominant_rule_share": float(dominant_rule.get("share", 0.0) or 0.0),
+            "rule_shares": dict(entry.get("rule_shares", {}) or {}),
+            "combo_tard": float(entry.get("combo_tard", 0.0) or 0.0),
+            "combo_overdue_ratio_ops": float(entry.get("combo_overdue_ratio_ops", 0.0) or 0.0),
+            "combo_dispatch_count": int(entry.get("dispatch_count", 0) or 0),
+            "combo_completed_jobs": int(entry.get("combo_completed_jobs", 0) or 0),
+        })
+    return rows
+
+
+def compare_combo_behavior_against_anchor(
+    anchor_combo_behavior: Dict[str, Dict[str, Any]],
+    candidate_combo_behavior: Dict[str, Dict[str, Any]],
+    *,
+    anchor_scheduler_mode: str,
+    candidate_scheduler_mode: str,
+    seed: int,
+    experiment_profile: str,
+    horizon_mode: str,
+    train_policy_tag: str,
+    eval_policy_tag: str,
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    rows: List[Dict[str, Any]] = []
+    changed_rule_gains: List[float] = []
+    rule_changed_count = 0
+    tard_win_count = 0
+    tard_loss_count = 0
+    overdue_win_count = 0
+    overdue_loss_count = 0
+
+    combo_keys = sorted(set(anchor_combo_behavior.keys()) | set(candidate_combo_behavior.keys()))
+    for combo_key in combo_keys:
+        anchor_entry = dict(anchor_combo_behavior.get(combo_key, {}) or {})
+        candidate_entry = dict(candidate_combo_behavior.get(combo_key, {}) or {})
+        lam, ddt = _combo_values_from_key(combo_key)
+        greedy_rule = dict(anchor_entry.get("dominant_rule", {}) or {}).get("label")
+        candidate_rule = dict(candidate_entry.get("dominant_rule", {}) or {}).get("label")
+        greedy_combo_tard = float(anchor_entry.get("combo_tard", 0.0) or 0.0)
+        candidate_combo_tard = float(candidate_entry.get("combo_tard", 0.0) or 0.0)
+        greedy_combo_overdue_ratio_ops = float(anchor_entry.get("combo_overdue_ratio_ops", 0.0) or 0.0)
+        candidate_combo_overdue_ratio_ops = float(candidate_entry.get("combo_overdue_ratio_ops", 0.0) or 0.0)
+        delta_combo_tard = float(candidate_combo_tard - greedy_combo_tard)
+        delta_combo_overdue_ratio_ops = float(candidate_combo_overdue_ratio_ops - greedy_combo_overdue_ratio_ops)
+        rule_changed = str(greedy_rule) != str(candidate_rule)
+        if rule_changed:
+            rule_changed_count += 1
+            changed_rule_gains.append(float(greedy_combo_tard - candidate_combo_tard))
+        if delta_combo_tard < 0.0:
+            tard_win_count += 1
+        elif delta_combo_tard > 0.0:
+            tard_loss_count += 1
+        if delta_combo_overdue_ratio_ops < 0.0:
+            overdue_win_count += 1
+        elif delta_combo_overdue_ratio_ops > 0.0:
+            overdue_loss_count += 1
+        rows.append({
+            "seed": int(seed),
+            "experiment_profile": str(experiment_profile),
+            "horizon_mode": str(horizon_mode),
+            "train_policy_tag": str(train_policy_tag),
+            "eval_policy_tag": str(eval_policy_tag),
+            "anchor_scheduler_mode": str(anchor_scheduler_mode).upper(),
+            "candidate_scheduler_mode": str(candidate_scheduler_mode).upper(),
+            "combo_key": str(combo_key),
+            "arrival_lam": lam,
+            "ddt": ddt,
+            "greedy_rule": greedy_rule,
+            "candidate_rule": candidate_rule,
+            "greedy_combo_tard": greedy_combo_tard,
+            "candidate_combo_tard": candidate_combo_tard,
+            "delta_combo_tard": delta_combo_tard,
+            "greedy_combo_overdue_ratio_ops": greedy_combo_overdue_ratio_ops,
+            "candidate_combo_overdue_ratio_ops": candidate_combo_overdue_ratio_ops,
+            "delta_combo_overdue_ratio_ops": delta_combo_overdue_ratio_ops,
+            "rule_changed": bool(rule_changed),
+        })
+
+    summary = {
+        "seed": int(seed),
+        "experiment_profile": str(experiment_profile),
+        "horizon_mode": str(horizon_mode),
+        "train_policy_tag": str(train_policy_tag),
+        "eval_policy_tag": str(eval_policy_tag),
+        "anchor_scheduler_mode": str(anchor_scheduler_mode).upper(),
+        "candidate_scheduler_mode": str(candidate_scheduler_mode).upper(),
+        "combo_rule_changed_count": int(rule_changed_count),
+        "combo_tard_win_count_vs_greedy": int(tard_win_count),
+        "combo_tard_loss_count_vs_greedy": int(tard_loss_count),
+        "combo_overdue_win_count_vs_greedy": int(overdue_win_count),
+        "combo_overdue_loss_count_vs_greedy": int(overdue_loss_count),
+        "combo_changed_rule_tard_gain_mean": float(sum(changed_rule_gains) / len(changed_rule_gains)) if changed_rule_gains else 0.0,
+    }
+    return summary, rows
 
 
 def compute_decision_log_makespan(decision_log: List[Dict[str, Any]]) -> float:

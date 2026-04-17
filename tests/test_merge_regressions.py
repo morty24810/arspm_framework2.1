@@ -20,11 +20,13 @@ from run_experiment import (
     _sync_idle_after_maintenance,
     _build_run_record,
     apply_experiment_profile,
+    apply_scheduler_mode_runtime_overrides,
     build_episode_combos,
     build_maintenance_state,
     effective_base_degradation_rate,
     effective_degradation_bounds,
     filter_non_improving_im,
+    maintenance_decisions_enabled,
     maintenance_agent_arch_for_context,
     maintenance_agent_store_transition,
     maintenance_dn_imminent_breakdown,
@@ -40,12 +42,21 @@ from run_experiment import (
     normalize_jobs_target_for_combo_mode,
     compute_train_jobs_target,
     compute_eval_jobs_target,
+    scheduler_state_dim_for_context,
     scheduling_reward,
     select_maintenance_action,
     summarize_final_machine_health,
 )
 from src.agents import HierMaintenanceAgentDDQN, MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
-from src.compare import combo_dominant_maps, combo_rule_diversity_metrics, compare_mode_results, summarize_combo_conditioned_behavior, summarize_scheduling_strategy
+from src.compare import (
+    combo_dominant_maps,
+    combo_eval_rows,
+    combo_rule_diversity_metrics,
+    compare_combo_behavior_against_anchor,
+    compare_mode_results,
+    summarize_combo_conditioned_behavior,
+    summarize_scheduling_strategy,
+)
 from src.env import EventDrivenShopEnv
 from src.viz import plot_gantt, plot_rul_curves, plot_rule_vs_features
 
@@ -543,6 +554,99 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN",))
         self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
         self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
+
+    def test_thesis_ppo_sched_pure_profile_disables_maintenance_and_breakdown(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_ppo_sched_pure")
+
+        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("PPO",))
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("NONE",))
+        self.assertFalse(maintenance_decisions_enabled(cfg))
+        self.assertTrue(cfg.DISABLE_HEALTH_SYSTEM)
+        self.assertEqual(cfg.PPO_SCHED_STATE_MODE, "ops_regime_only")
+        self.assertEqual(cfg.SCHED_HEALTH_GATE_MODE, "off")
+        self.assertFalse(cfg.BREAKDOWN_ENABLE)
+        self.assertFalse(cfg.SCHED_SAFE_DISPATCH)
+
+    def test_thesis_ppo_sched_health_gate_profile_uses_external_gate(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_ppo_sched_health_gate")
+
+        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("PPO",))
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("NONE",))
+        self.assertFalse(maintenance_decisions_enabled(cfg))
+        self.assertTrue(cfg.DISABLE_HEALTH_SYSTEM)
+        self.assertEqual(cfg.PPO_SCHED_STATE_MODE, "ops_regime_only")
+        self.assertEqual(cfg.SCHED_HEALTH_GATE_MODE, "off")
+        self.assertFalse(cfg.SCHED_SAFE_DISPATCH)
+
+    def test_thesis_ppo_hparam_ablation_profile_uses_four_variants(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_ppo_hparam_ablation")
+
+        self.assertEqual(
+            cfg.TRAIN_SCHEDULER_MODES,
+            ("PPO_BASE", "PPO_ENTROPY", "PPO_CONSERVATIVE", "PPO_CONSERVATIVE_LR", "PPO_BALANCED_CTX"),
+        )
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("NONE",))
+        self.assertFalse(maintenance_decisions_enabled(cfg))
+        self.assertTrue(cfg.DISABLE_HEALTH_SYSTEM)
+        self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
+
+    def test_scheduler_state_dim_for_ppo_ops_regime_only_is_pruned(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "PPO"
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_only"
+        self.assertEqual(scheduler_state_dim_for_context(cfg), 13)
+        cfg.PPO_SCHED_STATE_MODE = "default"
+        self.assertEqual(scheduler_state_dim_for_context(cfg), 15)
+
+    def test_apply_scheduler_mode_runtime_overrides_sets_expected_ppo_variant(self):
+        cfg = SimConfig()
+        apply_scheduler_mode_runtime_overrides(cfg, "PPO_CONSERVATIVE_LR")
+
+        self.assertEqual(cfg.SCHEDULER_MODE, "PPO_CONSERVATIVE_LR")
+        self.assertEqual(cfg.SCHEDULER_STATE_DIM, 15)
+        self.assertAlmostEqual(cfg.PPO_LR, 1e-4)
+        self.assertAlmostEqual(cfg.PPO_ENTROPY_COEF, 0.03)
+        self.assertAlmostEqual(cfg.PPO_CLIP, 0.15)
+        self.assertEqual(cfg.PPO_EPOCHS, 2)
+        self.assertEqual(cfg.PPO_MINIBATCH, 64)
+
+    def test_apply_scheduler_mode_runtime_overrides_sets_expected_balanced_ctx_variant(self):
+        cfg = SimConfig()
+        apply_scheduler_mode_runtime_overrides(cfg, "PPO_BALANCED_CTX")
+
+        self.assertEqual(cfg.SCHEDULER_MODE, "PPO_BALANCED_CTX")
+        self.assertAlmostEqual(cfg.PPO_LR, 1.5e-4)
+        self.assertAlmostEqual(cfg.PPO_ENTROPY_COEF, 0.03)
+        self.assertAlmostEqual(cfg.PPO_CLIP, 0.20)
+        self.assertEqual(cfg.PPO_EPOCHS, 3)
+        self.assertEqual(cfg.PPO_MINIBATCH, 64)
+
+    def test_dispatch_candidate_machines_respects_projected_health_gate(self):
+        env = object.__new__(EventDrivenShopEnv)
+        cfg = SimConfig()
+        cfg.SCHED_HEALTH_GATE_MODE = "projected_h_end"
+        cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
+        cfg.SCHED_SAFE_DISPATCH = False
+        env.cfg = cfg
+        env.machines = [
+            SimpleNamespace(mid=0, status="IDLE"),
+            SimpleNamespace(mid=1, status="IDLE"),
+        ]
+        env._current_processing_stress = lambda: 0.0
+        env._project_process_outcome = lambda mid, pt, stress=None: {
+            "h_end_true": 0.10 if int(mid) == 0 else 0.40,
+            "hard_breakdown_flag": 0.0,
+        }
+        env.is_safe_dispatch = lambda mid, pt, stress=None: True
+        op = SimpleNamespace(feasible_machines=[0, 1], proc_times={0: 10.0, 1: 10.0})
+
+        candidates = EventDrivenShopEnv.dispatch_candidate_machines(env, op, stress=0.0)
+
+        self.assertEqual(candidates, [1])
 
     def test_hier_maintenance_arch_only_enables_for_thdqn_dqn_unrestricted(self):
         cfg = SimConfig()
@@ -1119,10 +1223,10 @@ class MergeRegressionTests(unittest.TestCase):
 
     def test_combo_conditioned_behavior_groups_rule_goal_and_maintenance_counts(self):
         decision_log = [
-            {"event": "scheduling", "lambda_true_segment": 20.0, "ddt_true_segment": 1.0, "goal": 0, "rule": 2, "dispatched": True},
+            {"event": "scheduling", "lambda_true_segment": 20.0, "ddt_true_segment": 1.0, "goal": 0, "rule": 2, "dispatched": True, "op": {"jid": 1, "oid": 0, "t1": 10.0}, "job_due": 8.0, "overdue": True},
             {"event": "scheduling", "lambda_true_segment": 20.0, "ddt_true_segment": 1.0, "goal": 0, "rule": 2, "dispatched": False},
             {"event": "maintenance", "lambda_true_segment": 20.0, "ddt_true_segment": 1.0, "kind": "IM"},
-            {"event": "scheduling", "lambda_true_segment": 60.0, "ddt_true_segment": 2.0, "goal": 3, "rule": 5, "dispatched": True},
+            {"event": "scheduling", "lambda_true_segment": 60.0, "ddt_true_segment": 2.0, "goal": 3, "rule": 5, "dispatched": True, "op": {"jid": 2, "oid": 1, "t1": 12.0}, "job_due": 20.0, "overdue": False},
             {"event": "maintenance", "lambda_true_segment": 60.0, "ddt_true_segment": 2.0, "kind": "CM"},
         ]
 
@@ -1135,9 +1239,87 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(summary["lam=20.0|ddt=1.00"]["maint_counts"]["IM"], 1)
         self.assertAlmostEqual(summary["lam=20.0|ddt=1.00"]["rule_shares"]["2"], 1.0)
         self.assertAlmostEqual(summary["lam=20.0|ddt=1.00"]["maint_shares"]["IM"], 1.0)
+        self.assertAlmostEqual(summary["lam=20.0|ddt=1.00"]["combo_tard"], 2.0)
+        self.assertAlmostEqual(summary["lam=20.0|ddt=1.00"]["combo_overdue_ratio_ops"], 1.0)
+        self.assertEqual(summary["lam=20.0|ddt=1.00"]["combo_completed_jobs"], 1)
         self.assertEqual(summary["lam=60.0|ddt=2.00"]["dominant_rule"]["label"], "5")
         self.assertEqual(dominant_rule_by_combo["lam=60.0|ddt=2.00"]["label"], "5")
         self.assertEqual(dominant_goal_by_combo["lam=20.0|ddt=1.00"]["label"], "0")
+
+    def test_combo_eval_rows_flatten_behavior_with_performance_metrics(self):
+        combo_behavior = {
+            "lam=20.0|ddt=1.00": {
+                "dominant_rule": {"label": "2", "share": 0.75},
+                "rule_shares": {"2": 0.75, "3": 0.25},
+                "combo_tard": 5.0,
+                "combo_overdue_ratio_ops": 0.5,
+                "dispatch_count": 4,
+                "combo_completed_jobs": 2,
+            }
+        }
+
+        rows = combo_eval_rows(
+            combo_behavior,
+            scheduler_mode="PPO_ENTROPY",
+            seed=42,
+            experiment_profile="thesis_ppo_hparam_ablation",
+            horizon_mode="long",
+            train_policy_tag="region_off_unrestricted",
+            eval_policy_tag="region_off_unrestricted",
+            maint_mode="NONE",
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["combo_key"], "lam=20.0|ddt=1.00")
+        self.assertEqual(rows[0]["dominant_rule"], "2")
+        self.assertAlmostEqual(rows[0]["combo_tard"], 5.0)
+        self.assertEqual(rows[0]["combo_completed_jobs"], 2)
+
+    def test_compare_combo_behavior_against_anchor_counts_rule_changes_and_wins(self):
+        anchor = {
+            "lam=20.0|ddt=1.00": {
+                "dominant_rule": {"label": "1", "share": 1.0},
+                "combo_tard": 10.0,
+                "combo_overdue_ratio_ops": 0.5,
+            },
+            "lam=40.0|ddt=1.50": {
+                "dominant_rule": {"label": "1", "share": 1.0},
+                "combo_tard": 4.0,
+                "combo_overdue_ratio_ops": 0.1,
+            },
+        }
+        candidate = {
+            "lam=20.0|ddt=1.00": {
+                "dominant_rule": {"label": "2", "share": 0.8},
+                "combo_tard": 7.0,
+                "combo_overdue_ratio_ops": 0.2,
+            },
+            "lam=40.0|ddt=1.50": {
+                "dominant_rule": {"label": "1", "share": 0.9},
+                "combo_tard": 6.0,
+                "combo_overdue_ratio_ops": 0.2,
+            },
+        }
+
+        summary, rows = compare_combo_behavior_against_anchor(
+            anchor,
+            candidate,
+            anchor_scheduler_mode="PPO_CONSERVATIVE",
+            candidate_scheduler_mode="PPO_ENTROPY",
+            seed=7,
+            experiment_profile="thesis_ppo_hparam_ablation",
+            horizon_mode="long",
+            train_policy_tag="region_off_unrestricted",
+            eval_policy_tag="region_off_unrestricted",
+        )
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(summary["combo_rule_changed_count"], 1)
+        self.assertEqual(summary["combo_tard_win_count_vs_greedy"], 1)
+        self.assertEqual(summary["combo_tard_loss_count_vs_greedy"], 1)
+        self.assertEqual(summary["combo_overdue_win_count_vs_greedy"], 1)
+        self.assertEqual(summary["combo_overdue_loss_count_vs_greedy"], 1)
+        self.assertAlmostEqual(summary["combo_changed_rule_tard_gain_mean"], 3.0)
 
     def test_combo_rule_diversity_metrics_capture_split_vs_collapsed_rules(self):
         combo_behavior = {

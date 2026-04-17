@@ -515,7 +515,7 @@ class EventDrivenShopEnv:
         util_stress = max(0.0, (util - util_ref) / util_ref)
         return float(self.cfg.STRESS_W_SLACK * float(slack_pressure) + self.cfg.STRESS_W_UTIL * util_stress)
 
-    def get_global_features(self):
+    def get_global_features(self, state_mode: Optional[str] = None):
         # scheduling features (observable only)
         idle = sum(1 for m in self.machines if m.status == "IDLE")
         wip = sum(1 for j in self.jobs.values() if (not j.completed and j.arrival <= self.time))
@@ -532,7 +532,7 @@ class EventDrivenShopEnv:
         ]
         idle_fail_risk_mean = float(np.mean(idle_risks)) if idle_risks else 0.0
         idle_fail_risk_max = float(np.max(idle_risks)) if idle_risks else 0.0
-        return np.array([
+        full = np.array([
             idle, wip, ready_len,
             arrivals, regime["sched_lambda"], regime["sched_ddt"],
             avg_slack, slack_q10, slack_pressure,
@@ -540,6 +540,14 @@ class EventDrivenShopEnv:
             idle_fail_risk_mean, idle_fail_risk_max,
             current_stress,
         ], dtype=np.float32)
+        mode = str(
+            state_mode
+            if state_mode is not None else getattr(self.cfg, "PPO_SCHED_STATE_MODE", "default")
+        ).strip().lower()
+        scheduler_mode = str(getattr(self.cfg, "SCHEDULER_MODE", "THDQN")).strip().upper()
+        if scheduler_mode.startswith("PPO") and mode == "ops_regime_only":
+            return np.concatenate([full[:12], full[14:15]], axis=0).astype(np.float32)
+        return full
 
     def _get_global_state(self):
         return self.get_global_features()
@@ -558,12 +566,44 @@ class EventDrivenShopEnv:
             ready.append(j.ops[j.next_op])
         return ready
 
+    def projected_dispatch_health_gate_allows(self, mid: int, pt: float, stress: Optional[float] = None) -> bool:
+        mode = str(getattr(self.cfg, "SCHED_HEALTH_GATE_MODE", "off")).strip().lower()
+        if mode != "projected_h_end":
+            return True
+        preview = self._project_process_outcome(mid, pt, stress=stress)
+        threshold = float(getattr(self.cfg, "SCHED_HEALTH_GATE_H_END_MIN", 0.20))
+        return bool(float(preview["h_end_true"]) >= threshold)
+
+    def dispatch_candidate_machines(self, op: Operation, *, stress: Optional[float] = None) -> List[int]:
+        idle = sorted(m.mid for m in self.machines if m.status == "IDLE" and m.mid in op.feasible_machines)
+        if not idle:
+            return []
+        if stress is None:
+            stress = self._current_processing_stress()
+        gate_mode = str(getattr(self.cfg, "SCHED_HEALTH_GATE_MODE", "off")).strip().lower()
+        if gate_mode == "projected_h_end":
+            idle = [
+                mid for mid in idle
+                if self.projected_dispatch_health_gate_allows(mid, float(op.proc_times[mid]), stress=stress)
+            ]
+            if not idle:
+                return []
+        if not bool(getattr(self.cfg, "SCHED_SAFE_DISPATCH", True)):
+            return idle
+        safe = [
+            mid for mid in idle
+            if self.is_safe_dispatch(mid, float(op.proc_times[mid]), stress=stress)
+        ]
+        if gate_mode == "projected_h_end":
+            return safe
+        return safe if safe else idle
+
     def _available_ops(self) -> List[Operation]:
         # ready ops that can run on at least one idle feasible machine
-        idle_set = {m.mid for m in self.machines if m.status == "IDLE"}
+        stress = self._current_processing_stress()
         avail = []
         for op in self._ready_ops():
-            if any(mid in idle_set for mid in op.feasible_machines):
+            if self.dispatch_candidate_machines(op, stress=stress):
                 avail.append(op)
         return avail
 
@@ -639,6 +679,9 @@ class EventDrivenShopEnv:
             return self.machine_pt_sum.get(mid, 0.0) / count
         return self.machine_pt_base.get(mid, 0.5 * (self.cfg.PT_MIN + self.cfg.PT_MAX))
 
+    def health_system_enabled(self) -> bool:
+        return not bool(getattr(self.cfg, "DISABLE_HEALTH_SYSTEM", False))
+
     def breakdown_recovery_duration(self) -> float:
         return float(self.cfg.MT_CM + self.cfg.FAIL_EXTRA_DUR)
 
@@ -651,10 +694,14 @@ class EventDrivenShopEnv:
         return self.get_current_stress(slack_pressure)
 
     def processing_delta_idx(self, pt: float, stress: float) -> float:
+        if not self.health_system_enabled():
+            return 0.0
         effective_rate = float(self.cfg.BASE_DEGRADATION_RATE) * (1.0 + float(self.cfg.DEGRAD_ALPHA) * float(stress))
         return float(effective_rate * float(pt) / max(float(self.cfg.PT_REF), 1e-6))
 
     def peek_rul_true(self, mid: int) -> float:
+        if not self.health_system_enabled():
+            return 1.0
         idx_float = float(self.machine_operating_idx.get(mid, 0)) + float(self.machine_operating_frac.get(mid, 0.0))
         return self.rul_from_operating_index(mid, idx_float)
 
@@ -667,6 +714,27 @@ class EventDrivenShopEnv:
         h_true: Optional[float] = None,
         idx_before: Optional[float] = None,
     ) -> Dict[str, float]:
+        if not self.health_system_enabled():
+            pt = max(float(pt), 0.0)
+            stress_val = self._current_processing_stress() if stress is None else float(stress)
+            idx_before = float(
+                float(self.machine_operating_idx.get(mid, 0)) + float(self.machine_operating_frac.get(mid, 0.0))
+                if idx_before is None else idx_before
+            )
+            return {
+                "pt": pt,
+                "stress": stress_val,
+                "idx_before": idx_before,
+                "delta_idx": 0.0,
+                "idx_after": idx_before,
+                "h_start_true": 1.0,
+                "h_end_true": 1.0,
+                "hard_breakdown": 0.0,
+                "hard_breakdown_flag": 0.0,
+                "hard_fail_frac": 0.0,
+                "p_break_stochastic": 0.0,
+                "p_fail_exec": 0.0,
+            }
         pt = max(float(pt), 0.0)
         stress_val = self._current_processing_stress() if stress is None else float(stress)
         if idx_before is None:
@@ -871,11 +939,15 @@ class EventDrivenShopEnv:
         )
 
     def _peek_rul(self, mid: int) -> float:
+        if not self.health_system_enabled():
+            return 1.0
         idx_float = float(self.machine_operating_idx.get(mid, 0)) + float(self.machine_operating_frac.get(mid, 0.0))
         return float(self.rul_from_operating_index(mid, idx_float))
 
     def maintenance_decision_point(self, mid: int):
         # called when machine becomes IDLE after completing an operation
+        if not self.health_system_enabled():
+            return 1.0
         h = self._query_rul(mid)
         m = self.machines[mid]
         if h <= self.cfg.Hx and m.crossed_Hx_time is None:
@@ -884,6 +956,8 @@ class EventDrivenShopEnv:
         return h
 
     def failure_prob(self, h: float) -> float:
+        if not self.health_system_enabled():
+            return 0.0
         z = self.cfg.FAIL_K * (self.cfg.Hy - h)
         base = 1.0 / (1.0 + math.exp(-z))
         return max(0.0, min(1.0, base))
@@ -1106,14 +1180,7 @@ class EventDrivenShopEnv:
         stress = self._current_processing_stress()
 
         def safe_idle_machines(op: Operation) -> List[int]:
-            idle = [m.mid for m in self.machines if m.status == "IDLE" and m.mid in op.feasible_machines]
-            if not bool(getattr(self.cfg, "SCHED_SAFE_DISPATCH", True)):
-                return idle
-            safe = [
-                mid for mid in idle
-                if self.is_safe_dispatch(mid, float(op.proc_times[mid]), stress=stress)
-            ]
-            return safe if safe else idle
+            return self.dispatch_candidate_machines(op, stress=stress)
 
         def earliest_idle_machine(op: Operation) -> int:
             idle = safe_idle_machines(op)
