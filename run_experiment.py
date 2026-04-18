@@ -17,7 +17,13 @@ from src.utils import set_seed
 from src.degradation import DegradationReplay
 from src.rul_predictor import RULPredictorWrapper
 from src.env import EventDrivenShopEnv, EpisodeScenario, JobTemplate, OperationTemplate
-from src.agents import HierMaintenanceAgentDDQN, MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
+from src.agents import (
+    FixedRuleSchedulerAgent,
+    HierMaintenanceAgentDDQN,
+    MaintenanceAgentDDQN,
+    PPOSchedulerAgent,
+    THDQNAgent,
+)
 from src.compare import (
     combo_eval_rows,
     combo_dominant_maps,
@@ -34,6 +40,7 @@ from src.viz import (
     plot_gantt,
     plot_rul_curves,
     plot_rule_vs_features,
+    plot_rule_twt_uave,
     plot_training_curves,
     plot_maint_action_rates,
     plot_maint_vs_slack,
@@ -122,7 +129,51 @@ def canonical_scheduler_mode(scheduler_mode: Optional[str]) -> str:
     mode = str(scheduler_mode or "THDQN").strip().upper()
     if mode.startswith("PPO"):
         return "PPO"
+    if mode.startswith("RULE_"):
+        return "RULE"
     return "THDQN"
+
+
+FIXED_RULE_LABELS: Dict[int, str] = {
+    0: "EDD + earliest idle",
+    1: "EDD + SPT machine",
+    2: "max urgency*tard + SPT",
+    3: "SRPT + SPT",
+    4: "LRPT + earliest idle",
+    5: "min slack + earliest idle",
+}
+
+
+def is_fixed_rule_scheduler_mode(scheduler_mode: Optional[str]) -> bool:
+    return canonical_scheduler_mode(scheduler_mode) == "RULE"
+
+
+def fixed_rule_id_from_mode(scheduler_mode: Optional[str]) -> int:
+    mode = str(scheduler_mode or "").strip().upper()
+    if not mode.startswith("RULE_"):
+        raise ValueError(f"unsupported fixed rule scheduler mode: {scheduler_mode}")
+    try:
+        rule_id = int(mode.split("_", 1)[1])
+    except Exception as exc:
+        raise ValueError(f"invalid fixed rule scheduler mode: {scheduler_mode}") from exc
+    if rule_id not in FIXED_RULE_LABELS:
+        raise ValueError(f"fixed rule id out of range: {rule_id}")
+    return int(rule_id)
+
+
+def fixed_rule_label(rule_id: int) -> str:
+    return str(FIXED_RULE_LABELS.get(int(rule_id), f"Rule {int(rule_id)}"))
+
+
+def canonical_ppo_variant(scheduler_mode: Optional[str]) -> str:
+    mode = str(scheduler_mode or "PPO").strip().upper()
+    for suffix in ("_LEGACY", "_EFFICIENCY", "_CONTEXTUAL"):
+        if mode.endswith(suffix):
+            mode = mode[: -len(suffix)]
+            break
+    if mode in {"PPO_BASE", "PPO_ENTROPY", "PPO_CONSERVATIVE", "PPO_CONSERVATIVE_LR", "PPO_BALANCED_CTX"}:
+        return mode
+    return "PPO"
 
 
 def scheduler_state_dim_for_context(cfg: SimConfig, scheduler_mode: Optional[str] = None) -> int:
@@ -140,33 +191,34 @@ def maintenance_decisions_enabled(cfg: SimConfig) -> bool:
 
 def apply_scheduler_mode_runtime_overrides(cfg: SimConfig, scheduler_mode: Optional[str]) -> SimConfig:
     mode = str(scheduler_mode or getattr(cfg, "SCHEDULER_MODE", "THDQN")).strip().upper()
+    ppo_variant = canonical_ppo_variant(mode)
     cfg.SCHEDULER_MODE = mode
     cfg.SCHEDULER_STATE_DIM = scheduler_state_dim_for_context(cfg, scheduler_mode=mode)
-    if mode == "PPO_BASE":
+    if ppo_variant == "PPO_BASE":
         cfg.PPO_LR = 3e-4
         cfg.PPO_ENTROPY_COEF = 0.01
         cfg.PPO_CLIP = 0.20
         cfg.PPO_EPOCHS = 4
         cfg.PPO_MINIBATCH = 64
-    elif mode == "PPO_ENTROPY":
+    elif ppo_variant == "PPO_ENTROPY":
         cfg.PPO_LR = 3e-4
         cfg.PPO_ENTROPY_COEF = 0.03
         cfg.PPO_CLIP = 0.20
         cfg.PPO_EPOCHS = 4
         cfg.PPO_MINIBATCH = 64
-    elif mode == "PPO_CONSERVATIVE":
+    elif ppo_variant == "PPO_CONSERVATIVE":
         cfg.PPO_LR = 3e-4
         cfg.PPO_ENTROPY_COEF = 0.03
         cfg.PPO_CLIP = 0.15
         cfg.PPO_EPOCHS = 2
         cfg.PPO_MINIBATCH = 64
-    elif mode == "PPO_CONSERVATIVE_LR":
+    elif ppo_variant == "PPO_CONSERVATIVE_LR":
         cfg.PPO_LR = 1e-4
         cfg.PPO_ENTROPY_COEF = 0.03
         cfg.PPO_CLIP = 0.15
         cfg.PPO_EPOCHS = 2
         cfg.PPO_MINIBATCH = 64
-    elif mode == "PPO_BALANCED_CTX":
+    elif ppo_variant == "PPO_BALANCED_CTX":
         cfg.PPO_LR = 1.5e-4
         cfg.PPO_ENTROPY_COEF = 0.03
         cfg.PPO_CLIP = 0.20
@@ -300,6 +352,109 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
         cfg.ENABLE_MAINT_ONLY_COMPARE = False
         cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
         return cfg
+    if profile == "thesis_ppo_sched_core_compare":
+        cfg.TRAIN_SCHEDULER_MODES = (
+            "PPO_CONSERVATIVE_LEGACY",
+            "PPO_ENTROPY_LEGACY",
+            "PPO_BALANCED_CTX_CONTEXTUAL",
+            "PPO_CONSERVATIVE_CONTEXTUAL",
+        )
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("NONE",)
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 200
+        cfg.COMBO_SEGMENT_JOBS = 18
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_only"
+        cfg.SCHED_HEALTH_GATE_MODE = "off"
+        cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
+        cfg.ENABLE_MAINTENANCE_DECISIONS = False
+        cfg.DISABLE_HEALTH_SYSTEM = True
+        cfg.BREAKDOWN_ENABLE = False
+        cfg.FAIL_STOCHASTIC = False
+        cfg.SCHED_SAFE_DISPATCH = False
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        return cfg
+    if profile == "thesis_sched_rule_baselines":
+        cfg.TRAIN_SCHEDULER_MODES = tuple(f"RULE_{i}" for i in range(6))
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("NONE",)
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 200
+        cfg.COMBO_SEGMENT_JOBS = 18
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_only"
+        cfg.SCHED_HEALTH_GATE_MODE = "off"
+        cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
+        cfg.ENABLE_MAINTENANCE_DECISIONS = False
+        cfg.DISABLE_HEALTH_SYSTEM = True
+        cfg.BREAKDOWN_ENABLE = False
+        cfg.FAIL_STOCHASTIC = False
+        cfg.SCHED_SAFE_DISPATCH = False
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        return cfg
+    if profile == "thesis_ppo_sched_full_ablation":
+        cfg.TRAIN_SCHEDULER_MODES = (
+            "PPO_CONSERVATIVE_LEGACY", "PPO_CONSERVATIVE_EFFICIENCY", "PPO_CONSERVATIVE_CONTEXTUAL",
+            "PPO_ENTROPY_LEGACY", "PPO_ENTROPY_EFFICIENCY", "PPO_ENTROPY_CONTEXTUAL",
+            "PPO_CONSERVATIVE_LR_LEGACY", "PPO_CONSERVATIVE_LR_EFFICIENCY", "PPO_CONSERVATIVE_LR_CONTEXTUAL",
+            "PPO_BALANCED_CTX_LEGACY", "PPO_BALANCED_CTX_EFFICIENCY", "PPO_BALANCED_CTX_CONTEXTUAL",
+        )
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("NONE",)
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 200
+        cfg.COMBO_SEGMENT_JOBS = 18
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_only"
+        cfg.SCHED_HEALTH_GATE_MODE = "off"
+        cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
+        cfg.ENABLE_MAINTENANCE_DECISIONS = False
+        cfg.DISABLE_HEALTH_SYSTEM = True
+        cfg.BREAKDOWN_ENABLE = False
+        cfg.FAIL_STOCHASTIC = False
+        cfg.SCHED_SAFE_DISPATCH = False
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        return cfg
+    if profile == "thesis_ppo_sched_full_ablation_smoke":
+        cfg.TRAIN_SCHEDULER_MODES = (
+            "PPO_CONSERVATIVE_LEGACY", "PPO_CONSERVATIVE_EFFICIENCY", "PPO_CONSERVATIVE_CONTEXTUAL",
+            "PPO_ENTROPY_LEGACY", "PPO_ENTROPY_EFFICIENCY", "PPO_ENTROPY_CONTEXTUAL",
+            "PPO_CONSERVATIVE_LR_LEGACY", "PPO_CONSERVATIVE_LR_EFFICIENCY", "PPO_CONSERVATIVE_LR_CONTEXTUAL",
+            "PPO_BALANCED_CTX_LEGACY", "PPO_BALANCED_CTX_EFFICIENCY", "PPO_BALANCED_CTX_CONTEXTUAL",
+        )
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("NONE",)
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 20
+        cfg.COMBO_SEGMENT_JOBS = 3
+        cfg.TRAIN_EPISODES = 6
+        cfg.EVAL_EVERY = 3
+        cfg.SAVE_EVERY = 3
+        cfg.EARLY_STOP_ENABLED = False
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_only"
+        cfg.SCHED_HEALTH_GATE_MODE = "off"
+        cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
+        cfg.ENABLE_MAINTENANCE_DECISIONS = False
+        cfg.DISABLE_HEALTH_SYSTEM = True
+        cfg.BREAKDOWN_ENABLE = False
+        cfg.FAIL_STOCHASTIC = False
+        cfg.SCHED_SAFE_DISPATCH = False
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        return cfg
     raise ValueError(f"unsupported experiment profile: {profile}")
 
 
@@ -323,8 +478,13 @@ def scheduler_fixed_mode_for_profile(cfg: SimConfig) -> str:
         "thesis_ppo_sched_pure",
         "thesis_ppo_sched_health_gate",
         "thesis_ppo_hparam_ablation",
+        "thesis_ppo_sched_core_compare",
+        "thesis_ppo_sched_full_ablation",
+        "thesis_ppo_sched_full_ablation_smoke",
     }:
         return "PPO"
+    if profile == "thesis_sched_rule_baselines":
+        return "RULE"
     return ""
 
 
@@ -336,15 +496,24 @@ def horizon_mode_for_profile(cfg: SimConfig) -> str:
         "thesis_ppo_sched_pure",
         "thesis_ppo_sched_health_gate",
         "thesis_ppo_hparam_ablation",
+        "thesis_ppo_sched_core_compare",
+        "thesis_sched_rule_baselines",
+        "thesis_ppo_sched_full_ablation",
     }:
         return "long"
-    if profile == "thesis_ppo_maint_short":
+    if profile in {"thesis_ppo_maint_short", "thesis_ppo_sched_full_ablation_smoke"}:
         return "short"
     return ""
 
 
 def scheduler_reward_version_for_mode(cfg: SimConfig, scheduler_mode: Optional[str] = None) -> str:
     mode = str(scheduler_mode or getattr(cfg, "SCHEDULER_MODE", "THDQN")).strip().upper()
+    if mode.endswith("_LEGACY"):
+        return "legacy_balanced"
+    if mode.endswith("_EFFICIENCY"):
+        return "efficiency_balanced"
+    if mode.endswith("_CONTEXTUAL"):
+        return "contextual_balanced"
     if mode == "PPO_LEGACY":
         return "legacy_balanced"
     if mode == "PPO_EFFICIENCY":
@@ -368,6 +537,10 @@ def comparison_role_for_profile(
         "thesis_ppo_sched_pure",
         "thesis_ppo_sched_health_gate",
         "thesis_ppo_hparam_ablation",
+        "thesis_ppo_sched_core_compare",
+        "thesis_sched_rule_baselines",
+        "thesis_ppo_sched_full_ablation",
+        "thesis_ppo_sched_full_ablation_smoke",
     }:
         return "supplement"
     unrestricted_tag = build_policy_tag(cfg, False)
@@ -375,6 +548,14 @@ def comparison_role_for_profile(
         profile == "thesis_ppo_maint"
         and
         str(compare_type) == "full_system"
+        and canonical_scheduler_mode(scheduler_mode) == "PPO"
+        and str(train_policy_tag or "") == unrestricted_tag
+        and str(eval_policy_tag or "") == unrestricted_tag
+    ):
+        return "main_experiment"
+    if (
+        profile == "thesis_ppo_sched_core_compare"
+        and str(compare_type) == "scheduler_core_compare"
         and canonical_scheduler_mode(scheduler_mode) == "PPO"
         and str(train_policy_tag or "") == unrestricted_tag
         and str(eval_policy_tag or "") == unrestricted_tag
@@ -437,6 +618,31 @@ def summarize_final_machine_health(env: Any) -> Dict[str, float]:
     }
 
 
+def compute_uave(timeline_ops: List[Tuple[Any, ...]], num_machines: int) -> float:
+    m = max(int(num_machines), 1)
+    busy_time = {mid: 0.0 for mid in range(m)}
+    completion_time = {mid: 0.0 for mid in range(m)}
+    for seg in timeline_ops or []:
+        if len(seg) < 3:
+            continue
+        try:
+            mid = int(seg[0])
+            t0 = float(seg[1])
+            t1 = float(seg[2])
+        except Exception:
+            continue
+        if mid < 0 or mid >= m:
+            continue
+        dur = max(0.0, t1 - t0)
+        busy_time[mid] += dur
+        completion_time[mid] = max(completion_time[mid], t1)
+    total = 0.0
+    for mid in range(m):
+        if completion_time[mid] > 0.0:
+            total += busy_time[mid] / completion_time[mid]
+    return float(total / m)
+
+
 def experiment_result_metadata(
     cfg: SimConfig,
     *,
@@ -491,6 +697,67 @@ def scheduler_reward_goal(cfg: SimConfig, goal: Optional[int]) -> int:
         return int(goal)
     return int(getattr(cfg, "PPO_SCHED_REWARD_GOAL", 2))
 
+
+def extract_scheduler_reward_features(
+    state: Optional[np.ndarray],
+    *,
+    scheduler_mode: Optional[str],
+    state_mode: Optional[str] = None,
+) -> Dict[str, float]:
+    arr = np.asarray(state if state is not None else [], dtype=np.float32).reshape(-1)
+    mode = str(state_mode or "").strip().lower()
+    if not mode:
+        if arr.shape[0] == 15:
+            mode = "full"
+        elif arr.shape[0] == 13:
+            mode = "ops_regime_only"
+        else:
+            raise ValueError(
+                f"unsupported scheduler reward state length {arr.shape[0]} for "
+                f"{str(scheduler_mode or 'PPO').upper()}"
+            )
+    if mode == "full":
+        if arr.shape[0] < 15:
+            raise ValueError(f"full scheduler reward state expects 15 dims, got {arr.shape[0]}")
+        return {
+            "idle": float(arr[0]),
+            "wip": float(arr[1]),
+            "ready_len": float(arr[2]),
+            "arrivals": float(arr[3]),
+            "sched_lambda": float(arr[4]),
+            "sched_ddt": float(arr[5]),
+            "avg_slack": float(arr[6]),
+            "slack_q10": float(arr[7]),
+            "slack_pressure": float(arr[8]),
+            "utilization": float(arr[9]),
+            "overdue_rate": float(arr[10]),
+            "rush": float(arr[11]),
+            "idle_fail_risk_mean": float(arr[12]),
+            "idle_fail_risk_max": float(arr[13]),
+            "current_stress": float(arr[14]),
+        }
+    if mode == "ops_regime_only":
+        if arr.shape[0] < 13:
+            raise ValueError(f"ops_regime_only scheduler reward state expects 13 dims, got {arr.shape[0]}")
+        return {
+            "idle": float(arr[0]),
+            "wip": float(arr[1]),
+            "ready_len": float(arr[2]),
+            "arrivals": float(arr[3]),
+            "sched_lambda": float(arr[4]),
+            "sched_ddt": float(arr[5]),
+            "avg_slack": float(arr[6]),
+            "slack_q10": float(arr[7]),
+            "slack_pressure": float(arr[8]),
+            "utilization": float(arr[9]),
+            "overdue_rate": float(arr[10]),
+            "rush": float(arr[11]),
+            "current_stress": float(arr[12]),
+            "idle_fail_risk_mean": 0.0,
+            "idle_fail_risk_max": 0.0,
+        }
+    raise ValueError(f"unsupported scheduler reward state mode: {mode}")
+
 def effective_degradation_rate_scale(cfg: SimConfig) -> float:
     return float(getattr(cfg, "DEGRADATION_RATE_SCALE", 1.0))
 
@@ -513,7 +780,7 @@ def scheduler_act(sched_agent, state: np.ndarray, *, explore: bool):
         goal, rule, logprob, value = sched_agent.act_with_info(state, explore=explore)
         return goal, int(rule), {"logprob": float(logprob), "value": float(value)}
     goal, rule = sched_agent.act(state, explore=explore)
-    return int(goal), int(rule), {}
+    return None if goal is None else int(goal), int(rule), {}
 
 
 def scheduling_reward(
@@ -539,23 +806,53 @@ def scheduling_reward(
         if goal == 2:
             return -(dtard + 0.3 * dmaint)
         return -(0.3 * dtard + dmaint)
+    before = extract_scheduler_reward_features(state_before, scheduler_mode=scheduler_mode)
+    after = extract_scheduler_reward_features(state_after, scheduler_mode=scheduler_mode)
+    overdue_up = max(0.0, float(after["overdue_rate"] - before["overdue_rate"]))
+    overdue_down = max(0.0, float(before["overdue_rate"] - after["overdue_rate"]))
+    slack_pressure_up = max(0.0, float(after["slack_pressure"] - before["slack_pressure"]))
+    slack_pressure_down = max(0.0, float(before["slack_pressure"] - after["slack_pressure"]))
+    fail_risk_up = max(0.0, float(after["idle_fail_risk_max"] - before["idle_fail_risk_max"]))
+    slack_ref = max(float(getattr(cfg, "SLACK_REF", 150.0)), 1e-6)
+    slack_q10_drop = max(0.0, float(before["slack_q10"] - after["slack_q10"])) / slack_ref
+    slack_q10_gain = max(0.0, float(after["slack_q10"] - before["slack_q10"])) / slack_ref
+    avg_slack_drop = max(0.0, float(before["avg_slack"] - after["avg_slack"])) / slack_ref
+    ready_up = max(0.0, float(after["ready_len"] - before["ready_len"])) / max(int(getattr(cfg, "NUM_MACHINES", 1)), 1)
 
-    overdue_up = 0.0
-    slack_up = 0.0
-    fail_risk_up = 0.0
-    if state_before is not None and state_after is not None:
-        s0 = np.asarray(state_before, dtype=np.float32)
-        s1 = np.asarray(state_after, dtype=np.float32)
-        if s0.shape[0] >= 14 and s1.shape[0] >= 14:
-            overdue_up = max(0.0, float(s1[10] - s0[10]))
-            slack_up = max(0.0, float(s1[8] - s0[8]))
-            fail_risk_up = max(0.0, float(s1[13] - s0[13]))
+    if reward_version == "efficiency_balanced":
+        return -(
+            1.0 * float(dtard)
+            + float(getattr(cfg, "PPO_EFFICIENCY_MAINT_W", 0.15)) * float(dmaint)
+            + float(getattr(cfg, "PPO_EFFICIENCY_OVERDUE_W", 2.0)) * float(overdue_up)
+            + float(getattr(cfg, "PPO_EFFICIENCY_SLACK_W", 1.0)) * float(slack_pressure_up)
+            + float(getattr(cfg, "PPO_EFFICIENCY_FAILRISK_W", 0.5)) * float(fail_risk_up)
+        )
+
+    lam_values = sorted(float(x) for x in getattr(cfg, "ARRIVAL_LAM_VALUES", [float(after["sched_lambda"]) or 1.0]))
+    ddt_values = sorted(float(x) for x in getattr(cfg, "DDT_VALUES", [float(after["sched_ddt"]) or 1.0]))
+    lam_min, lam_max = float(lam_values[0]), float(lam_values[-1])
+    ddt_min, ddt_max = float(ddt_values[0]), float(ddt_values[-1])
+    lam_span = max(lam_max - lam_min, 1e-6)
+    ddt_span = max(ddt_max - ddt_min, 1e-6)
+    load_score = float(np.clip((lam_max - float(after["sched_lambda"])) / lam_span, 0.0, 1.0))
+    tight_score = float(np.clip((ddt_max - float(after["sched_ddt"])) / ddt_span, 0.0, 1.0))
+    context_score = 0.5 * (load_score + tight_score)
+    context_scale = 1.0 + float(getattr(cfg, "PPO_CONTEXTUAL_CONTEXT_SCALE", 1.0)) * context_score
+
     return -(
-        1.0 * float(dtard)
-        + float(getattr(cfg, "PPO_EFFICIENCY_MAINT_W", 0.15)) * float(dmaint)
-        + float(getattr(cfg, "PPO_EFFICIENCY_OVERDUE_W", 2.0)) * float(overdue_up)
-        + float(getattr(cfg, "PPO_EFFICIENCY_SLACK_W", 1.0)) * float(slack_up)
-        + float(getattr(cfg, "PPO_EFFICIENCY_FAILRISK_W", 0.5)) * float(fail_risk_up)
+        float(getattr(cfg, "PPO_CONTEXTUAL_TARD_W", 1.0)) * float(dtard)
+        + float(getattr(cfg, "PPO_CONTEXTUAL_MAINT_W", 0.15)) * float(dmaint)
+        + context_scale * (
+            float(getattr(cfg, "PPO_CONTEXTUAL_OVERDUE_UP_W", 2.0)) * float(overdue_up)
+            + float(getattr(cfg, "PPO_CONTEXTUAL_SLACK_PRESSURE_UP_W", 1.0)) * float(slack_pressure_up)
+            + float(getattr(cfg, "PPO_CONTEXTUAL_SLACK_Q10_DROP_W", 0.75)) * float(slack_q10_drop)
+            + float(getattr(cfg, "PPO_CONTEXTUAL_AVG_SLACK_DROP_W", 0.25)) * float(avg_slack_drop)
+            + float(getattr(cfg, "PPO_CONTEXTUAL_READY_UP_W", 0.10)) * float(ready_up)
+        )
+    ) + context_scale * (
+        float(getattr(cfg, "PPO_CONTEXTUAL_OVERDUE_DOWN_BONUS_W", 0.50)) * float(overdue_down)
+        + float(getattr(cfg, "PPO_CONTEXTUAL_SLACK_PRESSURE_DOWN_BONUS_W", 0.25)) * float(slack_pressure_down)
+        + float(getattr(cfg, "PPO_CONTEXTUAL_SLACK_Q10_GAIN_BONUS_W", 0.25)) * float(slack_q10_gain)
     )
 
 
@@ -1551,6 +1848,31 @@ def write_rows_files(outdir: Path, stem: str, rows: List[Dict[str, Any]]):
         writer.writeheader()
         writer.writerows(rows)
 
+
+def build_rule_twt_uave_rows(result_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for row in result_rows or []:
+        scheduler_mode = str(row.get("scheduler_mode", "")).upper()
+        if not scheduler_mode.startswith("RULE_"):
+            continue
+        grouped.setdefault(scheduler_mode, []).append(dict(row))
+    output_rows: List[Dict[str, Any]] = []
+    for scheduler_mode in sorted(grouped.keys(), key=lambda m: fixed_rule_id_from_mode(m)):
+        rows = grouped[scheduler_mode]
+        rule_id = fixed_rule_id_from_mode(scheduler_mode)
+        twt_vals = [float(r.get("tard", 0.0) or 0.0) for r in rows]
+        uave_vals = [float(r.get("uave", 0.0) or 0.0) for r in rows]
+        output_rows.append({
+            "scheduler_mode": scheduler_mode,
+            "rule_id": int(rule_id),
+            "rule_tag": f"R{rule_id}",
+            "rule_name": fixed_rule_label(rule_id),
+            "twt": float(sum(twt_vals) / len(twt_vals)) if twt_vals else 0.0,
+            "uave": float(sum(uave_vals) / len(uave_vals)) if uave_vals else 0.0,
+            "seed_count": int(len(rows)),
+        })
+    return output_rows
+
 def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, rul: RULPredictorWrapper,
                   sched_agent: THDQNAgent, maint_agent: Optional[MaintenanceAgentDDQN],
                   maint_mode: str, pomcp: Optional[POMCPPlanner], machine_curve_ids: list[int],
@@ -2465,7 +2787,8 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
     return int(enforce_action_by_region(fallback_action, h_obs, cfg, enforce_region)), action_meta
 
 def _make_scheduler_agent(cfg: SimConfig, seed: int, device):
-    scheduler_mode = canonical_scheduler_mode(getattr(cfg, "SCHEDULER_MODE", "THDQN"))
+    raw_scheduler_mode = str(getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
+    scheduler_mode = canonical_scheduler_mode(raw_scheduler_mode)
     state_dim = int(getattr(cfg, "SCHEDULER_STATE_DIM", 15))
     if scheduler_mode == "PPO":
         return PPOSchedulerAgent(
@@ -2474,6 +2797,8 @@ def _make_scheduler_agent(cfg: SimConfig, seed: int, device):
             rng=make_rng(seed, "ppo", "sched_agent"),
             device=device,
         )
+    if scheduler_mode == "RULE":
+        return FixedRuleSchedulerAgent(rule_id=fixed_rule_id_from_mode(raw_scheduler_mode))
     return THDQNAgent(
         state_dim=state_dim,
         low_state_dim=int(getattr(cfg, "THDQN_LOW_STATE_DIM", 11)),
@@ -2505,6 +2830,10 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
     env = final_result.get("env")
     cfg_env = getattr(env, "cfg", None)
     health_summary = summarize_final_machine_health(env)
+    uave = compute_uave(
+        getattr(env, "timeline_ops", []),
+        int(getattr(cfg_env, "NUM_MACHINES", getattr(env, "num_machines", 0)) or 0),
+    )
     scheduler_mode = str(final_result.get("scheduler_mode", "THDQN")).upper()
     im_invalid_filtered_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("im_invalid_flag")))
     dn_veto_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("dn_imminent_breakdown_veto")))
@@ -2556,6 +2885,7 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "scheduling_events": int(schedule_summary["scheduling_events"]),
         "breakdown_count": int(schedule_summary["breakdown_count"]),
         "makespan": float(schedule_summary["makespan"]),
+        "uave": float(uave),
         "breakdown_cost": float(getattr(env, "breakdown_cost_total", 0.0)),
         "requeued_op_count": int(getattr(env, "requeued_op_count", 0)),
         "interrupted_proc_time": float(getattr(env, "interrupted_proc_time", 0.0)),
@@ -2849,6 +3179,7 @@ def train_one_mode(
     set_seed(derive_seed(seed, train_policy_tag, cfg.SCHEDULER_MODE, mode, "global_init"))
 
     sched_agent = _make_scheduler_agent(cfg, seed, device)
+    fixed_rule_scheduler = isinstance(sched_agent, FixedRuleSchedulerAgent)
     maintenance_enabled = maintenance_decisions_enabled(cfg)
     maint_agent = _make_maint_agent(cfg, seed, device) if (cfg.MAINT_MODE == "DQN" and maintenance_enabled) else None
     ckpt_mgr = CheckpointManager(str(ckpt_dir), cfg, device)
@@ -2863,8 +3194,14 @@ def train_one_mode(
     stable_count = 0
     stop_ep = None
     last_env = None
+    train_scenarios = [] if fixed_rule_scheduler else list(scenario_bank.train_scenarios)
+    if fixed_rule_scheduler:
+        print(
+            f"[seed {seed}][{train_policy_tag}][{build_scheduler_mode_tag(cfg.SCHEDULER_MODE)}]"
+            f"[{build_maint_mode_tag(mode)}] fixed-rule baseline: skipping training and running direct evaluation"
+        )
 
-    for ep, scenario in enumerate(scenario_bank.train_scenarios):
+    for ep, scenario in enumerate(train_scenarios):
         ep_num = ep + 1
         cfg.BASE_DEGRADATION_RATE = float(scenario.degradation_rate)
         env_breakdown_rng = make_rng(seed, train_policy_tag, cfg.SCHEDULER_MODE, mode, "train", ep_num, "env_breakdown")
@@ -3512,6 +3849,10 @@ def train_one_mode(
     official_dominant_rule_by_combo, official_dominant_goal_by_combo = combo_dominant_maps(official_combo_behavior)
     official_rule_diversity = combo_rule_diversity_metrics(official_combo_behavior)
     official_health_summary = summarize_final_machine_health(eval_env)
+    official_uave = compute_uave(
+        getattr(eval_env, "timeline_ops", []),
+        int(getattr(getattr(eval_env, "cfg", None), "NUM_MACHINES", getattr(eval_env, "num_machines", 0)) or 0),
+    )
     official_maint_rows = extract_maintenance_rows(official_decision_log)
     summary_row = {
         "timestamp": ts,
@@ -3545,6 +3886,7 @@ def train_one_mode(
         "total_ops": float(overdue_stats["total_ops"]),
         "breakdown_count": int(eval_env.breakdown_count),
         "breakdown_cost": float(eval_env.breakdown_cost_total),
+        "uave": float(official_uave),
         "requeued_op_count": int(eval_env.requeued_op_count),
         "interrupted_proc_time": float(eval_env.interrupted_proc_time),
         "hard_breakdown_count": int(eval_env.hard_breakdown_count),
@@ -3675,6 +4017,12 @@ def train_one_mode(
             "overdue_ratio_time": float(diag_overdue["ratio_time"]),
             "overdue_ops": float(diag_overdue["overdue_ops"]),
             "total_ops": float(diag_overdue["total_ops"]),
+            "uave": float(
+                compute_uave(
+                    getattr(diag_env, "timeline_ops", []),
+                    int(getattr(getattr(diag_env, "cfg", None), "NUM_MACHINES", getattr(diag_env, "num_machines", 0)) or 0),
+                )
+            ),
             "breakdown_count": int(diag_env.breakdown_count),
             "breakdown_cost": float(diag_env.breakdown_cost_total),
             "requeued_op_count": int(diag_env.requeued_op_count),
@@ -3684,27 +4032,29 @@ def train_one_mode(
         }
         write_summary_files(outdir, f"summary_{ts}_{maint_mode_tag}_{diag_policy_tag}_diagnostic", diag_summary)
 
-    plot_training_curves(ep_tard, ep_maint, str(outdir / f"training_curves_{ts}_{maint_mode_tag}.png"),
-                         smooth_window=cfg.CURVE_SMOOTH_WINDOW, stop_ep=stop_ep)
-    plot_maint_action_rates(ep_dn_rate, ep_im_rate, ep_cm_rate, str(outdir / f"maint_action_rates_{ts}_{maint_mode_tag}.png"),
-                            avg_im_counts=ep_avg_im)
+    if not fixed_rule_scheduler:
+        plot_training_curves(ep_tard, ep_maint, str(outdir / f"training_curves_{ts}_{maint_mode_tag}.png"),
+                             smooth_window=cfg.CURVE_SMOOTH_WINDOW, stop_ep=stop_ep)
+        plot_maint_action_rates(ep_dn_rate, ep_im_rate, ep_cm_rate, str(outdir / f"maint_action_rates_{ts}_{maint_mode_tag}.png"),
+                                avg_im_counts=ep_avg_im)
 
     final_metrics = dict(official_result["metrics"])
-    final_metrics["episode"] = stop_ep or cfg.TRAIN_EPISODES
-    ckpt_mgr.append_metrics(final_metrics, seed)
-    env_state = {
-        "slack_scale": official_result["env"].slack_scale,
-        "last_slack_pressure": official_result["env"].last_slack_pressure,
-    }
-    ckpt_mgr.save_latest(
-        sched_agent, maint_agent, official_result["env"].observer, env_state, final_metrics,
-        step_info={"episode": final_metrics["episode"], "phase": "final_eval", "train_policy_tag": train_policy_tag},
-    )
-    ckpt_mgr.maybe_save_best(
-        sched_agent, maint_agent, official_result["env"].observer, env_state, final_metrics,
-        step_info={"episode": final_metrics["episode"], "phase": "final_eval", "train_policy_tag": train_policy_tag},
-    )
-    ckpt_mgr.ensure_best_exists()
+    final_metrics["episode"] = 0 if fixed_rule_scheduler else (stop_ep or cfg.TRAIN_EPISODES)
+    if not fixed_rule_scheduler:
+        ckpt_mgr.append_metrics(final_metrics, seed)
+        env_state = {
+            "slack_scale": official_result["env"].slack_scale,
+            "last_slack_pressure": official_result["env"].last_slack_pressure,
+        }
+        ckpt_mgr.save_latest(
+            sched_agent, maint_agent, official_result["env"].observer, env_state, final_metrics,
+            step_info={"episode": final_metrics["episode"], "phase": "final_eval", "train_policy_tag": train_policy_tag},
+        )
+        ckpt_mgr.maybe_save_best(
+            sched_agent, maint_agent, official_result["env"].observer, env_state, final_metrics,
+            step_info={"episode": final_metrics["episode"], "phase": "final_eval", "train_policy_tag": train_policy_tag},
+        )
+        ckpt_mgr.ensure_best_exists()
 
     return {
         "seed": int(seed),
@@ -3718,7 +4068,7 @@ def train_one_mode(
         "ckpt_dir": ckpt_dir,
         "official_result": official_result,
         "diagnostic_results": diagnostic_results,
-        "stop_ep": stop_ep or cfg.TRAIN_EPISODES,
+        "stop_ep": 0 if fixed_rule_scheduler else (stop_ep or cfg.TRAIN_EPISODES),
         "last_env": last_env,
         "sched_agent": sched_agent,
         "maint_agent": maint_agent,
@@ -3810,7 +4160,14 @@ def main(profile_override: Optional[str] = None):
                             scheduler_anchor="none",
                         )
                     )
-                    if experiment_profile in {"thesis_ppo_sched_pure", "thesis_ppo_sched_health_gate", "thesis_ppo_hparam_ablation"}:
+                    if experiment_profile in {
+                        "thesis_ppo_sched_pure",
+                        "thesis_ppo_sched_health_gate",
+                        "thesis_ppo_hparam_ablation",
+                        "thesis_ppo_sched_core_compare",
+                        "thesis_ppo_sched_full_ablation",
+                        "thesis_ppo_sched_full_ablation_smoke",
+                    }:
                         run_combo_behavior = summarize_combo_conditioned_behavior(run_result["official_result"].get("decision_log", []))
                         all_combo_eval_rows.extend(
                             combo_eval_rows(
@@ -4061,6 +4418,107 @@ def main(profile_override: Optional[str] = None):
                             combo_rows,
                         )
 
+            if experiment_profile in {
+                "thesis_ppo_sched_core_compare",
+                "thesis_ppo_sched_full_ablation",
+                "thesis_ppo_sched_full_ablation_smoke",
+            }:
+                full_ablation_compare_dir = route_root / "full_ablation_compare"
+                full_ablation_compare_dir.mkdir(parents=True, exist_ok=True)
+                anchor_mode = "PPO_CONSERVATIVE_LEGACY"
+                anchor_run = route_results[train_policy_tag].get(anchor_mode, {}).get("NONE")
+                if anchor_run is not None:
+                    anchor_combo_behavior = summarize_combo_conditioned_behavior(
+                        anchor_run["official_result"].get("decision_log", [])
+                    )
+                    for candidate_mode in cfg.TRAIN_SCHEDULER_MODES:
+                        candidate_mode = str(candidate_mode).upper()
+                        if candidate_mode == anchor_mode:
+                            continue
+                        candidate_run = route_results[train_policy_tag].get(candidate_mode, {}).get("NONE")
+                        if candidate_run is None:
+                            continue
+                        full_summary, full_rows = compare_mode_results(
+                            anchor_run["official_result"],
+                            candidate_run["official_result"],
+                            anchor_mode,
+                            candidate_mode,
+                            compare_type="scheduler_core_compare" if experiment_profile == "thesis_ppo_sched_core_compare" else "scheduler_full_ablation",
+                            train_policy_tag=train_policy_tag,
+                            eval_policy_tag=train_policy_tag,
+                            scheduler_anchor=anchor_mode,
+                        )
+                        combo_summary, combo_rows = compare_combo_behavior_against_anchor(
+                            anchor_combo_behavior,
+                            summarize_combo_conditioned_behavior(candidate_run["official_result"].get("decision_log", [])),
+                            anchor_scheduler_mode=anchor_mode,
+                            candidate_scheduler_mode=candidate_mode,
+                            seed=int(seed),
+                            experiment_profile=experiment_profile,
+                            horizon_mode=horizon_mode_for_profile(cfg),
+                            train_policy_tag=train_policy_tag,
+                            eval_policy_tag=train_policy_tag,
+                        )
+                        combo_metrics = {
+                            key: value
+                            for key, value in combo_summary.items()
+                            if str(key).startswith("combo_")
+                        }
+                        full_summary = _finalize_compare_summary(
+                            full_summary,
+                            seed=int(seed),
+                            policy_tag=train_policy_tag,
+                            policy_label=train_policy_label,
+                            **experiment_result_metadata(
+                                cfg,
+                                maint_mode="NONE",
+                                compare_type="scheduler_core_compare" if experiment_profile == "thesis_ppo_sched_core_compare" else "scheduler_full_ablation",
+                                scheduler_mode=anchor_mode,
+                                train_policy_tag=train_policy_tag,
+                                eval_policy_tag=train_policy_tag,
+                            ),
+                            maint_mode="NONE",
+                            maint_mode_tag=build_maint_mode_tag("NONE"),
+                            scheduler_mode="PPO",
+                            scheduler_mode_tag=build_scheduler_mode_tag("PPO"),
+                            primary_scheduler_mode=anchor_mode,
+                            compare_scheduler_mode=candidate_mode,
+                            primary_scheduler_reward_version=scheduler_reward_version_for_mode(cfg, anchor_mode),
+                            compare_scheduler_reward_version=scheduler_reward_version_for_mode(cfg, candidate_mode),
+                            **combo_metrics,
+                        )
+                        all_compare_rows.append(dict(full_summary))
+                        all_combo_compare_rows.extend(combo_rows)
+                        stem_prefix = (
+                            "compare_scheduler_core_compare_"
+                            if experiment_profile == "thesis_ppo_sched_core_compare"
+                            else "compare_scheduler_full_ablation_"
+                        )
+                        stem = (
+                            f"{stem_prefix}{build_scheduler_mode_tag(anchor_mode)}_vs_"
+                            f"{build_scheduler_mode_tag(candidate_mode)}_{train_policy_tag}"
+                        )
+                        write_mode_comparison_outputs(
+                            full_ablation_compare_dir,
+                            stem,
+                            full_summary,
+                            full_rows,
+                            policy_label=(
+                                f"{train_policy_label} | Compare: {'scheduler_core_compare' if experiment_profile == 'thesis_ppo_sched_core_compare' else 'scheduler_full_ablation'} | "
+                                f"{anchor_mode} vs {candidate_mode}"
+                            ),
+                        )
+                        write_summary_files(
+                            full_ablation_compare_dir,
+                            f"{stem}_combo_summary",
+                            combo_summary,
+                        )
+                        write_rows_files(
+                            full_ablation_compare_dir,
+                            f"{stem}_combo_rows",
+                            combo_rows,
+                        )
+
             if "THDQN" in route_results[train_policy_tag] and "PPO" in route_results[train_policy_tag]:
                 scheduler_compare_dir = route_root / "scheduler_compare"
                 scheduler_compare_dir.mkdir(parents=True, exist_ok=True)
@@ -4245,6 +4703,16 @@ def main(profile_override: Optional[str] = None):
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(all_combo_compare_rows)
+
+    if experiment_profile == "thesis_sched_rule_baselines":
+        rule_baseline_dir = output_root / "rule_baselines"
+        rule_baseline_dir.mkdir(parents=True, exist_ok=True)
+        rule_twt_uave_rows = build_rule_twt_uave_rows(all_result_rows)
+        write_rows_files(rule_baseline_dir, "rule_twt_uave_rows", rule_twt_uave_rows)
+        plot_rule_twt_uave(
+            rule_twt_uave_rows,
+            str(rule_baseline_dir / "rule_twt_uave.png"),
+        )
 
     for _, _, policy_tag, _ in route_specs:
         for scheduler_mode in scheduler_modes:

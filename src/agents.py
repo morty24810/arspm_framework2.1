@@ -195,6 +195,29 @@ class HierMaintenanceAgentDDQN:
             self.q_type_t.load_state_dict(self.q_type.state_dict())
         return losses if losses else None
 
+
+class FixedRuleSchedulerAgent:
+    """
+    Stateless scheduler baseline that always dispatches the same rule.
+    Returned goal is None so downstream logging can distinguish fixed-rule
+    baselines from learned hierarchical schedulers.
+    """
+
+    def __init__(self, rule_id: int):
+        self.rule_id = int(rule_id)
+        self.steps = 0
+
+    def act(self, s: np.ndarray, explore=True):
+        self.steps += 1
+        return None, int(self.rule_id)
+
+    def learn(self):
+        return None
+
+    def finish_episode(self):
+        return None
+
+
 class THDQNAgent:
     """
     Minimal hierarchical DQN:

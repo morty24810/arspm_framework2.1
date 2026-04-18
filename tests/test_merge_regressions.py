@@ -23,8 +23,14 @@ from run_experiment import (
     apply_scheduler_mode_runtime_overrides,
     build_episode_combos,
     build_maintenance_state,
+    build_rule_twt_uave_rows,
+    canonical_ppo_variant,
+    canonical_scheduler_mode,
+    compute_uave,
     effective_base_degradation_rate,
     effective_degradation_bounds,
+    extract_scheduler_reward_features,
+    fixed_rule_id_from_mode,
     filter_non_improving_im,
     maintenance_decisions_enabled,
     maintenance_agent_arch_for_context,
@@ -42,12 +48,14 @@ from run_experiment import (
     normalize_jobs_target_for_combo_mode,
     compute_train_jobs_target,
     compute_eval_jobs_target,
+    scheduler_reward_version_for_mode,
     scheduler_state_dim_for_context,
     scheduling_reward,
     select_maintenance_action,
     summarize_final_machine_health,
 )
 from src.agents import HierMaintenanceAgentDDQN, MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
+from src.agents import FixedRuleSchedulerAgent
 from src.compare import (
     combo_dominant_maps,
     combo_eval_rows,
@@ -58,7 +66,7 @@ from src.compare import (
     summarize_scheduling_strategy,
 )
 from src.env import EventDrivenShopEnv
-from src.viz import plot_gantt, plot_rul_curves, plot_rule_vs_features
+from src.viz import plot_gantt, plot_rul_curves, plot_rule_twt_uave, plot_rule_vs_features
 
 
 class _RecoveryEnvStub:
@@ -593,6 +601,80 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertTrue(cfg.DISABLE_HEALTH_SYSTEM)
         self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
         self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
+
+    def test_thesis_ppo_sched_core_compare_profile_uses_four_curated_modes(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_ppo_sched_core_compare")
+
+        self.assertEqual(
+            cfg.TRAIN_SCHEDULER_MODES,
+            (
+                "PPO_CONSERVATIVE_LEGACY",
+                "PPO_ENTROPY_LEGACY",
+                "PPO_BALANCED_CTX_CONTEXTUAL",
+                "PPO_CONSERVATIVE_CONTEXTUAL",
+            ),
+        )
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("NONE",))
+        self.assertFalse(maintenance_decisions_enabled(cfg))
+        self.assertTrue(cfg.DISABLE_HEALTH_SYSTEM)
+        self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
+
+    def test_thesis_sched_rule_baselines_profile_uses_six_fixed_rules(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_sched_rule_baselines")
+
+        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, tuple(f"RULE_{i}" for i in range(6)))
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("NONE",))
+        self.assertFalse(maintenance_decisions_enabled(cfg))
+        self.assertTrue(cfg.DISABLE_HEALTH_SYSTEM)
+        self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
+
+    def test_thesis_ppo_sched_full_ablation_profile_uses_twelve_modes(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_ppo_sched_full_ablation")
+
+        self.assertEqual(len(cfg.TRAIN_SCHEDULER_MODES), 12)
+        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES[0], "PPO_CONSERVATIVE_LEGACY")
+        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES[-1], "PPO_BALANCED_CTX_CONTEXTUAL")
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("NONE",))
+        self.assertFalse(maintenance_decisions_enabled(cfg))
+        self.assertTrue(cfg.DISABLE_HEALTH_SYSTEM)
+        self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
+        self.assertEqual(cfg.PPO_SCHED_STATE_MODE, "ops_regime_only")
+        self.assertEqual(cfg.SCHED_HEALTH_GATE_MODE, "off")
+
+    def test_thesis_ppo_sched_full_ablation_smoke_profile_reduces_runtime(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_ppo_sched_full_ablation_smoke")
+
+        self.assertEqual(len(cfg.TRAIN_SCHEDULER_MODES), 12)
+        self.assertEqual(cfg.TRAIN_JOBS_TARGET, 20)
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 3)
+        self.assertEqual(cfg.TRAIN_EPISODES, 6)
+        self.assertEqual(cfg.EVAL_EVERY, 3)
+        self.assertEqual(cfg.SAVE_EVERY, 3)
+        self.assertFalse(cfg.EARLY_STOP_ENABLED)
+
+    def test_compound_ppo_mode_parsing_separates_variant_and_reward(self):
+        cfg = SimConfig()
+
+        self.assertEqual(canonical_ppo_variant("PPO_CONSERVATIVE_LR_CONTEXTUAL"), "PPO_CONSERVATIVE_LR")
+        self.assertEqual(canonical_ppo_variant("PPO_BALANCED_CTX_EFFICIENCY"), "PPO_BALANCED_CTX")
+        self.assertEqual(scheduler_reward_version_for_mode(cfg, "PPO_CONSERVATIVE_LEGACY"), "legacy_balanced")
+        self.assertEqual(scheduler_reward_version_for_mode(cfg, "PPO_ENTROPY_EFFICIENCY"), "efficiency_balanced")
+        self.assertEqual(scheduler_reward_version_for_mode(cfg, "PPO_BALANCED_CTX_CONTEXTUAL"), "contextual_balanced")
+
+    def test_fixed_rule_mode_parsing_and_agent_are_supported(self):
+        self.assertEqual(canonical_scheduler_mode("RULE_4"), "RULE")
+        self.assertEqual(fixed_rule_id_from_mode("RULE_4"), 4)
+        agent = FixedRuleSchedulerAgent(rule_id=4)
+        goal, rule = agent.act(np.zeros(3, dtype=np.float32), explore=False)
+        self.assertIsNone(goal)
+        self.assertEqual(rule, 4)
 
     def test_scheduler_state_dim_for_ppo_ops_regime_only_is_pruned(self):
         cfg = SimConfig()
@@ -1363,6 +1445,67 @@ class MergeRegressionTests(unittest.TestCase):
         expected = -(2.0 + 0.15 * 1.0 + 2.0 * 0.3 + 1.0 * 0.2 + 0.5 * 0.4)
         self.assertAlmostEqual(reward, expected)
 
+    def test_extract_scheduler_reward_features_supports_full_and_ops_regime_only(self):
+        full = np.arange(15, dtype=np.float32)
+        ops = np.arange(13, dtype=np.float32)
+
+        full_features = extract_scheduler_reward_features(full, scheduler_mode="PPO")
+        ops_features = extract_scheduler_reward_features(ops, scheduler_mode="PPO")
+
+        self.assertEqual(full_features["sched_lambda"], 4.0)
+        self.assertEqual(full_features["idle_fail_risk_max"], 13.0)
+        self.assertEqual(full_features["current_stress"], 14.0)
+        self.assertEqual(ops_features["sched_lambda"], 4.0)
+        self.assertEqual(ops_features["idle_fail_risk_max"], 0.0)
+        self.assertEqual(ops_features["current_stress"], 12.0)
+
+    def test_contextual_scheduler_reward_rewards_improvement_and_scales_with_context(self):
+        cfg = SimConfig()
+        cfg.PPO_SCHED_REWARD_VERSION = "contextual_balanced"
+        before = np.zeros(15, dtype=np.float32)
+        after_loose = np.zeros(15, dtype=np.float32)
+        after_tight = np.zeros(15, dtype=np.float32)
+        before[4] = 60.0
+        before[5] = 2.0
+        before[6] = 100.0
+        before[7] = 50.0
+        before[8] = 0.40
+        before[10] = 0.30
+        before[2] = 1.0
+        after_loose[:] = before
+        after_tight[:] = before
+        after_loose[4] = 60.0
+        after_loose[5] = 2.0
+        after_tight[4] = 20.0
+        after_tight[5] = 1.0
+        after_loose[8] = 0.50
+        after_loose[10] = 0.40
+        after_loose[7] = 35.0
+        after_loose[6] = 80.0
+        after_loose[2] = 3.0
+        after_tight[8] = 0.50
+        after_tight[10] = 0.40
+        after_tight[7] = 35.0
+        after_tight[6] = 80.0
+        after_tight[2] = 3.0
+
+        loose_reward = scheduling_reward(
+            cfg, "PPO_BALANCED_CTX_CONTEXTUAL", 2, tard=1.0, maint=0.0, prev_tard=0.0, prev_maint=0.0,
+            state_before=before, state_after=after_loose,
+        )
+        tight_reward = scheduling_reward(
+            cfg, "PPO_BALANCED_CTX_CONTEXTUAL", 2, tard=1.0, maint=0.0, prev_tard=0.0, prev_maint=0.0,
+            state_before=before, state_after=after_tight,
+        )
+        improved = scheduling_reward(
+            cfg, "PPO_BALANCED_CTX_CONTEXTUAL", 2, tard=0.0, maint=0.0, prev_tard=0.0, prev_maint=0.0,
+            state_before=before,
+            state_after=np.array([0.0, 0.0, 1.0, 0.0, 20.0, 1.0, 120.0, 60.0, 0.30, 0.0, 0.20, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+        )
+
+        self.assertLess(tight_reward, loose_reward)
+        self.assertGreater(improved, 0.0)
+
     def test_final_machine_health_summary_reports_tail_counts(self):
         env = _CompareEnvStub(0, 0.0, 0, 0.0, 10.0, final_healths=[0.9, 0.3, 0.15, 0.05])
 
@@ -1373,6 +1516,18 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(summary["final_health_p25"], 0.125)
         self.assertEqual(summary["final_low_health_count_h20"], 2.0)
         self.assertEqual(summary["final_low_health_count_h10"], 1.0)
+
+    def test_compute_uave_uses_busy_time_over_machine_completion(self):
+        timeline_ops = [
+            (0, 0.0, 5.0, 0, 0, "DONE"),
+            (0, 7.0, 10.0, 1, 0, "DONE"),
+            (1, 0.0, 4.0, 2, 0, "DONE"),
+        ]
+
+        uave = compute_uave(timeline_ops, num_machines=3)
+
+        expected = ((8.0 / 10.0) + (4.0 / 4.0) + 0.0) / 3.0
+        self.assertAlmostEqual(uave, expected)
 
     def test_top_level_run_record_includes_combo_modes_and_filter_counts(self):
         env = _CompareEnvStub(0, 0.0, 0, 0.0, 12.0)
@@ -1428,8 +1583,22 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(row["cm_emergency_override_count"], 1)
         self.assertEqual(row["final_low_health_count_h20"], 0)
         self.assertEqual(row["final_low_health_count_h10"], 0)
+        self.assertAlmostEqual(row["uave"], 1.0 / 6.0, places=6)
         self.assertIn("lam=20.0|ddt=1.00", row["combo_behavior"])
         self.assertIn("lam=20.0|ddt=1.00", row["dominant_rule_by_combo"])
+
+    def test_build_rule_twt_uave_rows_aggregates_by_rule(self):
+        rows = build_rule_twt_uave_rows([
+            {"scheduler_mode": "RULE_0", "tard": 10.0, "uave": 0.5},
+            {"scheduler_mode": "RULE_0", "tard": 14.0, "uave": 0.7},
+            {"scheduler_mode": "RULE_3", "tard": 7.0, "uave": 0.9},
+        ])
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["rule_tag"], "R0")
+        self.assertAlmostEqual(rows[0]["twt"], 12.0)
+        self.assertAlmostEqual(rows[0]["uave"], 0.6)
+        self.assertEqual(rows[1]["rule_tag"], "R3")
 
     def test_top_level_run_record_marks_thesis_profile_rows_as_main_experiment(self):
         env = _CompareEnvStub(0, 0.0, 0, 0.0, 12.0)
@@ -1643,6 +1812,16 @@ class MergeRegressionTests(unittest.TestCase):
                 rul_segments={0: [(0.0, 10.0, 1.0, 0.8, "PROC"), (12.0, 20.0, 0.95, 0.6, "PROC")]},
             )
             self.assertTrue(Path(out_path).exists())
+
+    def test_plot_rule_twt_uave_outputs_png_for_six_rules(self):
+        rows = [
+            {"rule_id": i, "rule_tag": f"R{i}", "rule_name": f"Rule {i}", "twt": 10.0 + i, "uave": 0.4 + i * 0.05}
+            for i in range(6)
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_path = Path(tmpdir) / "rule_twt_uave.png"
+            plot_rule_twt_uave(rows, str(out_path))
+            self.assertTrue(out_path.exists())
 
     def test_rule_plot_uses_lambda_ddt_heatmap_outputs(self):
         with tempfile.TemporaryDirectory() as tmpdir:

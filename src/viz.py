@@ -248,6 +248,58 @@ def _scatter_legend(ax, labels: List[str], colors: List[str], title: str, *, anc
     return _legend_outside(ax, handles, title=title, anchor_y=anchor_y)
 
 
+def plot_rule_twt_uave(rows: List[Dict[str, object]], out_path: str):
+    rows = list(rows or [])
+    if not rows:
+        return
+    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
+    fig, ax = plt.subplots(figsize=(8.8, 6.2))
+    legend_handles = []
+    for idx, row in enumerate(rows):
+        rule_id = int(row.get("rule_id", idx))
+        tag = str(row.get("rule_tag", f"R{rule_id}"))
+        rule_name = str(row.get("rule_name", f"Rule {rule_id}"))
+        twt = float(row.get("twt", 0.0) or 0.0)
+        uave = float(row.get("uave", 0.0) or 0.0)
+        color = colors[rule_id % len(colors)]
+        ax.scatter([twt], [uave], s=88, color=color, edgecolor="#2E2E2E", linewidth=0.8, zorder=3)
+        ax.annotate(
+            tag,
+            (twt, uave),
+            textcoords="offset points",
+            xytext=(5, 5),
+            ha="left",
+            va="bottom",
+            fontsize=9.2,
+            color="#24323D",
+            fontweight="semibold",
+        )
+        legend_handles.append(
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                linestyle="",
+                color="none",
+                markerfacecolor=color,
+                markeredgecolor="#2E2E2E",
+                markersize=7,
+                label=f"{tag} {rule_name}",
+            )
+        )
+    ax.set_xlabel("TWT")
+    ax.set_ylabel("Uave")
+    ax.set_title("Rule Baselines: TWT vs Uave")
+    ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.35, zorder=0)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.legend(handles=legend_handles, loc="best", frameon=True, fancybox=True, framealpha=0.95, title="Rules")
+    fig.tight_layout()
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=220, bbox_inches="tight")
+    plt.close(fig)
+
+
 def plot_gantt(timeline_ops, timeline_maint, jobs, out_path: str,
                schedule: Optional[List[Tuple[float, float, float, float]]] = None,
                policy_label: Optional[str] = None):

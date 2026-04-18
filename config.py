@@ -33,6 +33,10 @@ class SimConfig:
     # "thesis_ppo_sched_pure": PPO pure scheduling diagnosis, no maintenance
     # "thesis_ppo_sched_health_gate": PPO scheduling diagnosis with external health gate
     # "thesis_ppo_hparam_ablation": PPO scheduler hyperparameter ablation, no maintenance
+    # "thesis_ppo_sched_core_compare": 4-line PPO scheduler core thesis comparison
+    # "thesis_sched_rule_baselines": 6 fixed scheduler rule baselines for TWT x Uave
+    # "thesis_ppo_sched_full_ablation": overnight PPO scheduler matrix, 4 hparams x 3 rewards
+    # "thesis_ppo_sched_full_ablation_smoke": reduced-size smoke validation for the full ablation
     EXPERIMENT_PROFILE: str = "default"
 
     # --- data / artifact paths ---
@@ -314,6 +318,17 @@ class SimConfig:
     PPO_EFFICIENCY_OVERDUE_W: float = 2.0
     PPO_EFFICIENCY_SLACK_W: float = 1.0
     PPO_EFFICIENCY_FAILRISK_W: float = 0.5
+    PPO_CONTEXTUAL_TARD_W: float = 1.0
+    PPO_CONTEXTUAL_MAINT_W: float = 0.15
+    PPO_CONTEXTUAL_OVERDUE_UP_W: float = 2.0
+    PPO_CONTEXTUAL_SLACK_PRESSURE_UP_W: float = 1.0
+    PPO_CONTEXTUAL_SLACK_Q10_DROP_W: float = 0.75
+    PPO_CONTEXTUAL_AVG_SLACK_DROP_W: float = 0.25
+    PPO_CONTEXTUAL_READY_UP_W: float = 0.10
+    PPO_CONTEXTUAL_OVERDUE_DOWN_BONUS_W: float = 0.50
+    PPO_CONTEXTUAL_SLACK_PRESSURE_DOWN_BONUS_W: float = 0.25
+    PPO_CONTEXTUAL_SLACK_Q10_GAIN_BONUS_W: float = 0.25
+    PPO_CONTEXTUAL_CONTEXT_SCALE: float = 1.0
     PPO_LR: float = 3e-4
     PPO_GAMMA: float = 0.99
     PPO_GAE_LAMBDA: float = 0.95
