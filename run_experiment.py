@@ -28,6 +28,7 @@ from src.compare import (
     combo_eval_rows,
     combo_dominant_maps,
     combo_rule_diversity_metrics,
+    combo_rule_coverage_metrics,
     compare_combo_behavior_against_anchor,
     compare_mode_results,
     write_mode_comparison_outputs,
@@ -67,6 +68,147 @@ RULE_COVERAGE_TRAIN_WEIGHTS: Tuple[float, ...] = (
     1.00, 1.50, 1.00, 1.25, 1.00, 1.75, 1.75, 1.25, 1.75, 1.25, 0.50, 0.50,
 )
 
+SCENARIO_PROC_BIAS = {
+    "short_heavy": -1.0,
+    "balanced": 0.0,
+    "long_heavy": 1.0,
+}
+
+SCENARIO_ROUTE_DEPTH_SCORE = {
+    "shallow": 0.0,
+    "mixed": 0.5,
+    "deep": 1.0,
+}
+
+SCENARIO_FLEX_WIDTH_SCORE = {
+    "narrow": 0.0,
+    "medium": 0.5,
+    "wide": 1.0,
+}
+
+RULE_COVERAGE_V2_SCENARIOS: Tuple[Dict[str, Any], ...] = (
+    {
+        "scenario_id": "R0_A",
+        "arrival_lam": 28.0,
+        "ddt": 1.60,
+        "job_size_profile": "balanced",
+        "route_depth_profile": "shallow",
+        "flexibility_profile": "wide",
+        "target_rule": 0,
+        "train_weight": 1.0,
+    },
+    {
+        "scenario_id": "R0_B",
+        "arrival_lam": 36.0,
+        "ddt": 1.80,
+        "job_size_profile": "balanced",
+        "route_depth_profile": "shallow",
+        "flexibility_profile": "wide",
+        "target_rule": 0,
+        "train_weight": 1.0,
+    },
+    {
+        "scenario_id": "R1_A",
+        "arrival_lam": 18.0,
+        "ddt": 1.00,
+        "job_size_profile": "balanced",
+        "route_depth_profile": "mixed",
+        "flexibility_profile": "narrow",
+        "target_rule": 1,
+        "train_weight": 1.2,
+    },
+    {
+        "scenario_id": "R1_B",
+        "arrival_lam": 24.0,
+        "ddt": 1.05,
+        "job_size_profile": "balanced",
+        "route_depth_profile": "mixed",
+        "flexibility_profile": "narrow",
+        "target_rule": 1,
+        "train_weight": 1.2,
+    },
+    {
+        "scenario_id": "R2_A",
+        "arrival_lam": 36.0,
+        "ddt": 0.90,
+        "job_size_profile": "balanced",
+        "route_depth_profile": "mixed",
+        "flexibility_profile": "narrow",
+        "target_rule": 2,
+        "train_weight": 1.4,
+    },
+    {
+        "scenario_id": "R2_B",
+        "arrival_lam": 48.0,
+        "ddt": 0.95,
+        "job_size_profile": "balanced",
+        "route_depth_profile": "mixed",
+        "flexibility_profile": "narrow",
+        "target_rule": 2,
+        "train_weight": 1.4,
+    },
+    {
+        "scenario_id": "R3_A",
+        "arrival_lam": 60.0,
+        "ddt": 0.90,
+        "job_size_profile": "short_heavy",
+        "route_depth_profile": "deep",
+        "flexibility_profile": "narrow",
+        "target_rule": 3,
+        "train_weight": 1.5,
+    },
+    {
+        "scenario_id": "R3_B",
+        "arrival_lam": 72.0,
+        "ddt": 0.95,
+        "job_size_profile": "short_heavy",
+        "route_depth_profile": "deep",
+        "flexibility_profile": "narrow",
+        "target_rule": 3,
+        "train_weight": 1.5,
+    },
+    {
+        "scenario_id": "R4_A",
+        "arrival_lam": 40.0,
+        "ddt": 1.15,
+        "job_size_profile": "long_heavy",
+        "route_depth_profile": "deep",
+        "flexibility_profile": "narrow",
+        "target_rule": 4,
+        "train_weight": 1.5,
+    },
+    {
+        "scenario_id": "R4_B",
+        "arrival_lam": 52.0,
+        "ddt": 1.25,
+        "job_size_profile": "long_heavy",
+        "route_depth_profile": "deep",
+        "flexibility_profile": "narrow",
+        "target_rule": 4,
+        "train_weight": 1.5,
+    },
+    {
+        "scenario_id": "R5_A",
+        "arrival_lam": 12.0,
+        "ddt": 0.80,
+        "job_size_profile": "balanced",
+        "route_depth_profile": "mixed",
+        "flexibility_profile": "wide",
+        "target_rule": 5,
+        "train_weight": 1.3,
+    },
+    {
+        "scenario_id": "R5_B",
+        "arrival_lam": 16.0,
+        "ddt": 0.85,
+        "job_size_profile": "balanced",
+        "route_depth_profile": "mixed",
+        "flexibility_profile": "wide",
+        "target_rule": 5,
+        "train_weight": 1.3,
+    },
+)
+
 
 def apply_rule_coverage_combo_distribution(cfg: SimConfig, *, segment_jobs: int) -> SimConfig:
     combos = tuple((float(lam), float(ddt)) for lam, ddt in RULE_COVERAGE_EXPLICIT_COMBOS)
@@ -76,6 +218,65 @@ def apply_rule_coverage_combo_distribution(cfg: SimConfig, *, segment_jobs: int)
     cfg.EVAL_EXPLICIT_COMBOS = combos
     cfg.TRAIN_EXPLICIT_COMBO_WEIGHTS = tuple(float(x) for x in RULE_COVERAGE_TRAIN_WEIGHTS)
     cfg.EVAL_EXPLICIT_COMBO_WEIGHTS = None
+    cfg.COMBO_SEGMENT_JOBS = int(segment_jobs)
+    return cfg
+
+
+def scenario_proc_bias_value(profile: str) -> float:
+    return float(SCENARIO_PROC_BIAS[str(profile).strip().lower()])
+
+
+def scenario_route_depth_score_value(profile: str) -> float:
+    return float(SCENARIO_ROUTE_DEPTH_SCORE[str(profile).strip().lower()])
+
+
+def scenario_flex_width_score_value(profile: str) -> float:
+    return float(SCENARIO_FLEX_WIDTH_SCORE[str(profile).strip().lower()])
+
+
+def normalize_rule_coverage_v2_scenario(raw: Dict[str, Any]) -> Dict[str, Any]:
+    scenario_id = str(raw.get("scenario_id", "")).strip()
+    arrival_lam = float(raw["arrival_lam"])
+    ddt = float(raw["ddt"])
+    job_size_profile = str(raw.get("job_size_profile", "balanced")).strip().lower()
+    route_depth_profile = str(raw.get("route_depth_profile", "mixed")).strip().lower()
+    flexibility_profile = str(raw.get("flexibility_profile", "medium")).strip().lower()
+    target_rule = int(raw["target_rule"])
+    train_weight = float(raw.get("train_weight", 1.0))
+    scenario_key = str(
+        raw.get(
+            "scenario_key",
+            f"{scenario_id}|lam={arrival_lam:.1f}|ddt={ddt:.2f}|proc={job_size_profile}|route={route_depth_profile}|flex={flexibility_profile}",
+        )
+    )
+    return {
+        "scenario_id": scenario_id,
+        "scenario_key": scenario_key,
+        "arrival_lam": arrival_lam,
+        "ddt": ddt,
+        "job_size_profile": job_size_profile,
+        "route_depth_profile": route_depth_profile,
+        "flexibility_profile": flexibility_profile,
+        "target_rule": int(target_rule),
+        "train_weight": train_weight,
+        "scenario_proc_bias": scenario_proc_bias_value(job_size_profile),
+        "scenario_route_depth_score": scenario_route_depth_score_value(route_depth_profile),
+        "scenario_flex_width_score": scenario_flex_width_score_value(flexibility_profile),
+    }
+
+
+def apply_rule_coverage_v2_distribution(cfg: SimConfig, *, segment_jobs: int) -> SimConfig:
+    scenarios = tuple(normalize_rule_coverage_v2_scenario(item) for item in RULE_COVERAGE_V2_SCENARIOS)
+    cfg.ARRIVAL_LAM_VALUES = tuple(sorted({float(item["arrival_lam"]) for item in scenarios}))
+    cfg.DDT_VALUES = tuple(sorted({float(item["ddt"]) for item in scenarios}))
+    cfg.TRAIN_EXPLICIT_COMBOS = None
+    cfg.EVAL_EXPLICIT_COMBOS = None
+    cfg.TRAIN_EXPLICIT_COMBO_WEIGHTS = None
+    cfg.EVAL_EXPLICIT_COMBO_WEIGHTS = None
+    cfg.TRAIN_EXPLICIT_SCENARIOS = scenarios
+    cfg.EVAL_EXPLICIT_SCENARIOS = scenarios
+    cfg.TRAIN_EXPLICIT_SCENARIO_WEIGHTS = tuple(float(item["train_weight"]) for item in scenarios)
+    cfg.EVAL_EXPLICIT_SCENARIO_WEIGHTS = None
     cfg.COMBO_SEGMENT_JOBS = int(segment_jobs)
     return cfg
 
@@ -180,6 +381,15 @@ def explicit_combo_pool(cfg: SimConfig, combo_purpose: str = "eval") -> List[Tup
     return combos
 
 
+def explicit_scenario_pool(cfg: SimConfig, combo_purpose: str = "eval") -> List[Dict[str, Any]]:
+    purpose = str(combo_purpose or "eval").strip().lower()
+    attr = "TRAIN_EXPLICIT_SCENARIOS" if purpose == "train" else "EVAL_EXPLICIT_SCENARIOS"
+    raw = getattr(cfg, attr, None)
+    if not raw:
+        return []
+    return [normalize_rule_coverage_v2_scenario(dict(item)) for item in raw]
+
+
 def explicit_combo_weights(cfg: SimConfig, combos: List[Tuple[float, float]], combo_purpose: str = "train") -> Optional[List[float]]:
     purpose = str(combo_purpose or "train").strip().lower()
     attr = "TRAIN_EXPLICIT_COMBO_WEIGHTS" if purpose == "train" else "EVAL_EXPLICIT_COMBO_WEIGHTS"
@@ -196,9 +406,29 @@ def explicit_combo_weights(cfg: SimConfig, combos: List[Tuple[float, float]], co
     return weights
 
 
+def explicit_scenario_weights(cfg: SimConfig, scenarios: List[Dict[str, Any]], combo_purpose: str = "train") -> Optional[List[float]]:
+    purpose = str(combo_purpose or "train").strip().lower()
+    attr = "TRAIN_EXPLICIT_SCENARIO_WEIGHTS" if purpose == "train" else "EVAL_EXPLICIT_SCENARIO_WEIGHTS"
+    raw = getattr(cfg, attr, None)
+    if not raw:
+        return None
+    weights = [float(x) for x in raw]
+    if len(weights) != len(scenarios):
+        raise ValueError(f"{attr} length {len(weights)} must match explicit scenario count {len(scenarios)}")
+    if any(w < 0.0 for w in weights):
+        raise ValueError(f"{attr} must be non-negative")
+    if not any(w > 0.0 for w in weights):
+        return None
+    return weights
+
+
 def combo_axis_values(cfg: SimConfig) -> Tuple[List[float], List[float]]:
+    explicit_scenarios = explicit_scenario_pool(cfg, "train") or explicit_scenario_pool(cfg, "eval")
     explicit = explicit_combo_pool(cfg, "train") or explicit_combo_pool(cfg, "eval")
-    if explicit:
+    if explicit_scenarios:
+        lam_values = sorted({float(item["arrival_lam"]) for item in explicit_scenarios})
+        ddt_values = sorted({float(item["ddt"]) for item in explicit_scenarios})
+    elif explicit:
         lam_values = sorted({float(lam) for lam, _ in explicit})
         ddt_values = sorted({float(ddt) for _, ddt in explicit})
     else:
@@ -255,6 +485,8 @@ def scheduler_state_dim_for_context(cfg: SimConfig, scheduler_mode: Optional[str
         state_mode = str(getattr(cfg, "PPO_SCHED_STATE_MODE", "default")).strip().lower()
         if state_mode == "ops_regime_only":
             return 13
+        if state_mode == "ops_regime_rule_coverage":
+            return 16
     return 15
 
 
@@ -477,6 +709,60 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
         cfg.ENABLE_MAINT_ONLY_COMPARE = False
         cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
         return cfg
+    if profile == "thesis_ppo_sched_rule_coverage_v2":
+        cfg.TRAIN_SCHEDULER_MODES = (
+            "PPO_CONSERVATIVE_LEGACY",
+            "PPO_ENTROPY_LEGACY",
+        )
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("NONE",)
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 200
+        apply_rule_coverage_v2_distribution(cfg, segment_jobs=12)
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_rule_coverage"
+        cfg.SCHED_HEALTH_GATE_MODE = "off"
+        cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
+        cfg.ENABLE_MAINTENANCE_DECISIONS = False
+        cfg.DISABLE_HEALTH_SYSTEM = True
+        cfg.BREAKDOWN_ENABLE = False
+        cfg.FAIL_STOCHASTIC = False
+        cfg.SCHED_SAFE_DISPATCH = False
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        cfg.SCHEDULER_POLICY_FAMILY = "flat_rule_selector"
+        return cfg
+    if profile == "thesis_ppo_sched_rule_coverage_v2_smoke":
+        cfg.TRAIN_SCHEDULER_MODES = (
+            "PPO_CONSERVATIVE_LEGACY",
+            "PPO_ENTROPY_LEGACY",
+        )
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("NONE",)
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 24
+        apply_rule_coverage_v2_distribution(cfg, segment_jobs=2)
+        cfg.TRAIN_EPISODES = 2
+        cfg.EVAL_EVERY = 1
+        cfg.SAVE_EVERY = 1
+        cfg.EARLY_STOP_ENABLED = False
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_rule_coverage"
+        cfg.SCHED_HEALTH_GATE_MODE = "off"
+        cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
+        cfg.ENABLE_MAINTENANCE_DECISIONS = False
+        cfg.DISABLE_HEALTH_SYSTEM = True
+        cfg.BREAKDOWN_ENABLE = False
+        cfg.FAIL_STOCHASTIC = False
+        cfg.SCHED_SAFE_DISPATCH = False
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        cfg.SCHEDULER_POLICY_FAMILY = "flat_rule_selector"
+        return cfg
     if profile == "thesis_sched_rule_baselines":
         cfg.TRAIN_SCHEDULER_MODES = tuple(f"RULE_{i}" for i in range(6))
         cfg.TRAIN_POLICY_ROUTES = ("region_off",)
@@ -497,6 +783,54 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
         cfg.SCHED_SAFE_DISPATCH = False
         cfg.ENABLE_MAINT_ONLY_COMPARE = False
         cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        return cfg
+    if profile == "thesis_sched_rule_coverage_baselines_v2":
+        cfg.TRAIN_SCHEDULER_MODES = tuple(f"RULE_{i}" for i in range(6))
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("NONE",)
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 200
+        apply_rule_coverage_v2_distribution(cfg, segment_jobs=12)
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_rule_coverage"
+        cfg.SCHED_HEALTH_GATE_MODE = "off"
+        cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
+        cfg.ENABLE_MAINTENANCE_DECISIONS = False
+        cfg.DISABLE_HEALTH_SYSTEM = True
+        cfg.BREAKDOWN_ENABLE = False
+        cfg.FAIL_STOCHASTIC = False
+        cfg.SCHED_SAFE_DISPATCH = False
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        cfg.SCHEDULER_POLICY_FAMILY = "flat_rule_selector"
+        return cfg
+    if profile == "thesis_sched_rule_coverage_baselines_v2_smoke":
+        cfg.TRAIN_SCHEDULER_MODES = tuple(f"RULE_{i}" for i in range(6))
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("NONE",)
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 24
+        apply_rule_coverage_v2_distribution(cfg, segment_jobs=2)
+        cfg.TRAIN_EPISODES = 1
+        cfg.EVAL_EVERY = 1
+        cfg.SAVE_EVERY = 1
+        cfg.EARLY_STOP_ENABLED = False
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_rule_coverage"
+        cfg.SCHED_HEALTH_GATE_MODE = "off"
+        cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
+        cfg.ENABLE_MAINTENANCE_DECISIONS = False
+        cfg.DISABLE_HEALTH_SYSTEM = True
+        cfg.BREAKDOWN_ENABLE = False
+        cfg.FAIL_STOCHASTIC = False
+        cfg.SCHED_SAFE_DISPATCH = False
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        cfg.SCHEDULER_POLICY_FAMILY = "flat_rule_selector"
         return cfg
     if profile == "thesis_ppo_sched_full_ablation":
         cfg.TRAIN_SCHEDULER_MODES = (
@@ -578,11 +912,17 @@ def scheduler_fixed_mode_for_profile(cfg: SimConfig) -> str:
         "thesis_ppo_sched_health_gate",
         "thesis_ppo_hparam_ablation",
         "thesis_ppo_sched_core_compare",
+        "thesis_ppo_sched_rule_coverage_v2",
+        "thesis_ppo_sched_rule_coverage_v2_smoke",
         "thesis_ppo_sched_full_ablation",
         "thesis_ppo_sched_full_ablation_smoke",
     }:
         return "PPO"
-    if profile == "thesis_sched_rule_baselines":
+    if profile in {
+        "thesis_sched_rule_baselines",
+        "thesis_sched_rule_coverage_baselines_v2",
+        "thesis_sched_rule_coverage_baselines_v2_smoke",
+    }:
         return "RULE"
     return ""
 
@@ -596,11 +936,18 @@ def horizon_mode_for_profile(cfg: SimConfig) -> str:
         "thesis_ppo_sched_health_gate",
         "thesis_ppo_hparam_ablation",
         "thesis_ppo_sched_core_compare",
+        "thesis_ppo_sched_rule_coverage_v2",
+        "thesis_ppo_sched_rule_coverage_v2_smoke",
         "thesis_sched_rule_baselines",
+        "thesis_sched_rule_coverage_baselines_v2",
         "thesis_ppo_sched_full_ablation",
     }:
         return "long"
-    if profile in {"thesis_ppo_maint_short", "thesis_ppo_sched_full_ablation_smoke"}:
+    if profile in {
+        "thesis_ppo_maint_short",
+        "thesis_ppo_sched_full_ablation_smoke",
+        "thesis_sched_rule_coverage_baselines_v2_smoke",
+    }:
         return "short"
     return ""
 
@@ -638,7 +985,11 @@ def comparison_role_for_profile(
         "thesis_ppo_hparam_ablation",
         "thesis_ppo_sched_core_compare",
         "thesis_ppo_sched_rule_coverage",
+        "thesis_ppo_sched_rule_coverage_v2",
+        "thesis_ppo_sched_rule_coverage_v2_smoke",
         "thesis_sched_rule_baselines",
+        "thesis_sched_rule_coverage_baselines_v2",
+        "thesis_sched_rule_coverage_baselines_v2_smoke",
         "thesis_ppo_sched_full_ablation",
         "thesis_ppo_sched_full_ablation_smoke",
     }:
@@ -654,7 +1005,12 @@ def comparison_role_for_profile(
     ):
         return "main_experiment"
     if (
-        profile in {"thesis_ppo_sched_core_compare", "thesis_ppo_sched_rule_coverage"}
+        profile in {
+            "thesis_ppo_sched_core_compare",
+            "thesis_ppo_sched_rule_coverage",
+            "thesis_ppo_sched_rule_coverage_v2",
+            "thesis_ppo_sched_rule_coverage_v2_smoke",
+        }
         and str(compare_type) == "scheduler_core_compare"
         and canonical_scheduler_mode(scheduler_mode) == "PPO"
         and str(train_policy_tag or "") == unrestricted_tag
@@ -759,6 +1115,7 @@ def experiment_result_metadata(
         "train_jobs_target_effective": int(compute_train_jobs_target(cfg)),
         "eval_jobs_target_effective": int(compute_eval_jobs_target(cfg)),
         "scheduler_fixed_mode": scheduler_fixed_mode_for_profile(cfg),
+        "scheduler_policy_family": str(getattr(cfg, "SCHEDULER_POLICY_FAMILY", "")).strip(),
         "scheduler_reward_version": scheduler_reward_version_for_mode(cfg, scheduler_mode),
         "comparison_role": comparison_role_for_profile(
             cfg,
@@ -811,6 +1168,8 @@ def extract_scheduler_reward_features(
             mode = "full"
         elif arr.shape[0] == 13:
             mode = "ops_regime_only"
+        elif arr.shape[0] == 16:
+            mode = "ops_regime_rule_coverage"
         else:
             raise ValueError(
                 f"unsupported scheduler reward state length {arr.shape[0]} for "
@@ -853,6 +1212,29 @@ def extract_scheduler_reward_features(
             "overdue_rate": float(arr[10]),
             "rush": float(arr[11]),
             "current_stress": float(arr[12]),
+            "idle_fail_risk_mean": 0.0,
+            "idle_fail_risk_max": 0.0,
+        }
+    if mode == "ops_regime_rule_coverage":
+        if arr.shape[0] < 16:
+            raise ValueError(f"ops_regime_rule_coverage scheduler reward state expects 16 dims, got {arr.shape[0]}")
+        return {
+            "idle": float(arr[0]),
+            "wip": float(arr[1]),
+            "ready_len": float(arr[2]),
+            "arrivals": float(arr[3]),
+            "sched_lambda": float(arr[4]),
+            "sched_ddt": float(arr[5]),
+            "avg_slack": float(arr[6]),
+            "slack_q10": float(arr[7]),
+            "slack_pressure": float(arr[8]),
+            "utilization": float(arr[9]),
+            "overdue_rate": float(arr[10]),
+            "rush": float(arr[11]),
+            "current_stress": float(arr[12]),
+            "scenario_proc_bias": float(arr[13]),
+            "scenario_route_depth_score": float(arr[14]),
+            "scenario_flex_width_score": float(arr[15]),
             "idle_fail_risk_mean": 0.0,
             "idle_fail_risk_max": 0.0,
         }
@@ -956,6 +1338,12 @@ def scheduling_reward(
 
 
 def combo_grid(cfg: SimConfig, combo_purpose: str = "eval") -> List[Tuple[float, float]]:
+    explicit_scenarios = explicit_scenario_pool(cfg, combo_purpose)
+    if explicit_scenarios:
+        return [
+            (float(item["arrival_lam"]), float(item["ddt"]))
+            for item in explicit_scenarios
+        ]
     explicit = explicit_combo_pool(cfg, combo_purpose)
     if explicit:
         return [(float(lam), float(ddt)) for lam, ddt in explicit]
@@ -965,7 +1353,8 @@ def combo_grid(cfg: SimConfig, combo_purpose: str = "eval") -> List[Tuple[float,
 
 
 def compute_grid_full_jobs_target(cfg: SimConfig, combo_purpose: str = "eval") -> int:
-    combos = combo_grid(cfg, combo_purpose=combo_purpose)
+    explicit_scenarios = explicit_scenario_pool(cfg, combo_purpose)
+    combos = explicit_scenarios if explicit_scenarios else combo_grid(cfg, combo_purpose=combo_purpose)
     segment_jobs = max(1, int(getattr(cfg, "COMBO_SEGMENT_JOBS", 1)))
     return int(max(1, len(combos)) * segment_jobs)
 
@@ -1553,6 +1942,95 @@ def build_episode_combos(
     return combos, seq
 
 
+def _sample_ops_count(cfg: SimConfig, rng: random.Random, route_depth_profile: str) -> int:
+    route = str(route_depth_profile).strip().lower()
+    lo = int(cfg.OPS_PER_JOB_MIN)
+    hi = int(cfg.OPS_PER_JOB_MAX)
+    if route == "shallow":
+        return int(rng.randint(lo, min(lo + 1, hi)))
+    if route == "deep":
+        return int(rng.randint(max(hi - 1, lo), hi))
+    if rng.random() < 0.5:
+        return int(rng.randint(lo, min(lo + 1, hi)))
+    return int(rng.randint(max(hi - 1, lo), hi))
+
+
+def _sample_feasible_machine_count(cfg: SimConfig, rng: random.Random, flexibility_profile: str) -> int:
+    flex = str(flexibility_profile).strip().lower()
+    lo = int(cfg.FEASIBLE_M_MIN)
+    hi = min(int(cfg.FEASIBLE_M_MAX), int(cfg.NUM_MACHINES))
+    if flex == "narrow":
+        return int(rng.randint(lo, min(lo + 1, hi)))
+    if flex == "wide":
+        return int(rng.randint(max(hi - 1, lo), hi))
+    mid_lo = min(max(lo + 1, lo), hi)
+    mid_hi = max(min(hi - 1, hi), mid_lo)
+    return int(rng.randint(mid_lo, mid_hi))
+
+
+def _sample_proc_time(cfg: SimConfig, rng: random.Random, job_size_profile: str, machine_scale: float) -> float:
+    proc = str(job_size_profile).strip().lower()
+    pt_min = float(cfg.PT_MIN)
+    pt_max = float(cfg.PT_MAX)
+    mid = 0.5 * (pt_min + pt_max)
+    if proc == "short_heavy":
+        raw = rng.uniform(pt_min, mid)
+    elif proc == "long_heavy":
+        raw = rng.uniform(mid, pt_max)
+    else:
+        raw = rng.uniform(pt_min, pt_max)
+    return float(raw * machine_scale)
+
+
+def build_episode_regime_plan(
+    cfg: SimConfig,
+    rng: random.Random,
+    jobs_target: int,
+    combo_mode: Optional[str] = None,
+    combo_purpose: str = "eval",
+) -> Tuple[List[Tuple[float, float]], List[int], Optional[List[Dict[str, Any]]]]:
+    scenario_pool = explicit_scenario_pool(cfg, combo_purpose)
+    if not scenario_pool:
+        combos, seq = build_episode_combos(cfg, rng, jobs_target, combo_mode=combo_mode, combo_purpose=combo_purpose)
+        return combos, seq, None
+
+    segment_jobs = max(1, int(getattr(cfg, "COMBO_SEGMENT_JOBS", 1)))
+    segment_count = max(1, int(math.ceil(jobs_target / segment_jobs)))
+    mode = str(combo_mode or getattr(cfg, "LAM_DDT_MODE", "variable")).strip().lower()
+    weights = explicit_scenario_weights(cfg, scenario_pool, combo_purpose) if combo_purpose == "train" else explicit_scenario_weights(cfg, scenario_pool, combo_purpose)
+
+    if mode == "episode_fixed":
+        level = dict(rng.choices(scenario_pool, weights=weights, k=1)[0] if weights else rng.choice(scenario_pool))
+        combos = [(float(level["arrival_lam"]), float(level["ddt"]))]
+        return combos, [0 for _ in range(segment_count)], [level]
+
+    if mode == "grid_full":
+        scenario_levels = [dict(level) for level in scenario_pool]
+        combos = [(float(level["arrival_lam"]), float(level["ddt"])) for level in scenario_levels]
+        return combos, list(range(len(scenario_levels))), scenario_levels
+
+    if mode == "fixed":
+        fixed_lam = float(getattr(cfg, "FIXED_ARRIVAL_LAM", 40.0))
+        fixed_ddt = float(getattr(cfg, "FIXED_DDT", 1.5))
+        fallback = next(
+            (
+                dict(level) for level in scenario_pool
+                if math.isclose(float(level["arrival_lam"]), fixed_lam) and math.isclose(float(level["ddt"]), fixed_ddt)
+            ),
+            dict(scenario_pool[0]),
+        )
+        return [(float(fallback["arrival_lam"]), float(fallback["ddt"]))], [0 for _ in range(segment_count)], [fallback]
+
+    scenario_levels: List[Dict[str, Any]] = []
+    seq: List[int] = []
+    for seg in range(segment_count):
+        level = dict(rng.choices(scenario_pool, weights=weights, k=1)[0] if weights else rng.choice(scenario_pool))
+        scenario_levels.append(level)
+        seq.append(seg)
+    combos = [(float(level["arrival_lam"]), float(level["ddt"])) for level in scenario_levels]
+    return combos, seq, scenario_levels
+
+
 @dataclass
 class ScenarioBank:
     train_scenarios: List[EpisodeScenario]
@@ -1599,6 +2077,7 @@ def build_episode_scenario(
     degradation_rate: float,
     episode_combos: Optional[list[tuple[float, float]]] = None,
     episode_combo_seq: Optional[list[int]] = None,
+    episode_scenario_levels: Optional[list[dict[str, Any]]] = None,
     machine_curve_ids: Optional[List[int]] = None,
     combo_mode: Optional[str] = None,
     combo_purpose: str = "eval",
@@ -1606,10 +2085,17 @@ def build_episode_scenario(
     jobs_target = normalize_jobs_target_for_combo_mode(cfg, jobs_target, combo_mode, combo_purpose=combo_purpose)
     machine_curve_ids = list(machine_curve_ids or list(cfg.MACHINE_CURVE_IDS))
     if episode_combos is None or episode_combo_seq is None:
-        combos, seq = build_episode_combos(cfg, scenario_rng, jobs_target, combo_mode=combo_mode, combo_purpose=combo_purpose)
+        combos, seq, scenario_levels = build_episode_regime_plan(
+            cfg,
+            scenario_rng,
+            jobs_target,
+            combo_mode=combo_mode,
+            combo_purpose=combo_purpose,
+        )
     else:
         combos = [(float(lam), float(ddt)) for lam, ddt in episode_combos]
         seq = [int(x) for x in episode_combo_seq]
+        scenario_levels = [dict(level) for level in (episode_scenario_levels or [])] or None
     segment_jobs = max(1, int(getattr(cfg, "COMBO_SEGMENT_JOBS", 1)))
     machine_time_scale = compute_machine_time_scale(cfg, degr, machine_curve_ids)
 
@@ -1619,11 +2105,21 @@ def build_episode_scenario(
         lam, ddt = combos[level_idx]
         return float(lam), float(ddt)
 
+    def level_for_job(job_id: int) -> Optional[Dict[str, Any]]:
+        if not scenario_levels:
+            return None
+        seg = min(job_id // segment_jobs, len(seq) - 1)
+        level_idx = seq[seg]
+        if level_idx < 0 or level_idx >= len(scenario_levels):
+            return None
+        return dict(scenario_levels[level_idx])
+
     arrival_times: List[float] = []
     job_templates: List[JobTemplate] = []
     t_now = 0.0
     for job_id in range(jobs_target):
         lam, ddt = combo_for_job(job_id)
+        level = level_for_job(job_id)
         if lam <= 0.0 or not math.isfinite(t_now):
             t_now = math.inf
         else:
@@ -1632,13 +2128,23 @@ def build_episode_scenario(
         arrival = float(t_now)
         arrival_times.append(arrival)
 
-        num_ops = scenario_rng.randint(cfg.OPS_PER_JOB_MIN, cfg.OPS_PER_JOB_MAX)
+        if level is None:
+            num_ops = scenario_rng.randint(cfg.OPS_PER_JOB_MIN, cfg.OPS_PER_JOB_MAX)
+        else:
+            num_ops = _sample_ops_count(cfg, scenario_rng, str(level.get("route_depth_profile", "mixed")))
         ops: List[OperationTemplate] = []
         for _ in range(num_ops):
-            k = scenario_rng.randint(cfg.FEASIBLE_M_MIN, min(cfg.FEASIBLE_M_MAX, cfg.NUM_MACHINES))
+            if level is None:
+                k = scenario_rng.randint(cfg.FEASIBLE_M_MIN, min(cfg.FEASIBLE_M_MAX, cfg.NUM_MACHINES))
+            else:
+                k = _sample_feasible_machine_count(cfg, scenario_rng, str(level.get("flexibility_profile", "medium")))
             feasible = scenario_rng.sample(list(range(cfg.NUM_MACHINES)), k=k)
             proc = {
-                int(m): float(scenario_rng.uniform(cfg.PT_MIN, cfg.PT_MAX) * machine_time_scale.get(m, 1.0))
+                int(m): (
+                    float(scenario_rng.uniform(cfg.PT_MIN, cfg.PT_MAX) * machine_time_scale.get(m, 1.0))
+                    if level is None else
+                    _sample_proc_time(cfg, scenario_rng, str(level.get("job_size_profile", "balanced")), machine_time_scale.get(m, 1.0))
+                )
                 for m in feasible
             }
             ops.append(OperationTemplate(feasible_machines=list(feasible), proc_times=proc))
@@ -1659,6 +2165,7 @@ def build_episode_scenario(
         degradation_rate=float(degradation_rate),
         arrival_times=arrival_times,
         job_templates=job_templates,
+        scenario_levels=[dict(level) for level in scenario_levels] if scenario_levels else None,
     )
 
 
@@ -2002,6 +2509,46 @@ def build_rule_twt_uave_rows(result_rows: List[Dict[str, Any]]) -> List[Dict[str
         })
     return output_rows
 
+
+def build_scenario_rule_baseline_rows(combo_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for row in combo_rows or []:
+        scheduler_mode = str(row.get("scheduler_mode", "")).upper()
+        if not scheduler_mode.startswith("RULE_"):
+            continue
+        scenario_key = str(row.get("scenario_key") or row.get("combo_key") or "").strip()
+        if not scenario_key:
+            continue
+        grouped.setdefault(scenario_key, []).append(dict(row))
+    output_rows: List[Dict[str, Any]] = []
+    for scenario_key in sorted(grouped.keys()):
+        ranked = sorted(
+            grouped[scenario_key],
+            key=lambda row: (
+                float(row.get("combo_tard", 0.0) or 0.0),
+                -float(row.get("uave", 0.0) or 0.0),
+                int(fixed_rule_id_from_mode(row.get("scheduler_mode", "RULE_0"))),
+            ),
+        )
+        for rank, row in enumerate(ranked, start=1):
+            output_rows.append({
+                "scenario_key": scenario_key,
+                "target_rule": row.get("target_rule"),
+                "rule_id": fixed_rule_id_from_mode(row.get("scheduler_mode", "RULE_0")),
+                "rule_tag": f"R{fixed_rule_id_from_mode(row.get('scheduler_mode', 'RULE_0'))}",
+                "rule_name": fixed_rule_label(fixed_rule_id_from_mode(row.get("scheduler_mode", "RULE_0"))),
+                "scheduler_mode": row.get("scheduler_mode"),
+                "arrival_lam": row.get("arrival_lam"),
+                "ddt": row.get("ddt"),
+                "job_size_profile": row.get("job_size_profile"),
+                "route_depth_profile": row.get("route_depth_profile"),
+                "flexibility_profile": row.get("flexibility_profile"),
+                "twt": float(row.get("combo_tard", 0.0) or 0.0),
+                "uave": float(row.get("uave", 0.0) or 0.0),
+                "rank_within_scenario": int(rank),
+            })
+    return output_rows
+
 def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, rul: RULPredictorWrapper,
                   sched_agent: THDQNAgent, maint_agent: Optional[MaintenanceAgentDDQN],
                   maint_mode: str, pomcp: Optional[POMCPPlanner], machine_curve_ids: list[int],
@@ -2089,6 +2636,14 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
             rec.setdefault("sched_ddt", regime.get("sched_ddt", ddt_hat_val))
             rec.setdefault("combo_segment", regime.get("segment"))
             rec.setdefault("combo_level_idx", regime.get("level_idx"))
+            rec.setdefault("scenario_key", regime.get("scenario_key"))
+            rec.setdefault("target_rule", regime.get("target_rule"))
+            rec.setdefault("job_size_profile", regime.get("job_size_profile"))
+            rec.setdefault("route_depth_profile", regime.get("route_depth_profile"))
+            rec.setdefault("flexibility_profile", regime.get("flexibility_profile"))
+            rec.setdefault("scenario_proc_bias", regime.get("scenario_proc_bias"))
+            rec.setdefault("scenario_route_depth_score", regime.get("scenario_route_depth_score"))
+            rec.setdefault("scenario_flex_width_score", regime.get("scenario_flex_width_score"))
             rec.setdefault("im_invalid_flag", False)
             rec.setdefault("dn_imminent_breakdown_veto", False)
             rec.setdefault("cm_emergency_override", False)
@@ -2956,6 +3511,7 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
     combo_behavior = summarize_combo_conditioned_behavior(decision_log)
     dominant_rule_by_combo, dominant_goal_by_combo = combo_dominant_maps(combo_behavior)
     rule_diversity = combo_rule_diversity_metrics(combo_behavior)
+    rule_coverage = combo_rule_coverage_metrics(combo_behavior)
     env = final_result.get("env")
     cfg_env = getattr(env, "cfg", None)
     health_summary = summarize_final_machine_health(env)
@@ -3044,6 +3600,10 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "rule_distinct_count": int(rule_diversity["rule_distinct_count"]),
         "rule_avg_dominant_share": float(rule_diversity["rule_avg_dominant_share"]),
         "rule_mean_pairwise_jsd": float(rule_diversity["rule_mean_pairwise_jsd"]),
+        "scenario_target_rule_match_count": int(rule_coverage["scenario_target_rule_match_count"]),
+        "scenario_target_rule_top2_count": int(rule_coverage["scenario_target_rule_top2_count"]),
+        "rule_coverage_count": int(rule_coverage["rule_coverage_count"]),
+        "rule_coverage_entropy": float(rule_coverage["rule_coverage_entropy"]),
         "final_health_mean": float(health_summary["final_health_mean"]),
         "final_health_min": float(health_summary["final_health_min"]),
         "final_health_p25": float(health_summary["final_health_p25"]),
@@ -3198,6 +3758,10 @@ def _finalize_compare_summary(summary: Dict[str, Any], **extra: Any) -> Dict[str
     finalized["delta_rule_distinct_count"] = float(delta_metrics.get("rule_distinct_count", 0.0))
     finalized["delta_rule_avg_dominant_share"] = float(delta_metrics.get("rule_avg_dominant_share", 0.0))
     finalized["delta_rule_mean_pairwise_jsd"] = float(delta_metrics.get("rule_mean_pairwise_jsd", 0.0))
+    finalized["delta_scenario_target_rule_match_count"] = float(delta_metrics.get("scenario_target_rule_match_count", 0.0))
+    finalized["delta_scenario_target_rule_top2_count"] = float(delta_metrics.get("scenario_target_rule_top2_count", 0.0))
+    finalized["delta_rule_coverage_count"] = float(delta_metrics.get("rule_coverage_count", 0.0))
+    finalized["delta_rule_coverage_entropy"] = float(delta_metrics.get("rule_coverage_entropy", 0.0))
     finalized["delta_final_health_mean"] = float(delta_metrics.get("final_health_mean", 0.0))
     finalized["delta_final_health_min"] = float(delta_metrics.get("final_health_min", 0.0))
     finalized["delta_final_health_p25"] = float(delta_metrics.get("final_health_p25", 0.0))
@@ -4294,22 +4858,28 @@ def main(profile_override: Optional[str] = None):
                         "thesis_ppo_sched_health_gate",
                         "thesis_ppo_hparam_ablation",
                         "thesis_ppo_sched_core_compare",
+                        "thesis_ppo_sched_rule_coverage_v2",
+                        "thesis_ppo_sched_rule_coverage_v2_smoke",
+                        "thesis_sched_rule_coverage_baselines_v2",
+                        "thesis_sched_rule_coverage_baselines_v2_smoke",
                         "thesis_ppo_sched_full_ablation",
                         "thesis_ppo_sched_full_ablation_smoke",
                     }:
                         run_combo_behavior = summarize_combo_conditioned_behavior(run_result["official_result"].get("decision_log", []))
-                        all_combo_eval_rows.extend(
-                            combo_eval_rows(
-                                run_combo_behavior,
-                                scheduler_mode=str(run_result["official_result"].get("scheduler_mode", scheduler_mode)),
-                                seed=int(seed),
-                                experiment_profile=experiment_profile,
-                                horizon_mode=horizon_mode_for_profile(cfg),
-                                train_policy_tag=train_policy_tag,
-                                eval_policy_tag=train_policy_tag,
-                                maint_mode=str(mode),
-                            )
+                        combo_rows = combo_eval_rows(
+                            run_combo_behavior,
+                            scheduler_mode=str(run_result["official_result"].get("scheduler_mode", scheduler_mode)),
+                            seed=int(seed),
+                            experiment_profile=experiment_profile,
+                            horizon_mode=horizon_mode_for_profile(cfg),
+                            train_policy_tag=train_policy_tag,
+                            eval_policy_tag=train_policy_tag,
+                            maint_mode=str(mode),
                         )
+                        run_uave = float(all_result_rows[-1].get("uave", 0.0) if all_result_rows else 0.0)
+                        for row in combo_rows:
+                            row["uave"] = run_uave
+                        all_combo_eval_rows.extend(combo_rows)
 
                 compare_dir = scheduler_root / "compare"
                 compare_dir.mkdir(parents=True, exist_ok=True)
@@ -4549,6 +5119,8 @@ def main(profile_override: Optional[str] = None):
 
             if experiment_profile in {
                 "thesis_ppo_sched_core_compare",
+                "thesis_ppo_sched_rule_coverage_v2",
+                "thesis_ppo_sched_rule_coverage_v2_smoke",
                 "thesis_ppo_sched_full_ablation",
                 "thesis_ppo_sched_full_ablation_smoke",
             }:
@@ -4572,7 +5144,7 @@ def main(profile_override: Optional[str] = None):
                             candidate_run["official_result"],
                             anchor_mode,
                             candidate_mode,
-                            compare_type="scheduler_core_compare" if experiment_profile == "thesis_ppo_sched_core_compare" else "scheduler_full_ablation",
+                            compare_type="scheduler_core_compare" if experiment_profile in {"thesis_ppo_sched_core_compare", "thesis_ppo_sched_rule_coverage_v2", "thesis_ppo_sched_rule_coverage_v2_smoke"} else "scheduler_full_ablation",
                             train_policy_tag=train_policy_tag,
                             eval_policy_tag=train_policy_tag,
                             scheduler_anchor=anchor_mode,
@@ -4601,7 +5173,7 @@ def main(profile_override: Optional[str] = None):
                             **experiment_result_metadata(
                                 cfg,
                                 maint_mode="NONE",
-                                compare_type="scheduler_core_compare" if experiment_profile == "thesis_ppo_sched_core_compare" else "scheduler_full_ablation",
+                                compare_type="scheduler_core_compare" if experiment_profile in {"thesis_ppo_sched_core_compare", "thesis_ppo_sched_rule_coverage_v2", "thesis_ppo_sched_rule_coverage_v2_smoke"} else "scheduler_full_ablation",
                                 scheduler_mode=anchor_mode,
                                 train_policy_tag=train_policy_tag,
                                 eval_policy_tag=train_policy_tag,
@@ -4620,7 +5192,7 @@ def main(profile_override: Optional[str] = None):
                         all_combo_compare_rows.extend(combo_rows)
                         stem_prefix = (
                             "compare_scheduler_core_compare_"
-                            if experiment_profile == "thesis_ppo_sched_core_compare"
+                            if experiment_profile in {"thesis_ppo_sched_core_compare", "thesis_ppo_sched_rule_coverage_v2", "thesis_ppo_sched_rule_coverage_v2_smoke"}
                             else "compare_scheduler_full_ablation_"
                         )
                         stem = (
@@ -4633,7 +5205,7 @@ def main(profile_override: Optional[str] = None):
                             full_summary,
                             full_rows,
                             policy_label=(
-                                f"{train_policy_label} | Compare: {'scheduler_core_compare' if experiment_profile == 'thesis_ppo_sched_core_compare' else 'scheduler_full_ablation'} | "
+                                f"{train_policy_label} | Compare: {'scheduler_core_compare' if experiment_profile in {'thesis_ppo_sched_core_compare', 'thesis_ppo_sched_rule_coverage_v2', 'thesis_ppo_sched_rule_coverage_v2_smoke'} else 'scheduler_full_ablation'} | "
                                 f"{anchor_mode} vs {candidate_mode}"
                             ),
                         )
@@ -4842,6 +5414,11 @@ def main(profile_override: Optional[str] = None):
             rule_twt_uave_rows,
             str(rule_baseline_dir / "rule_twt_uave.png"),
         )
+    if experiment_profile in {"thesis_sched_rule_coverage_baselines_v2", "thesis_sched_rule_coverage_baselines_v2_smoke"}:
+        rule_baseline_dir = output_root / "rule_coverage_baselines_v2"
+        rule_baseline_dir.mkdir(parents=True, exist_ok=True)
+        scenario_rule_rows = build_scenario_rule_baseline_rows(all_combo_eval_rows)
+        write_rows_files(rule_baseline_dir, "scenario_rule_baseline_rows", scenario_rule_rows)
 
     for _, _, policy_tag, _ in route_specs:
         for scheduler_mode in scheduler_modes:

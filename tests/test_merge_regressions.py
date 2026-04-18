@@ -22,7 +22,9 @@ from run_experiment import (
     apply_experiment_profile,
     apply_scheduler_mode_runtime_overrides,
     build_episode_combos,
+    build_episode_scenario,
     build_maintenance_state,
+    build_scenario_rule_baseline_rows,
     build_rule_twt_uave_rows,
     canonical_ppo_variant,
     canonical_scheduler_mode,
@@ -54,12 +56,14 @@ from run_experiment import (
     scheduling_reward,
     select_maintenance_action,
     summarize_final_machine_health,
+    normalize_rule_coverage_v2_scenario,
 )
 from src.agents import HierMaintenanceAgentDDQN, MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
 from src.agents import FixedRuleSchedulerAgent
 from src.compare import (
     combo_dominant_maps,
     combo_eval_rows,
+    combo_rule_coverage_metrics,
     combo_rule_diversity_metrics,
     compare_combo_behavior_against_anchor,
     compare_mode_results,
@@ -642,6 +646,53 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 14)
         self.assertEqual(len(cfg.EVAL_EXPLICIT_COMBOS), 12)
 
+    def test_thesis_ppo_sched_rule_coverage_v2_profile_uses_richer_scenarios(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_ppo_sched_rule_coverage_v2")
+
+        self.assertEqual(
+            cfg.TRAIN_SCHEDULER_MODES,
+            ("PPO_CONSERVATIVE_LEGACY", "PPO_ENTROPY_LEGACY"),
+        )
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("NONE",))
+        self.assertEqual(cfg.PPO_SCHED_STATE_MODE, "ops_regime_rule_coverage")
+        self.assertEqual(cfg.SCHEDULER_POLICY_FAMILY, "flat_rule_selector")
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 12)
+        self.assertEqual(len(cfg.TRAIN_EXPLICIT_SCENARIOS), 12)
+        self.assertEqual(len(cfg.TRAIN_EXPLICIT_SCENARIO_WEIGHTS), 12)
+
+    def test_thesis_sched_rule_coverage_baselines_v2_profile_uses_fixed_rules(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_sched_rule_coverage_baselines_v2")
+
+        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, tuple(f"RULE_{i}" for i in range(6)))
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("NONE",))
+        self.assertEqual(cfg.PPO_SCHED_STATE_MODE, "ops_regime_rule_coverage")
+        self.assertEqual(cfg.SCHEDULER_POLICY_FAMILY, "flat_rule_selector")
+        self.assertEqual(len(cfg.EVAL_EXPLICIT_SCENARIOS), 12)
+
+    def test_thesis_ppo_sched_rule_coverage_v2_smoke_profile_reduces_runtime(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_ppo_sched_rule_coverage_v2_smoke")
+
+        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("PPO_CONSERVATIVE_LEGACY", "PPO_ENTROPY_LEGACY"))
+        self.assertEqual(cfg.TRAIN_JOBS_TARGET, 24)
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 2)
+        self.assertEqual(cfg.TRAIN_EPISODES, 2)
+        self.assertEqual(cfg.EVAL_EVERY, 1)
+        self.assertFalse(cfg.EARLY_STOP_ENABLED)
+
+    def test_thesis_sched_rule_coverage_baselines_v2_smoke_profile_reduces_runtime(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_sched_rule_coverage_baselines_v2_smoke")
+
+        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, tuple(f"RULE_{i}" for i in range(6)))
+        self.assertEqual(cfg.TRAIN_JOBS_TARGET, 24)
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 2)
+        self.assertEqual(cfg.TRAIN_EPISODES, 1)
+        self.assertEqual(cfg.EVAL_EVERY, 1)
+        self.assertFalse(cfg.EARLY_STOP_ENABLED)
+
     def test_thesis_sched_rule_baselines_profile_uses_six_fixed_rules(self):
         cfg = SimConfig()
         apply_experiment_profile(cfg, "thesis_sched_rule_baselines")
@@ -702,6 +753,8 @@ class MergeRegressionTests(unittest.TestCase):
         cfg.SCHEDULER_MODE = "PPO"
         cfg.PPO_SCHED_STATE_MODE = "ops_regime_only"
         self.assertEqual(scheduler_state_dim_for_context(cfg), 13)
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_rule_coverage"
+        self.assertEqual(scheduler_state_dim_for_context(cfg), 16)
         cfg.PPO_SCHED_STATE_MODE = "default"
         self.assertEqual(scheduler_state_dim_for_context(cfg), 15)
 
@@ -727,6 +780,135 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(cfg.PPO_CLIP, 0.20)
         self.assertEqual(cfg.PPO_EPOCHS, 3)
         self.assertEqual(cfg.PPO_MINIBATCH, 64)
+
+    def test_rule_coverage_v2_scenario_generation_shifts_proc_depth_and_flex(self):
+        class _DegrStub:
+            @staticmethod
+            def lifespan(_curve_id):
+                return 100
+
+        cfg = SimConfig()
+        cfg.NUM_MACHINES = 6
+        cfg.MACHINE_CURVE_IDS = (4, 8, 11, 17, 18, 23)
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.COMBO_SEGMENT_JOBS = 12
+        cfg.TRAIN_JOBS_TARGET = 60
+        degr = _DegrStub()
+
+        def _stats(level):
+            lam = float(level["arrival_lam"])
+            ddt = float(level["ddt"])
+            scenario = build_episode_scenario(
+                cfg,
+                degr,
+                jobs_target=60,
+                scenario_rng=random.Random(7),
+                degradation_rate=50.0,
+                episode_combos=[(lam, ddt)],
+                episode_combo_seq=[0],
+                episode_scenario_levels=[normalize_rule_coverage_v2_scenario(level)],
+                machine_curve_ids=list(cfg.MACHINE_CURVE_IDS),
+                combo_mode="episode_fixed",
+                combo_purpose="train",
+            )
+            proc_vals = []
+            op_counts = []
+            flex_vals = []
+            for job in scenario.job_templates:
+                op_counts.append(len(job.ops))
+                for op in job.ops:
+                    proc_vals.extend(list(op.proc_times.values()))
+                    flex_vals.append(len(op.feasible_machines))
+            return float(np.mean(proc_vals)), float(np.mean(op_counts)), float(np.mean(flex_vals))
+
+        short_proc, _, _ = _stats({
+            "scenario_id": "S",
+            "arrival_lam": 20.0,
+            "ddt": 1.0,
+            "job_size_profile": "short_heavy",
+            "route_depth_profile": "mixed",
+            "flexibility_profile": "medium",
+            "target_rule": 3,
+        })
+        balanced_proc, _, _ = _stats({
+            "scenario_id": "B",
+            "arrival_lam": 20.0,
+            "ddt": 1.0,
+            "job_size_profile": "balanced",
+            "route_depth_profile": "mixed",
+            "flexibility_profile": "medium",
+            "target_rule": 1,
+        })
+        long_proc, _, _ = _stats({
+            "scenario_id": "L",
+            "arrival_lam": 20.0,
+            "ddt": 1.0,
+            "job_size_profile": "long_heavy",
+            "route_depth_profile": "mixed",
+            "flexibility_profile": "medium",
+            "target_rule": 4,
+        })
+        _, shallow_ops, _ = _stats({
+            "scenario_id": "Sh",
+            "arrival_lam": 20.0,
+            "ddt": 1.0,
+            "job_size_profile": "balanced",
+            "route_depth_profile": "shallow",
+            "flexibility_profile": "medium",
+            "target_rule": 0,
+        })
+        _, mixed_ops, _ = _stats({
+            "scenario_id": "Mx",
+            "arrival_lam": 20.0,
+            "ddt": 1.0,
+            "job_size_profile": "balanced",
+            "route_depth_profile": "mixed",
+            "flexibility_profile": "medium",
+            "target_rule": 1,
+        })
+        _, deep_ops, _ = _stats({
+            "scenario_id": "Dp",
+            "arrival_lam": 20.0,
+            "ddt": 1.0,
+            "job_size_profile": "balanced",
+            "route_depth_profile": "deep",
+            "flexibility_profile": "medium",
+            "target_rule": 3,
+        })
+        _, _, narrow_flex = _stats({
+            "scenario_id": "N",
+            "arrival_lam": 20.0,
+            "ddt": 1.0,
+            "job_size_profile": "balanced",
+            "route_depth_profile": "mixed",
+            "flexibility_profile": "narrow",
+            "target_rule": 1,
+        })
+        _, _, medium_flex = _stats({
+            "scenario_id": "M",
+            "arrival_lam": 20.0,
+            "ddt": 1.0,
+            "job_size_profile": "balanced",
+            "route_depth_profile": "mixed",
+            "flexibility_profile": "medium",
+            "target_rule": 1,
+        })
+        _, _, wide_flex = _stats({
+            "scenario_id": "W",
+            "arrival_lam": 20.0,
+            "ddt": 1.0,
+            "job_size_profile": "balanced",
+            "route_depth_profile": "mixed",
+            "flexibility_profile": "wide",
+            "target_rule": 5,
+        })
+
+        self.assertLess(short_proc, balanced_proc)
+        self.assertLess(balanced_proc, long_proc)
+        self.assertLess(shallow_ops, mixed_ops)
+        self.assertLess(mixed_ops, deep_ops)
+        self.assertLess(narrow_flex, medium_flex)
+        self.assertLess(medium_flex, wide_flex)
 
     def test_dispatch_candidate_machines_respects_projected_health_gate(self):
         env = object.__new__(EventDrivenShopEnv)
@@ -1395,6 +1577,13 @@ class MergeRegressionTests(unittest.TestCase):
     def test_combo_eval_rows_flatten_behavior_with_performance_metrics(self):
         combo_behavior = {
             "lam=20.0|ddt=1.00": {
+                "scenario_key": "R2_A|lam=20.0|ddt=1.00|proc=balanced|route=mixed|flex=narrow",
+                "arrival_lam": 20.0,
+                "ddt": 1.0,
+                "target_rule": 2,
+                "job_size_profile": "balanced",
+                "route_depth_profile": "mixed",
+                "flexibility_profile": "narrow",
                 "dominant_rule": {"label": "2", "share": 0.75},
                 "rule_shares": {"2": 0.75, "3": 0.25},
                 "combo_tard": 5.0,
@@ -1417,6 +1606,8 @@ class MergeRegressionTests(unittest.TestCase):
 
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["combo_key"], "lam=20.0|ddt=1.00")
+        self.assertEqual(rows[0]["scenario_key"], "R2_A|lam=20.0|ddt=1.00|proc=balanced|route=mixed|flex=narrow")
+        self.assertEqual(rows[0]["target_rule"], 2)
         self.assertEqual(rows[0]["dominant_rule"], "2")
         self.assertAlmostEqual(rows[0]["combo_tard"], 5.0)
         self.assertEqual(rows[0]["combo_completed_jobs"], 2)
@@ -1484,6 +1675,27 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(metrics["rule_distinct_count"], 2.0)
         self.assertGreater(metrics["rule_avg_dominant_share"], 0.8)
         self.assertGreater(metrics["rule_mean_pairwise_jsd"], 0.0)
+
+    def test_combo_rule_coverage_metrics_capture_target_rule_hits(self):
+        combo_behavior = {
+            "S1": {
+                "target_rule": 2,
+                "dominant_rule": {"label": "2", "share": 0.9},
+                "rule_counts": {"0": 0, "1": 1, "2": 9, "3": 0, "4": 0, "5": 0},
+            },
+            "S2": {
+                "target_rule": 4,
+                "dominant_rule": {"label": "1", "share": 0.6},
+                "rule_counts": {"0": 0, "1": 6, "2": 0, "3": 0, "4": 4, "5": 0},
+            },
+        }
+
+        metrics = combo_rule_coverage_metrics(combo_behavior)
+
+        self.assertEqual(metrics["scenario_target_rule_match_count"], 1.0)
+        self.assertEqual(metrics["scenario_target_rule_top2_count"], 2.0)
+        self.assertEqual(metrics["rule_coverage_count"], 2.0)
+        self.assertGreater(metrics["rule_coverage_entropy"], 0.0)
 
     def test_efficiency_scheduler_reward_penalizes_worsening_overdue_slack_and_risk(self):
         cfg = SimConfig()
@@ -1663,6 +1875,40 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(rows[0]["twt"], 12.0)
         self.assertAlmostEqual(rows[0]["uave"], 0.6)
         self.assertEqual(rows[1]["rule_tag"], "R3")
+
+    def test_build_scenario_rule_baseline_rows_ranks_rules_within_scenario(self):
+        rows = build_scenario_rule_baseline_rows([
+            {
+                "scheduler_mode": "RULE_0",
+                "scenario_key": "R2_A",
+                "target_rule": 2,
+                "arrival_lam": 36.0,
+                "ddt": 0.9,
+                "job_size_profile": "balanced",
+                "route_depth_profile": "mixed",
+                "flexibility_profile": "narrow",
+                "combo_tard": 14.0,
+                "uave": 0.5,
+            },
+            {
+                "scheduler_mode": "RULE_2",
+                "scenario_key": "R2_A",
+                "target_rule": 2,
+                "arrival_lam": 36.0,
+                "ddt": 0.9,
+                "job_size_profile": "balanced",
+                "route_depth_profile": "mixed",
+                "flexibility_profile": "narrow",
+                "combo_tard": 6.0,
+                "uave": 0.4,
+            },
+        ])
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["rule_tag"], "R2")
+        self.assertEqual(rows[0]["rank_within_scenario"], 1)
+        self.assertEqual(rows[1]["rule_tag"], "R0")
+        self.assertEqual(rows[1]["rank_within_scenario"], 2)
 
     def test_top_level_run_record_marks_thesis_profile_rows_as_main_experiment(self):
         env = _CompareEnvStub(0, 0.0, 0, 0.0, 12.0)
