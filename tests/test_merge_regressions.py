@@ -26,6 +26,7 @@ from run_experiment import (
     build_rule_twt_uave_rows,
     canonical_ppo_variant,
     canonical_scheduler_mode,
+    combo_grid,
     compute_uave,
     effective_base_degradation_rate,
     effective_degradation_bounds,
@@ -600,7 +601,9 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertFalse(maintenance_decisions_enabled(cfg))
         self.assertTrue(cfg.DISABLE_HEALTH_SYSTEM)
         self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
-        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 14)
+        self.assertEqual(len(cfg.TRAIN_EXPLICIT_COMBOS), 12)
+        self.assertEqual(len(cfg.TRAIN_EXPLICIT_COMBO_WEIGHTS), 12)
 
     def test_thesis_ppo_sched_core_compare_profile_uses_four_curated_modes(self):
         cfg = SimConfig()
@@ -619,7 +622,25 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertFalse(maintenance_decisions_enabled(cfg))
         self.assertTrue(cfg.DISABLE_HEALTH_SYSTEM)
         self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
-        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 14)
+        self.assertEqual(len(cfg.TRAIN_EXPLICIT_COMBOS), 12)
+        self.assertEqual(len(cfg.TRAIN_EXPLICIT_COMBO_WEIGHTS), 12)
+
+    def test_thesis_ppo_sched_rule_coverage_profile_matches_core_scheduler_modes(self):
+        cfg = SimConfig()
+        apply_experiment_profile(cfg, "thesis_ppo_sched_rule_coverage")
+
+        self.assertEqual(
+            cfg.TRAIN_SCHEDULER_MODES,
+            (
+                "PPO_CONSERVATIVE_LEGACY",
+                "PPO_ENTROPY_LEGACY",
+                "PPO_BALANCED_CTX_CONTEXTUAL",
+                "PPO_CONSERVATIVE_CONTEXTUAL",
+            ),
+        )
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 14)
+        self.assertEqual(len(cfg.EVAL_EXPLICIT_COMBOS), 12)
 
     def test_thesis_sched_rule_baselines_profile_uses_six_fixed_rules(self):
         cfg = SimConfig()
@@ -630,7 +651,7 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertFalse(maintenance_decisions_enabled(cfg))
         self.assertTrue(cfg.DISABLE_HEALTH_SYSTEM)
         self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
-        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 14)
 
     def test_thesis_ppo_sched_full_ablation_profile_uses_twelve_modes(self):
         cfg = SimConfig()
@@ -643,7 +664,7 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertFalse(maintenance_decisions_enabled(cfg))
         self.assertTrue(cfg.DISABLE_HEALTH_SYSTEM)
         self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
-        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
+        self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 14)
         self.assertEqual(cfg.PPO_SCHED_STATE_MODE, "ops_regime_only")
         self.assertEqual(cfg.SCHED_HEALTH_GATE_MODE, "off")
 
@@ -938,6 +959,24 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertTrue(all(idx == 0 for idx in seq))
         self.assertIn(tuple(combos[0]), {(20.0, 1.0), (20.0, 1.5), (40.0, 1.0), (40.0, 1.5)})
 
+    def test_episode_fixed_training_combo_can_use_weighted_explicit_pool(self):
+        cfg = SimConfig()
+        cfg.ARRIVAL_LAM_VALUES = (20.0, 40.0)
+        cfg.DDT_VALUES = (1.0, 1.5)
+        cfg.TRAIN_EXPLICIT_COMBOS = ((20.0, 1.0), (40.0, 1.5))
+        cfg.TRAIN_EXPLICIT_COMBO_WEIGHTS = (0.0, 1.0)
+
+        combos, seq = build_episode_combos(
+            cfg,
+            random.Random(7),
+            jobs_target=40,
+            combo_mode="episode_fixed",
+            combo_purpose="train",
+        )
+
+        self.assertEqual(combos, [(40.0, 1.5)])
+        self.assertTrue(all(idx == 0 for idx in seq))
+
     def test_grid_full_eval_combo_covers_full_lambda_ddt_grid(self):
         cfg = SimConfig()
         cfg.ARRIVAL_LAM_VALUES = (20.0, 40.0, 60.0)
@@ -956,6 +995,24 @@ class MergeRegressionTests(unittest.TestCase):
             ],
         )
 
+    def test_grid_full_eval_combo_prefers_explicit_eval_pool_when_present(self):
+        cfg = SimConfig()
+        cfg.ARRIVAL_LAM_VALUES = (20.0, 40.0, 60.0)
+        cfg.DDT_VALUES = (1.0, 1.5, 2.0)
+        cfg.EVAL_EXPLICIT_COMBOS = ((15.0, 0.9), (45.0, 1.15), (65.0, 1.0))
+
+        combos, seq = build_episode_combos(
+            cfg,
+            random.Random(7),
+            jobs_target=21,
+            combo_mode="grid_full",
+            combo_purpose="eval",
+        )
+
+        self.assertEqual(combo_grid(cfg, combo_purpose="eval"), [(15.0, 0.9), (45.0, 1.15), (65.0, 1.0)])
+        self.assertEqual(combos, [(15.0, 0.9), (45.0, 1.15), (65.0, 1.0)])
+        self.assertEqual(seq, [0, 1, 2])
+
     def test_grid_full_normalizes_jobs_target_to_full_grid(self):
         cfg = SimConfig()
         cfg.ARRIVAL_LAM_VALUES = (20.0, 40.0, 60.0)
@@ -965,6 +1022,13 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(normalize_jobs_target_for_combo_mode(cfg, 5, "grid_full"), 63)
         self.assertEqual(normalize_jobs_target_for_combo_mode(cfg, 999, "grid_full"), 63)
         self.assertEqual(normalize_jobs_target_for_combo_mode(cfg, 42, "variable"), 42)
+
+    def test_grid_full_normalizes_jobs_target_to_explicit_eval_combo_count(self):
+        cfg = SimConfig()
+        cfg.COMBO_SEGMENT_JOBS = 5
+        cfg.EVAL_EXPLICIT_COMBOS = ((12.0, 0.9), (30.0, 0.9), (45.0, 1.15), (65.0, 1.2))
+
+        self.assertEqual(normalize_jobs_target_for_combo_mode(cfg, 999, "grid_full", combo_purpose="eval"), 20)
 
     def test_thdqn_pruned_low_state_excludes_regime_features(self):
         cfg = SimConfig()

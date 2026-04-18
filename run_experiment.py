@@ -48,6 +48,38 @@ from src.viz import (
 from src.pomcp import POMCPPlanner
 from checkpointing import CheckpointManager
 
+RULE_COVERAGE_EXPLICIT_COMBOS: Tuple[Tuple[float, float], ...] = (
+    (12.0, 0.90),  # sparse + very tight, slack-sensitive edge probe
+    (15.0, 0.80),  # sparse + ultra-tight, urgent rescue region
+    (18.0, 1.00),  # sparse + tight, due-date / short-job edge
+    (22.0, 1.10),  # light-medium + medium-tight, EDD+SPT region
+    (28.0, 1.30),  # moderate + moderate, stable due-date fallback
+    (30.0, 0.90),  # medium + tight, urgency-reactive region
+    (45.0, 0.95),  # medium-high + tight, SRPT queue-clearing region
+    (45.0, 1.15),  # medium-high + medium, R1/R3 boundary
+    (65.0, 1.00),  # high + tight, dense queue-clearing region
+    (65.0, 1.20),  # high + medium, dense EDD/SPT boundary
+    (70.0, 1.30),  # high + moderate, LRPT edge probe
+    (85.0, 1.20),  # overload + medium, LRPT edge probe
+)
+
+RULE_COVERAGE_TRAIN_WEIGHTS: Tuple[float, ...] = (
+    1.00, 1.50, 1.00, 1.25, 1.00, 1.75, 1.75, 1.25, 1.75, 1.25, 0.50, 0.50,
+)
+
+
+def apply_rule_coverage_combo_distribution(cfg: SimConfig, *, segment_jobs: int) -> SimConfig:
+    combos = tuple((float(lam), float(ddt)) for lam, ddt in RULE_COVERAGE_EXPLICIT_COMBOS)
+    cfg.ARRIVAL_LAM_VALUES = tuple(sorted({float(lam) for lam, _ in combos}))
+    cfg.DDT_VALUES = tuple(sorted({float(ddt) for _, ddt in combos}))
+    cfg.TRAIN_EXPLICIT_COMBOS = combos
+    cfg.EVAL_EXPLICIT_COMBOS = combos
+    cfg.TRAIN_EXPLICIT_COMBO_WEIGHTS = tuple(float(x) for x in RULE_COVERAGE_TRAIN_WEIGHTS)
+    cfg.EVAL_EXPLICIT_COMBO_WEIGHTS = None
+    cfg.COMBO_SEGMENT_JOBS = int(segment_jobs)
+    return cfg
+
+
 def build_maintenance_state(h, dh, eta, slack_pressure, local_urgency, avg_slack,
                             lambda_hat, ddt_hat, risk_t, win_e, win_l,
                             rul_mu, rul_sigma, t_now, t_last_maint,
@@ -132,6 +164,47 @@ def canonical_scheduler_mode(scheduler_mode: Optional[str]) -> str:
     if mode.startswith("RULE_"):
         return "RULE"
     return "THDQN"
+
+
+def explicit_combo_pool(cfg: SimConfig, combo_purpose: str = "eval") -> List[Tuple[float, float]]:
+    purpose = str(combo_purpose or "eval").strip().lower()
+    attr = "TRAIN_EXPLICIT_COMBOS" if purpose == "train" else "EVAL_EXPLICIT_COMBOS"
+    raw = getattr(cfg, attr, None)
+    if not raw:
+        return []
+    combos: List[Tuple[float, float]] = []
+    for pair in raw:
+        if pair is None or len(pair) != 2:
+            raise ValueError(f"{attr} entries must be (lambda, ddt) pairs, got: {pair!r}")
+        combos.append((float(pair[0]), float(pair[1])))
+    return combos
+
+
+def explicit_combo_weights(cfg: SimConfig, combos: List[Tuple[float, float]], combo_purpose: str = "train") -> Optional[List[float]]:
+    purpose = str(combo_purpose or "train").strip().lower()
+    attr = "TRAIN_EXPLICIT_COMBO_WEIGHTS" if purpose == "train" else "EVAL_EXPLICIT_COMBO_WEIGHTS"
+    raw = getattr(cfg, attr, None)
+    if not raw:
+        return None
+    weights = [float(x) for x in raw]
+    if len(weights) != len(combos):
+        raise ValueError(f"{attr} length {len(weights)} must match explicit combo count {len(combos)}")
+    if any(w < 0.0 for w in weights):
+        raise ValueError(f"{attr} must be non-negative")
+    if not any(w > 0.0 for w in weights):
+        return None
+    return weights
+
+
+def combo_axis_values(cfg: SimConfig) -> Tuple[List[float], List[float]]:
+    explicit = explicit_combo_pool(cfg, "train") or explicit_combo_pool(cfg, "eval")
+    if explicit:
+        lam_values = sorted({float(lam) for lam, _ in explicit})
+        ddt_values = sorted({float(ddt) for _, ddt in explicit})
+    else:
+        lam_values = sorted(float(x) for x in getattr(cfg, "ARRIVAL_LAM_VALUES", [100.0]))
+        ddt_values = sorted(float(x) for x in getattr(cfg, "DDT_VALUES", (1.0,)))
+    return lam_values or [100.0], ddt_values or [1.0]
 
 
 FIXED_RULE_LABELS: Dict[int, str] = {
@@ -297,7 +370,7 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
         cfg.TRAIN_COMBO_MODE = "episode_fixed"
         cfg.EVAL_COMBO_MODE = "grid_full"
         cfg.TRAIN_JOBS_TARGET = 200
-        cfg.COMBO_SEGMENT_JOBS = 18
+        apply_rule_coverage_combo_distribution(cfg, segment_jobs=14)
         cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
         cfg.PPO_SCHED_STATE_MODE = "ops_regime_only"
         cfg.SCHED_HEALTH_GATE_MODE = "off"
@@ -318,7 +391,7 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
         cfg.TRAIN_COMBO_MODE = "episode_fixed"
         cfg.EVAL_COMBO_MODE = "grid_full"
         cfg.TRAIN_JOBS_TARGET = 200
-        cfg.COMBO_SEGMENT_JOBS = 18
+        apply_rule_coverage_combo_distribution(cfg, segment_jobs=14)
         cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
         cfg.PPO_SCHED_STATE_MODE = "ops_regime_only"
         cfg.SCHED_HEALTH_GATE_MODE = "off"
@@ -339,7 +412,7 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
         cfg.TRAIN_COMBO_MODE = "episode_fixed"
         cfg.EVAL_COMBO_MODE = "grid_full"
         cfg.TRAIN_JOBS_TARGET = 200
-        cfg.COMBO_SEGMENT_JOBS = 18
+        apply_rule_coverage_combo_distribution(cfg, segment_jobs=14)
         cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
         cfg.PPO_SCHED_STATE_MODE = "ops_regime_only"
         cfg.SCHED_HEALTH_GATE_MODE = "off"
@@ -365,7 +438,33 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
         cfg.TRAIN_COMBO_MODE = "episode_fixed"
         cfg.EVAL_COMBO_MODE = "grid_full"
         cfg.TRAIN_JOBS_TARGET = 200
-        cfg.COMBO_SEGMENT_JOBS = 18
+        apply_rule_coverage_combo_distribution(cfg, segment_jobs=14)
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_only"
+        cfg.SCHED_HEALTH_GATE_MODE = "off"
+        cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
+        cfg.ENABLE_MAINTENANCE_DECISIONS = False
+        cfg.DISABLE_HEALTH_SYSTEM = True
+        cfg.BREAKDOWN_ENABLE = False
+        cfg.FAIL_STOCHASTIC = False
+        cfg.SCHED_SAFE_DISPATCH = False
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        return cfg
+    if profile == "thesis_ppo_sched_rule_coverage":
+        cfg.TRAIN_SCHEDULER_MODES = (
+            "PPO_CONSERVATIVE_LEGACY",
+            "PPO_ENTROPY_LEGACY",
+            "PPO_BALANCED_CTX_CONTEXTUAL",
+            "PPO_CONSERVATIVE_CONTEXTUAL",
+        )
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("NONE",)
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 200
+        apply_rule_coverage_combo_distribution(cfg, segment_jobs=14)
         cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
         cfg.PPO_SCHED_STATE_MODE = "ops_regime_only"
         cfg.SCHED_HEALTH_GATE_MODE = "off"
@@ -386,7 +485,7 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
         cfg.TRAIN_COMBO_MODE = "episode_fixed"
         cfg.EVAL_COMBO_MODE = "grid_full"
         cfg.TRAIN_JOBS_TARGET = 200
-        cfg.COMBO_SEGMENT_JOBS = 18
+        apply_rule_coverage_combo_distribution(cfg, segment_jobs=14)
         cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
         cfg.PPO_SCHED_STATE_MODE = "ops_regime_only"
         cfg.SCHED_HEALTH_GATE_MODE = "off"
@@ -412,7 +511,7 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
         cfg.TRAIN_COMBO_MODE = "episode_fixed"
         cfg.EVAL_COMBO_MODE = "grid_full"
         cfg.TRAIN_JOBS_TARGET = 200
-        cfg.COMBO_SEGMENT_JOBS = 18
+        apply_rule_coverage_combo_distribution(cfg, segment_jobs=14)
         cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
         cfg.PPO_SCHED_STATE_MODE = "ops_regime_only"
         cfg.SCHED_HEALTH_GATE_MODE = "off"
@@ -438,7 +537,7 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
         cfg.TRAIN_COMBO_MODE = "episode_fixed"
         cfg.EVAL_COMBO_MODE = "grid_full"
         cfg.TRAIN_JOBS_TARGET = 20
-        cfg.COMBO_SEGMENT_JOBS = 3
+        apply_rule_coverage_combo_distribution(cfg, segment_jobs=3)
         cfg.TRAIN_EPISODES = 6
         cfg.EVAL_EVERY = 3
         cfg.SAVE_EVERY = 3
@@ -538,6 +637,7 @@ def comparison_role_for_profile(
         "thesis_ppo_sched_health_gate",
         "thesis_ppo_hparam_ablation",
         "thesis_ppo_sched_core_compare",
+        "thesis_ppo_sched_rule_coverage",
         "thesis_sched_rule_baselines",
         "thesis_ppo_sched_full_ablation",
         "thesis_ppo_sched_full_ablation_smoke",
@@ -554,7 +654,7 @@ def comparison_role_for_profile(
     ):
         return "main_experiment"
     if (
-        profile == "thesis_ppo_sched_core_compare"
+        profile in {"thesis_ppo_sched_core_compare", "thesis_ppo_sched_rule_coverage"}
         and str(compare_type) == "scheduler_core_compare"
         and canonical_scheduler_mode(scheduler_mode) == "PPO"
         and str(train_policy_tag or "") == unrestricted_tag
@@ -567,7 +667,7 @@ def comparison_role_for_profile(
 def compute_eval_jobs_target(cfg: SimConfig) -> int:
     eval_combo_mode = str(getattr(cfg, "EVAL_COMBO_MODE", getattr(cfg, "LAM_DDT_MODE", "variable"))).strip().lower()
     if eval_combo_mode == "grid_full":
-        return compute_grid_full_jobs_target(cfg)
+        return compute_grid_full_jobs_target(cfg, combo_purpose="eval")
     return int(cfg.EVAL_JOBS_TARGET * 2)
 
 
@@ -828,8 +928,7 @@ def scheduling_reward(
             + float(getattr(cfg, "PPO_EFFICIENCY_FAILRISK_W", 0.5)) * float(fail_risk_up)
         )
 
-    lam_values = sorted(float(x) for x in getattr(cfg, "ARRIVAL_LAM_VALUES", [float(after["sched_lambda"]) or 1.0]))
-    ddt_values = sorted(float(x) for x in getattr(cfg, "DDT_VALUES", [float(after["sched_ddt"]) or 1.0]))
+    lam_values, ddt_values = combo_axis_values(cfg)
     lam_min, lam_max = float(lam_values[0]), float(lam_values[-1])
     ddt_min, ddt_max = float(ddt_values[0]), float(ddt_values[-1])
     lam_span = max(lam_max - lam_min, 1e-6)
@@ -856,22 +955,30 @@ def scheduling_reward(
     )
 
 
-def combo_grid(cfg: SimConfig) -> List[Tuple[float, float]]:
+def combo_grid(cfg: SimConfig, combo_purpose: str = "eval") -> List[Tuple[float, float]]:
+    explicit = explicit_combo_pool(cfg, combo_purpose)
+    if explicit:
+        return [(float(lam), float(ddt)) for lam, ddt in explicit]
     lam_values = sorted(float(x) for x in getattr(cfg, "ARRIVAL_LAM_VALUES", [100.0]))
     ddt_values = sorted(float(x) for x in getattr(cfg, "DDT_VALUES", (1.0,)))
     return [(lam, ddt) for lam in lam_values for ddt in ddt_values]
 
 
-def compute_grid_full_jobs_target(cfg: SimConfig) -> int:
-    combos = combo_grid(cfg)
+def compute_grid_full_jobs_target(cfg: SimConfig, combo_purpose: str = "eval") -> int:
+    combos = combo_grid(cfg, combo_purpose=combo_purpose)
     segment_jobs = max(1, int(getattr(cfg, "COMBO_SEGMENT_JOBS", 1)))
     return int(max(1, len(combos)) * segment_jobs)
 
 
-def normalize_jobs_target_for_combo_mode(cfg: SimConfig, jobs_target: int, combo_mode: Optional[str] = None) -> int:
+def normalize_jobs_target_for_combo_mode(
+    cfg: SimConfig,
+    jobs_target: int,
+    combo_mode: Optional[str] = None,
+    combo_purpose: str = "eval",
+) -> int:
     mode = str(combo_mode or getattr(cfg, "LAM_DDT_MODE", "variable")).strip().lower()
     if mode == "grid_full":
-        return compute_grid_full_jobs_target(cfg)
+        return compute_grid_full_jobs_target(cfg, combo_purpose=combo_purpose)
     return int(jobs_target)
 
 def allowed_actions_by_region(h_obs: float, cfg: SimConfig, enforce_region: bool) -> List[int]:
@@ -1369,6 +1476,7 @@ def build_episode_combos(
     rng: random.Random,
     jobs_target: int,
     combo_mode: Optional[str] = None,
+    combo_purpose: str = "eval",
 ):
     segment_jobs = max(1, int(getattr(cfg, "COMBO_SEGMENT_JOBS", 1)))
     segment_count = max(1, int(math.ceil(jobs_target / segment_jobs)))
@@ -1380,19 +1488,24 @@ def build_episode_combos(
     ddt_values = [float(x) for x in getattr(cfg, "DDT_VALUES", (1.0,))]
     if not ddt_values:
         ddt_values = [1.0]
+    explicit_pool = explicit_combo_pool(cfg, combo_purpose)
+    explicit_weights = explicit_combo_weights(cfg, explicit_pool, combo_purpose) if explicit_pool else None
 
     if lam_ddt_mode == "episode_fixed":
-        grid = combo_grid(cfg)
+        grid = explicit_pool or combo_grid(cfg, combo_purpose=combo_purpose)
         if not grid:
             fallback_grid = [(float(getattr(cfg, "FIXED_ARRIVAL_LAM", 40.0)), float(getattr(cfg, "FIXED_DDT", 1.5)))]
             grid = fallback_grid
-        lam, ddt = rng.choice(grid)
+        if explicit_weights:
+            lam, ddt = rng.choices(grid, weights=explicit_weights, k=1)[0]
+        else:
+            lam, ddt = rng.choice(grid)
         combos = [(float(lam), float(ddt))]
         seq = [0 for _ in range(segment_count)]
         return combos, seq
 
     if lam_ddt_mode == "grid_full":
-        grid = combo_grid(cfg)
+        grid = combo_grid(cfg, combo_purpose=combo_purpose)
         if not grid:
             grid = [(float(getattr(cfg, "FIXED_ARRIVAL_LAM", 40.0)), float(getattr(cfg, "FIXED_DDT", 1.5)))]
         combos = [(float(lam), float(ddt)) for lam, ddt in grid]
@@ -1407,10 +1520,22 @@ def build_episode_combos(
         return combos, seq
 
     if not bool(getattr(cfg, "COMBO_RANDOMIZE", True)):
-        combos = list(getattr(cfg, "DEFAULT_COMBOS", []))
+        combos = explicit_pool or list(getattr(cfg, "DEFAULT_COMBOS", []))
         if not combos:
             combos = [(float(lam_values[0]), float(ddt_values[0]))]
         seq = [i % len(combos) for i in range(segment_count)]
+        return combos, seq
+
+    if explicit_pool:
+        combos = []
+        seq = []
+        for seg in range(segment_count):
+            if explicit_weights:
+                lam, ddt = rng.choices(explicit_pool, weights=explicit_weights, k=1)[0]
+            else:
+                lam, ddt = rng.choice(explicit_pool)
+            combos.append((float(lam), float(ddt)))
+            seq.append(seg)
         return combos, seq
 
     combos = []
@@ -1476,11 +1601,12 @@ def build_episode_scenario(
     episode_combo_seq: Optional[list[int]] = None,
     machine_curve_ids: Optional[List[int]] = None,
     combo_mode: Optional[str] = None,
+    combo_purpose: str = "eval",
 ) -> EpisodeScenario:
-    jobs_target = normalize_jobs_target_for_combo_mode(cfg, jobs_target, combo_mode)
+    jobs_target = normalize_jobs_target_for_combo_mode(cfg, jobs_target, combo_mode, combo_purpose=combo_purpose)
     machine_curve_ids = list(machine_curve_ids or list(cfg.MACHINE_CURVE_IDS))
     if episode_combos is None or episode_combo_seq is None:
-        combos, seq = build_episode_combos(cfg, scenario_rng, jobs_target, combo_mode=combo_mode)
+        combos, seq = build_episode_combos(cfg, scenario_rng, jobs_target, combo_mode=combo_mode, combo_purpose=combo_purpose)
     else:
         combos = [(float(lam), float(ddt)) for lam, ddt in episode_combos]
         seq = [int(x) for x in episode_combo_seq]
@@ -1550,7 +1676,7 @@ def build_scenario_bank(base_seed: int, cfg: SimConfig, degr: DegradationReplay,
     eval_combo_mode = str(getattr(cfg, "EVAL_COMBO_MODE", getattr(cfg, "LAM_DDT_MODE", "variable"))).strip().lower()
     eval_jobs_target = int(cfg.EVAL_JOBS_TARGET * 2)
     if eval_combo_mode == "grid_full":
-        eval_jobs_target = compute_grid_full_jobs_target(cfg)
+        eval_jobs_target = compute_grid_full_jobs_target(cfg, combo_purpose="eval")
 
     for ep in range(cfg.TRAIN_EPISODES):
         ep_num = ep + 1
@@ -1565,6 +1691,7 @@ def build_scenario_bank(base_seed: int, cfg: SimConfig, degr: DegradationReplay,
             degradation_rate=degrad_rate,
             machine_curve_ids=machine_curve_ids,
             combo_mode=train_combo_mode,
+            combo_purpose="train",
         )
         train_scenarios.append(scenario)
         if cfg.EVAL_EVERY > 0 and ep_num % cfg.EVAL_EVERY == 0:
@@ -1577,6 +1704,7 @@ def build_scenario_bank(base_seed: int, cfg: SimConfig, degr: DegradationReplay,
                 degradation_rate=base_degrad,
                 machine_curve_ids=machine_curve_ids,
                 combo_mode=eval_combo_mode,
+                combo_purpose="eval",
             )
 
     final_eval_scenario = build_episode_scenario(
@@ -1587,6 +1715,7 @@ def build_scenario_bank(base_seed: int, cfg: SimConfig, degr: DegradationReplay,
         degradation_rate=base_degrad,
         machine_curve_ids=machine_curve_ids,
         combo_mode=eval_combo_mode,
+        combo_purpose="eval",
     )
     return ScenarioBank(
         train_scenarios=train_scenarios,
