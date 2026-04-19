@@ -6,6 +6,7 @@ import torch.nn as nn
 from torch.distributions import Categorical
 
 from .rl import MLP, ReplayBuffer, ddqn_update
+from .scheduler_rules import active_rule_action_dim, scheduler_rule_id_from_action_index
 
 class EpsSchedule:
     def __init__(self, eps_start: float, eps_end: float, decay_steps: int):
@@ -332,7 +333,7 @@ class THDQNAgent:
 class PPOSchedulerAgent:
     """
     Flat PPO scheduler:
-    - choose dispatch rule r in {0..5}
+    - choose one of the active dispatch rules
     - no explicit high-level goal head
     """
     def __init__(self, state_dim: int, cfg, rng: random.Random, device):
@@ -340,7 +341,8 @@ class PPOSchedulerAgent:
         self.rng = rng
         self.device = device
         self.state_dim = int(state_dim)
-        self.actor = MLP(self.state_dim, 6).to(device)
+        self.action_dim = active_rule_action_dim()
+        self.actor = MLP(self.state_dim, self.action_dim).to(device)
         self.critic = MLP(self.state_dim, 1).to(device)
         self.opt = torch.optim.Adam(
             list(self.actor.parameters()) + list(self.critic.parameters()),
@@ -368,15 +370,16 @@ class PPOSchedulerAgent:
             value = float(self.critic(x).squeeze(1).item())
             dist = Categorical(logits=logits)
             if explore:
-                action = int(dist.sample().item())
+                action_index = int(dist.sample().item())
             else:
-                action = int(torch.argmax(logits, dim=1).item())
-            logprob = float(dist.log_prob(torch.tensor(action, device=self.device)).item())
-        return None, action, logprob, value
+                action_index = int(torch.argmax(logits, dim=1).item())
+            logprob = float(dist.log_prob(torch.tensor(action_index, device=self.device)).item())
+        rule_id = scheduler_rule_id_from_action_index(action_index)
+        return None, int(rule_id), int(action_index), logprob, value
 
     def act(self, s: np.ndarray, explore: bool = True):
-        goal, action, _, _ = self.act_with_info(s, explore=explore)
-        return goal, action
+        goal, rule_id, _, _, _ = self.act_with_info(s, explore=explore)
+        return goal, rule_id
 
     def store(self, state: np.ndarray, action: int, logprob: float, reward: float, value: float, done: float):
         self._rollout.append({

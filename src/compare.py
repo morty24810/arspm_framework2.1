@@ -73,9 +73,6 @@ def summarize_action_counts(rows: List[Dict[str, Any]], key: str, values: List[A
 
 
 def _combo_key_from_row(row: Dict[str, Any]) -> str | None:
-    scenario_key = row.get("scenario_key")
-    if isinstance(scenario_key, str) and scenario_key.strip():
-        return str(scenario_key).strip()
     lam = _safe_float(row.get("lambda_true_segment"))
     ddt = _safe_float(row.get("ddt_true_segment"))
     if lam is None or ddt is None:
@@ -144,16 +141,6 @@ def summarize_combo_conditioned_behavior(decision_log: List[Dict[str, Any]]) -> 
                 "combo_overdue_ops": 0,
                 "combo_total_ops": 0,
                 "_completed_job_ids": set(),
-                "scenario_key": combo_key,
-                "scenario_family": row.get("scenario_family"),
-                "arrival_lam": _safe_float(row.get("lambda_true_segment")),
-                "ddt": _safe_float(row.get("ddt_true_segment")),
-                "target_rule": _safe_int(row.get("target_rule")),
-                "job_size_profile": row.get("job_size_profile"),
-                "route_depth_profile": row.get("route_depth_profile"),
-                "flexibility_profile": row.get("flexibility_profile"),
-                "machine_heterogeneity_profile": row.get("machine_heterogeneity_profile"),
-                "urgency_skew_profile": row.get("urgency_skew_profile"),
             },
         )
         event = str(row.get("event", "")).lower()
@@ -257,48 +244,6 @@ def combo_rule_diversity_metrics(combo_behavior: Dict[str, Dict[str, Any]]) -> D
     }
 
 
-def combo_rule_coverage_metrics(combo_behavior: Dict[str, Dict[str, Any]]) -> Dict[str, float]:
-    dominant_counts: Dict[str, int] = {}
-    target_rule_match_count = 0
-    target_rule_top2_count = 0
-    targeted_scenarios = 0
-    for entry in (combo_behavior or {}).values():
-        dominant_rule = dict(entry.get("dominant_rule", {}) or {})
-        dominant_label = str(dominant_rule.get("label", "")).strip()
-        if dominant_label:
-            dominant_counts[dominant_label] = dominant_counts.get(dominant_label, 0) + 1
-        target_rule = entry.get("target_rule")
-        if target_rule is None:
-            continue
-        target_label = str(int(target_rule))
-        targeted_scenarios += 1
-        if dominant_label == target_label:
-            target_rule_match_count += 1
-        counts = {str(k): int(v) for k, v in dict(entry.get("rule_counts", {}) or {}).items()}
-        counts = {label: count for label, count in counts.items() if int(count) > 0}
-        top2 = [
-            label for label, _ in sorted(
-                counts.items(),
-                key=lambda kv: (-int(kv[1]), kv[0]),
-            )[:2]
-        ]
-        if target_label in top2:
-            target_rule_top2_count += 1
-    total = max(sum(dominant_counts.values()), 1)
-    entropy = 0.0
-    for count in dominant_counts.values():
-        p = float(count) / float(total)
-        if p > 0.0:
-            entropy -= p * math.log(p, 2.0)
-    return {
-        "scenario_target_rule_match_count": float(target_rule_match_count),
-        "scenario_target_rule_top2_count": float(target_rule_top2_count),
-        "rule_coverage_count": float(len(dominant_counts)),
-        "rule_coverage_entropy": float(entropy),
-        "targeted_scenario_count": float(targeted_scenarios),
-    }
-
-
 def combo_eval_rows(
     combo_behavior: Dict[str, Dict[str, Any]],
     *,
@@ -324,16 +269,8 @@ def combo_eval_rows(
             "scheduler_mode": str(scheduler_mode).upper(),
             "maint_mode": str(maint_mode).upper(),
             "combo_key": str(combo_key),
-            "scenario_key": str(entry.get("scenario_key", combo_key)),
-            "scenario_family": entry.get("scenario_family"),
-            "arrival_lam": _safe_float(entry.get("arrival_lam")) if entry.get("arrival_lam") is not None else lam,
-            "ddt": _safe_float(entry.get("ddt")) if entry.get("ddt") is not None else ddt,
-            "target_rule": _safe_int(entry.get("target_rule")),
-            "job_size_profile": entry.get("job_size_profile"),
-            "route_depth_profile": entry.get("route_depth_profile"),
-            "flexibility_profile": entry.get("flexibility_profile"),
-            "machine_heterogeneity_profile": entry.get("machine_heterogeneity_profile"),
-            "urgency_skew_profile": entry.get("urgency_skew_profile"),
+            "arrival_lam": lam,
+            "ddt": ddt,
             "dominant_rule": dominant_rule.get("label"),
             "dominant_rule_share": float(dominant_rule.get("share", 0.0) or 0.0),
             "rule_shares": dict(entry.get("rule_shares", {}) or {}),
@@ -399,11 +336,8 @@ def compare_combo_behavior_against_anchor(
             "anchor_scheduler_mode": str(anchor_scheduler_mode).upper(),
             "candidate_scheduler_mode": str(candidate_scheduler_mode).upper(),
             "combo_key": str(combo_key),
-            "scenario_key": str(candidate_entry.get("scenario_key", anchor_entry.get("scenario_key", combo_key))),
-            "scenario_family": candidate_entry.get("scenario_family", anchor_entry.get("scenario_family")),
-            "arrival_lam": _safe_float(candidate_entry.get("arrival_lam")) if candidate_entry.get("arrival_lam") is not None else _safe_float(anchor_entry.get("arrival_lam")) if anchor_entry.get("arrival_lam") is not None else lam,
-            "ddt": _safe_float(candidate_entry.get("ddt")) if candidate_entry.get("ddt") is not None else _safe_float(anchor_entry.get("ddt")) if anchor_entry.get("ddt") is not None else ddt,
-            "target_rule": _safe_int(candidate_entry.get("target_rule")) if candidate_entry.get("target_rule") is not None else _safe_int(anchor_entry.get("target_rule")),
+            "arrival_lam": lam,
+            "ddt": ddt,
             "greedy_rule": greedy_rule,
             "candidate_rule": candidate_rule,
             "greedy_combo_tard": greedy_combo_tard,
@@ -611,8 +545,6 @@ def compare_mode_results(
     compare_dominant_rule_by_combo, compare_dominant_goal_by_combo = combo_dominant_maps(compare_combo_behavior)
     primary_rule_diversity = combo_rule_diversity_metrics(primary_combo_behavior)
     compare_rule_diversity = combo_rule_diversity_metrics(compare_combo_behavior)
-    primary_rule_coverage = combo_rule_coverage_metrics(primary_combo_behavior)
-    compare_rule_coverage = combo_rule_coverage_metrics(compare_combo_behavior)
     primary_scheduler_mode = str(primary_result.get("scheduler_mode", getattr(primary_result.get("env"), "last_scheduler_mode", "THDQN"))).upper()
     compare_scheduler_mode = str(compare_result.get("scheduler_mode", getattr(compare_result.get("env"), "last_scheduler_mode", "THDQN"))).upper()
     primary_sched_regime_feature_mode = str(
@@ -683,10 +615,6 @@ def compare_mode_results(
             "rule_distinct_count": float(primary_rule_diversity["rule_distinct_count"]),
             "rule_avg_dominant_share": float(primary_rule_diversity["rule_avg_dominant_share"]),
             "rule_mean_pairwise_jsd": float(primary_rule_diversity["rule_mean_pairwise_jsd"]),
-            "scenario_target_rule_match_count": float(primary_rule_coverage["scenario_target_rule_match_count"]),
-            "scenario_target_rule_top2_count": float(primary_rule_coverage["scenario_target_rule_top2_count"]),
-            "rule_coverage_count": float(primary_rule_coverage["rule_coverage_count"]),
-            "rule_coverage_entropy": float(primary_rule_coverage["rule_coverage_entropy"]),
             **primary_final_health,
         },
         "compare_metrics": {
@@ -701,10 +629,6 @@ def compare_mode_results(
             "rule_distinct_count": float(compare_rule_diversity["rule_distinct_count"]),
             "rule_avg_dominant_share": float(compare_rule_diversity["rule_avg_dominant_share"]),
             "rule_mean_pairwise_jsd": float(compare_rule_diversity["rule_mean_pairwise_jsd"]),
-            "scenario_target_rule_match_count": float(compare_rule_coverage["scenario_target_rule_match_count"]),
-            "scenario_target_rule_top2_count": float(compare_rule_coverage["scenario_target_rule_top2_count"]),
-            "rule_coverage_count": float(compare_rule_coverage["rule_coverage_count"]),
-            "rule_coverage_entropy": float(compare_rule_coverage["rule_coverage_entropy"]),
             **compare_final_health,
         },
         "delta_compare_minus_primary": {
@@ -719,10 +643,6 @@ def compare_mode_results(
             "rule_distinct_count": float(compare_rule_diversity["rule_distinct_count"] - primary_rule_diversity["rule_distinct_count"]),
             "rule_avg_dominant_share": float(compare_rule_diversity["rule_avg_dominant_share"] - primary_rule_diversity["rule_avg_dominant_share"]),
             "rule_mean_pairwise_jsd": float(compare_rule_diversity["rule_mean_pairwise_jsd"] - primary_rule_diversity["rule_mean_pairwise_jsd"]),
-            "scenario_target_rule_match_count": float(compare_rule_coverage["scenario_target_rule_match_count"] - primary_rule_coverage["scenario_target_rule_match_count"]),
-            "scenario_target_rule_top2_count": float(compare_rule_coverage["scenario_target_rule_top2_count"] - primary_rule_coverage["scenario_target_rule_top2_count"]),
-            "rule_coverage_count": float(compare_rule_coverage["rule_coverage_count"] - primary_rule_coverage["rule_coverage_count"]),
-            "rule_coverage_entropy": float(compare_rule_coverage["rule_coverage_entropy"] - primary_rule_coverage["rule_coverage_entropy"]),
             "final_health_mean": float(compare_final_health["final_health_mean"] - primary_final_health["final_health_mean"]),
             "final_health_min": float(compare_final_health["final_health_min"] - primary_final_health["final_health_min"]),
             "final_health_p25": float(compare_final_health["final_health_p25"] - primary_final_health["final_health_p25"]),

@@ -681,13 +681,16 @@ def plot_rule_vs_features(rule_log, out_path: str, policy_label: Optional[str] =
         2: "#59A14F",
         3: "#B07AA1",
     }
+    observed_rules = sorted({int(rule) for rule in rules.tolist()}) if rules.size else []
+    if not observed_rules:
+        observed_rules = [0]
     _plot_combo_categorical_heatmap(
         sched_lambda,
         sched_ddt,
         rules,
-        allowed_values=list(range(6)),
+        allowed_values=observed_rules,
         category_colors=rule_colors,
-        category_labels={i: f"Rule {i}" for i in range(6)},
+        category_labels={i: f"Rule {i}" for i in observed_rules},
         out_path=out_path,
         title="Dispatch Rule by λ and DDT",
         legend_title="Dispatch Rule",

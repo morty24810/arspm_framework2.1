@@ -29,7 +29,6 @@ class EpisodeScenario:
     degradation_rate: float
     arrival_times: List[float]
     job_templates: List[JobTemplate]
-    scenario_levels: Optional[List[Dict[str, Any]]] = None
 
 @dataclass
 class Operation:
@@ -139,7 +138,6 @@ class EventDrivenShopEnv:
         self.machine_pt_count: Dict[int, int] = {}
         self.machine_pt_base: Dict[int, float] = {}
         self.episode_scenario: Optional[EpisodeScenario] = None
-        self.scenario_levels: List[Dict[str, Any]] = []
         self._scenario_arrival_times: Dict[int, float] = {}
         self._scenario_job_templates: Dict[int, JobTemplate] = {}
         self._test_rul_meta: Optional[Dict[int, Dict[str, float]]] = None
@@ -329,31 +327,12 @@ class EventDrivenShopEnv:
         seg = min(max(seg, 0), len(combo_levels_seq) - 1)
         level_idx = int(combo_levels_seq[seg])
         lam, ddt = combo_levels[level_idx]
-        regime = {
+        return {
             "segment": int(seg),
             "level_idx": int(level_idx),
             "lambda_true_segment": float(lam),
             "ddt_true_segment": float(ddt),
         }
-        scenario_levels = list(getattr(self, "scenario_levels", []) or [])
-        if 0 <= level_idx < len(scenario_levels):
-            level = dict(scenario_levels[level_idx] or {})
-            regime.update({
-                "scenario_key": str(level.get("scenario_key", f"lam={lam:.1f}|ddt={ddt:.2f}")),
-                "scenario_family": level.get("scenario_family"),
-                "target_rule": int(level["target_rule"]) if level.get("target_rule") is not None else None,
-                "job_size_profile": level.get("job_size_profile"),
-                "route_depth_profile": level.get("route_depth_profile"),
-                "flexibility_profile": level.get("flexibility_profile"),
-                "machine_heterogeneity_profile": level.get("machine_heterogeneity_profile"),
-                "urgency_skew_profile": level.get("urgency_skew_profile"),
-                "scenario_proc_bias": float(level.get("scenario_proc_bias", 0.0) or 0.0),
-                "scenario_route_depth_score": float(level.get("scenario_route_depth_score", 0.0) or 0.0),
-                "scenario_flex_width_score": float(level.get("scenario_flex_width_score", 0.0) or 0.0),
-                "scenario_machine_heterogeneity_score": float(level.get("scenario_machine_heterogeneity_score", 0.0) or 0.0),
-                "scenario_urgency_skew_score": float(level.get("scenario_urgency_skew_score", 0.0) or 0.0),
-            })
-        return regime
 
     def resolve_scheduler_regime(self, lambda_hat: float, ddt_hat: float) -> Dict[str, float]:
         regime = self.get_current_segment_regime()
@@ -449,12 +428,10 @@ class EventDrivenShopEnv:
             }
             self.episode_combos = list(scenario.combos)
             self.episode_combo_seq = list(scenario.combo_seq)
-            self.scenario_levels = [dict(level) for level in (scenario.scenario_levels or [])]
             self.cfg.JOBS_TARGET = int(scenario.jobs_target)
         else:
             self._scenario_arrival_times = {}
             self._scenario_job_templates = {}
-            self.scenario_levels = []
         if not machine_curve_ids:
             default_ids = list(getattr(self.cfg, "MACHINE_CURVE_IDS", []))
             if not default_ids:
@@ -570,28 +547,6 @@ class EventDrivenShopEnv:
         scheduler_mode = str(getattr(self.cfg, "SCHEDULER_MODE", "THDQN")).strip().upper()
         if scheduler_mode.startswith("PPO") and mode == "ops_regime_only":
             return np.concatenate([full[:12], full[14:15]], axis=0).astype(np.float32)
-        if scheduler_mode.startswith("PPO") and mode == "ops_regime_rule_coverage":
-            return np.concatenate([
-                full[:12],
-                full[14:15],
-                np.array([
-                    float(regime.get("scenario_proc_bias", 0.0)),
-                    float(regime.get("scenario_route_depth_score", 0.0)),
-                    float(regime.get("scenario_flex_width_score", 0.0)),
-                ], dtype=np.float32),
-            ], axis=0).astype(np.float32)
-        if scheduler_mode.startswith("PPO") and mode == "ops_regime_rule_coverage_v3":
-            return np.concatenate([
-                full[:12],
-                full[14:15],
-                np.array([
-                    float(regime.get("scenario_proc_bias", 0.0)),
-                    float(regime.get("scenario_route_depth_score", 0.0)),
-                    float(regime.get("scenario_flex_width_score", 0.0)),
-                    float(regime.get("scenario_machine_heterogeneity_score", 0.0)),
-                    float(regime.get("scenario_urgency_skew_score", 0.0)),
-                ], dtype=np.float32),
-            ], axis=0).astype(np.float32)
         return full
 
     def _get_global_state(self):

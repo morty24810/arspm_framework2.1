@@ -34,17 +34,7 @@ class SimConfig:
     # "thesis_ppo_sched_health_gate": PPO scheduling diagnosis with external health gate
     # "thesis_ppo_hparam_ablation": PPO scheduler hyperparameter ablation, no maintenance
     # "thesis_ppo_sched_core_compare": 4-line PPO scheduler core thesis comparison
-    # "thesis_ppo_sched_rule_coverage": PPO scheduler comparison with curated
-    # lambda/DDT coverage combos aimed at exposing richer rule-usage regimes
-    # "thesis_ppo_sched_rule_coverage_v2": richer scenario rule-coverage line
-    # with explicit job-size / route-depth / flexibility descriptors
-    # "thesis_ppo_sched_rule_coverage_v2_smoke": reduced-size smoke validation
-    # for the richer scenario rule-coverage line
-    # "thesis_sched_rule_baselines": 6 fixed scheduler rule baselines for TWT x Uave
-    # "thesis_sched_rule_coverage_baselines_v2": fixed-rule validation on the
-    # richer rule-coverage v2 scenarios
-    # "thesis_sched_rule_coverage_baselines_v2_smoke": reduced-size smoke run
-    # for richer rule-coverage v2 fixed-rule validation
+    # "thesis_sched_rule_baselines": 3 fixed scheduler rule baselines for TWT x Uave
     # "thesis_ppo_sched_full_ablation": overnight PPO scheduler matrix, 4 hparams x 3 rewards
     # "thesis_ppo_sched_full_ablation_smoke": reduced-size smoke validation for the full ablation
     EXPERIMENT_PROFILE: str = "default"
@@ -101,18 +91,6 @@ class SimConfig:
     # "grid_full": deterministic full lambda x DDT coverage, one segment per combo
     TRAIN_COMBO_MODE: str = "episode_fixed"
     EVAL_COMBO_MODE: str = "grid_full"
-    # Optional explicit combo pools. When non-empty, these override the legacy
-    # ARRIVAL_LAM_VALUES x DDT_VALUES Cartesian grid for the corresponding split.
-    TRAIN_EXPLICIT_COMBOS: Optional[tuple] = None
-    EVAL_EXPLICIT_COMBOS: Optional[tuple] = None
-    TRAIN_EXPLICIT_SCENARIOS: Optional[tuple] = None
-    EVAL_EXPLICIT_SCENARIOS: Optional[tuple] = None
-    # Optional sampling weights aligned with the explicit combo pools. These are
-    # only used for random training combo sampling, not for deterministic eval.
-    TRAIN_EXPLICIT_COMBO_WEIGHTS: Optional[tuple] = None
-    EVAL_EXPLICIT_COMBO_WEIGHTS: Optional[tuple] = None
-    TRAIN_EXPLICIT_SCENARIO_WEIGHTS: Optional[tuple] = None
-    EVAL_EXPLICIT_SCENARIO_WEIGHTS: Optional[tuple] = None
     # Legacy switch retained for backwards compatibility. When LAM_DDT_MODE is
     # "fixed", this should remain False and DEFAULT_COMBOS should hold the fixed pair.
     COMBO_RANDOMIZE: bool = True
@@ -316,7 +294,6 @@ class SimConfig:
     SCHED_REGIME_FEATURE_MODE: str = "oracle"
     SCHEDULER_STATE_DIM: int = 15
     PPO_SCHED_STATE_MODE: str = "default"
-    SCHEDULER_POLICY_FAMILY: str = ""
     SCHED_HEALTH_GATE_MODE: str = "off"
     SCHED_HEALTH_GATE_H_END_MIN: float = 0.20
     ENABLE_MAINTENANCE_DECISIONS: bool = True
