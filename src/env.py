@@ -340,13 +340,18 @@ class EventDrivenShopEnv:
             level = dict(scenario_levels[level_idx] or {})
             regime.update({
                 "scenario_key": str(level.get("scenario_key", f"lam={lam:.1f}|ddt={ddt:.2f}")),
+                "scenario_family": level.get("scenario_family"),
                 "target_rule": int(level["target_rule"]) if level.get("target_rule") is not None else None,
                 "job_size_profile": level.get("job_size_profile"),
                 "route_depth_profile": level.get("route_depth_profile"),
                 "flexibility_profile": level.get("flexibility_profile"),
+                "machine_heterogeneity_profile": level.get("machine_heterogeneity_profile"),
+                "urgency_skew_profile": level.get("urgency_skew_profile"),
                 "scenario_proc_bias": float(level.get("scenario_proc_bias", 0.0) or 0.0),
                 "scenario_route_depth_score": float(level.get("scenario_route_depth_score", 0.0) or 0.0),
                 "scenario_flex_width_score": float(level.get("scenario_flex_width_score", 0.0) or 0.0),
+                "scenario_machine_heterogeneity_score": float(level.get("scenario_machine_heterogeneity_score", 0.0) or 0.0),
+                "scenario_urgency_skew_score": float(level.get("scenario_urgency_skew_score", 0.0) or 0.0),
             })
         return regime
 
@@ -573,6 +578,18 @@ class EventDrivenShopEnv:
                     float(regime.get("scenario_proc_bias", 0.0)),
                     float(regime.get("scenario_route_depth_score", 0.0)),
                     float(regime.get("scenario_flex_width_score", 0.0)),
+                ], dtype=np.float32),
+            ], axis=0).astype(np.float32)
+        if scheduler_mode.startswith("PPO") and mode == "ops_regime_rule_coverage_v3":
+            return np.concatenate([
+                full[:12],
+                full[14:15],
+                np.array([
+                    float(regime.get("scenario_proc_bias", 0.0)),
+                    float(regime.get("scenario_route_depth_score", 0.0)),
+                    float(regime.get("scenario_flex_width_score", 0.0)),
+                    float(regime.get("scenario_machine_heterogeneity_score", 0.0)),
+                    float(regime.get("scenario_urgency_skew_score", 0.0)),
                 ], dtype=np.float32),
             ], axis=0).astype(np.float32)
         return full

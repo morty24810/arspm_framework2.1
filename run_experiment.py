@@ -86,6 +86,18 @@ SCENARIO_FLEX_WIDTH_SCORE = {
     "wide": 1.0,
 }
 
+SCENARIO_MACHINE_HETEROGENEITY_SCORE = {
+    "homogeneous": 0.0,
+    "medium": 0.5,
+    "wide": 1.0,
+}
+
+SCENARIO_URGENCY_SKEW_SCORE = {
+    "flat": 0.0,
+    "mixed": 0.5,
+    "spiky": 1.0,
+}
+
 RULE_COVERAGE_V2_SCENARIOS: Tuple[Dict[str, Any], ...] = (
     {
         "scenario_id": "R0_A",
@@ -209,6 +221,27 @@ RULE_COVERAGE_V2_SCENARIOS: Tuple[Dict[str, Any], ...] = (
     },
 )
 
+RULE_COVERAGE_V3_SCENARIOS: Tuple[Dict[str, Any], ...] = (
+    {"scenario_id": "R0_A", "scenario_family": "R0", "arrival_lam": 26.0, "ddt": 1.25, "job_size_profile": "balanced", "route_depth_profile": "shallow", "flexibility_profile": "wide", "machine_heterogeneity_profile": "homogeneous", "urgency_skew_profile": "flat", "target_rule": 0, "train_weight": 1.0},
+    {"scenario_id": "R0_B", "scenario_family": "R0", "arrival_lam": 34.0, "ddt": 1.35, "job_size_profile": "balanced", "route_depth_profile": "shallow", "flexibility_profile": "wide", "machine_heterogeneity_profile": "homogeneous", "urgency_skew_profile": "flat", "target_rule": 0, "train_weight": 1.0},
+    {"scenario_id": "R0_C", "scenario_family": "R0", "arrival_lam": 42.0, "ddt": 1.45, "job_size_profile": "balanced", "route_depth_profile": "shallow", "flexibility_profile": "wide", "machine_heterogeneity_profile": "homogeneous", "urgency_skew_profile": "flat", "target_rule": 0, "train_weight": 1.0},
+    {"scenario_id": "R1_A", "scenario_family": "R1", "arrival_lam": 18.0, "ddt": 0.95, "job_size_profile": "balanced", "route_depth_profile": "mixed", "flexibility_profile": "narrow", "machine_heterogeneity_profile": "wide", "urgency_skew_profile": "flat", "target_rule": 1, "train_weight": 1.2},
+    {"scenario_id": "R1_B", "scenario_family": "R1", "arrival_lam": 24.0, "ddt": 1.00, "job_size_profile": "balanced", "route_depth_profile": "mixed", "flexibility_profile": "narrow", "machine_heterogeneity_profile": "wide", "urgency_skew_profile": "flat", "target_rule": 1, "train_weight": 1.2},
+    {"scenario_id": "R1_C", "scenario_family": "R1", "arrival_lam": 30.0, "ddt": 1.05, "job_size_profile": "balanced", "route_depth_profile": "mixed", "flexibility_profile": "narrow", "machine_heterogeneity_profile": "wide", "urgency_skew_profile": "flat", "target_rule": 1, "train_weight": 1.2},
+    {"scenario_id": "R2_A", "scenario_family": "R2", "arrival_lam": 30.0, "ddt": 0.85, "job_size_profile": "balanced", "route_depth_profile": "mixed", "flexibility_profile": "narrow", "machine_heterogeneity_profile": "medium", "urgency_skew_profile": "spiky", "target_rule": 2, "train_weight": 1.4},
+    {"scenario_id": "R2_B", "scenario_family": "R2", "arrival_lam": 38.0, "ddt": 0.90, "job_size_profile": "balanced", "route_depth_profile": "mixed", "flexibility_profile": "narrow", "machine_heterogeneity_profile": "medium", "urgency_skew_profile": "spiky", "target_rule": 2, "train_weight": 1.4},
+    {"scenario_id": "R2_C", "scenario_family": "R2", "arrival_lam": 46.0, "ddt": 0.95, "job_size_profile": "balanced", "route_depth_profile": "mixed", "flexibility_profile": "narrow", "machine_heterogeneity_profile": "medium", "urgency_skew_profile": "spiky", "target_rule": 2, "train_weight": 1.4},
+    {"scenario_id": "R3_A", "scenario_family": "R3", "arrival_lam": 52.0, "ddt": 0.85, "job_size_profile": "short_heavy", "route_depth_profile": "deep", "flexibility_profile": "narrow", "machine_heterogeneity_profile": "medium", "urgency_skew_profile": "flat", "target_rule": 3, "train_weight": 1.5},
+    {"scenario_id": "R3_B", "scenario_family": "R3", "arrival_lam": 60.0, "ddt": 0.90, "job_size_profile": "short_heavy", "route_depth_profile": "deep", "flexibility_profile": "narrow", "machine_heterogeneity_profile": "medium", "urgency_skew_profile": "flat", "target_rule": 3, "train_weight": 1.5},
+    {"scenario_id": "R3_C", "scenario_family": "R3", "arrival_lam": 68.0, "ddt": 0.95, "job_size_profile": "short_heavy", "route_depth_profile": "deep", "flexibility_profile": "narrow", "machine_heterogeneity_profile": "medium", "urgency_skew_profile": "flat", "target_rule": 3, "train_weight": 1.5},
+    {"scenario_id": "R4_A", "scenario_family": "R4", "arrival_lam": 24.0, "ddt": 1.10, "job_size_profile": "long_heavy", "route_depth_profile": "deep", "flexibility_profile": "narrow", "machine_heterogeneity_profile": "homogeneous", "urgency_skew_profile": "flat", "target_rule": 4, "train_weight": 1.5},
+    {"scenario_id": "R4_B", "scenario_family": "R4", "arrival_lam": 30.0, "ddt": 1.20, "job_size_profile": "long_heavy", "route_depth_profile": "deep", "flexibility_profile": "narrow", "machine_heterogeneity_profile": "homogeneous", "urgency_skew_profile": "flat", "target_rule": 4, "train_weight": 1.5},
+    {"scenario_id": "R4_C", "scenario_family": "R4", "arrival_lam": 36.0, "ddt": 1.30, "job_size_profile": "long_heavy", "route_depth_profile": "deep", "flexibility_profile": "narrow", "machine_heterogeneity_profile": "homogeneous", "urgency_skew_profile": "flat", "target_rule": 4, "train_weight": 1.5},
+    {"scenario_id": "R5_A", "scenario_family": "R5", "arrival_lam": 10.0, "ddt": 0.75, "job_size_profile": "balanced", "route_depth_profile": "mixed", "flexibility_profile": "wide", "machine_heterogeneity_profile": "medium", "urgency_skew_profile": "flat", "target_rule": 5, "train_weight": 1.3},
+    {"scenario_id": "R5_B", "scenario_family": "R5", "arrival_lam": 14.0, "ddt": 0.80, "job_size_profile": "balanced", "route_depth_profile": "mixed", "flexibility_profile": "wide", "machine_heterogeneity_profile": "medium", "urgency_skew_profile": "flat", "target_rule": 5, "train_weight": 1.3},
+    {"scenario_id": "R5_C", "scenario_family": "R5", "arrival_lam": 18.0, "ddt": 0.85, "job_size_profile": "balanced", "route_depth_profile": "mixed", "flexibility_profile": "wide", "machine_heterogeneity_profile": "medium", "urgency_skew_profile": "flat", "target_rule": 5, "train_weight": 1.3},
+)
+
 
 def apply_rule_coverage_combo_distribution(cfg: SimConfig, *, segment_jobs: int) -> SimConfig:
     combos = tuple((float(lam), float(ddt)) for lam, ddt in RULE_COVERAGE_EXPLICIT_COMBOS)
@@ -234,13 +267,24 @@ def scenario_flex_width_score_value(profile: str) -> float:
     return float(SCENARIO_FLEX_WIDTH_SCORE[str(profile).strip().lower()])
 
 
-def normalize_rule_coverage_v2_scenario(raw: Dict[str, Any]) -> Dict[str, Any]:
+def scenario_machine_heterogeneity_score_value(profile: str) -> float:
+    return float(SCENARIO_MACHINE_HETEROGENEITY_SCORE[str(profile).strip().lower()])
+
+
+def scenario_urgency_skew_score_value(profile: str) -> float:
+    return float(SCENARIO_URGENCY_SKEW_SCORE[str(profile).strip().lower()])
+
+
+def normalize_rule_coverage_scenario(raw: Dict[str, Any]) -> Dict[str, Any]:
     scenario_id = str(raw.get("scenario_id", "")).strip()
+    scenario_family = str(raw.get("scenario_family", scenario_id.split("_", 1)[0] if scenario_id else "")).strip()
     arrival_lam = float(raw["arrival_lam"])
     ddt = float(raw["ddt"])
     job_size_profile = str(raw.get("job_size_profile", "balanced")).strip().lower()
     route_depth_profile = str(raw.get("route_depth_profile", "mixed")).strip().lower()
     flexibility_profile = str(raw.get("flexibility_profile", "medium")).strip().lower()
+    machine_heterogeneity_profile = str(raw.get("machine_heterogeneity_profile", "medium")).strip().lower()
+    urgency_skew_profile = str(raw.get("urgency_skew_profile", "mixed")).strip().lower()
     target_rule = int(raw["target_rule"])
     train_weight = float(raw.get("train_weight", 1.0))
     scenario_key = str(
@@ -251,22 +295,51 @@ def normalize_rule_coverage_v2_scenario(raw: Dict[str, Any]) -> Dict[str, Any]:
     )
     return {
         "scenario_id": scenario_id,
+        "scenario_family": scenario_family,
         "scenario_key": scenario_key,
         "arrival_lam": arrival_lam,
         "ddt": ddt,
         "job_size_profile": job_size_profile,
         "route_depth_profile": route_depth_profile,
         "flexibility_profile": flexibility_profile,
+        "machine_heterogeneity_profile": machine_heterogeneity_profile,
+        "urgency_skew_profile": urgency_skew_profile,
         "target_rule": int(target_rule),
         "train_weight": train_weight,
         "scenario_proc_bias": scenario_proc_bias_value(job_size_profile),
         "scenario_route_depth_score": scenario_route_depth_score_value(route_depth_profile),
         "scenario_flex_width_score": scenario_flex_width_score_value(flexibility_profile),
+        "scenario_machine_heterogeneity_score": scenario_machine_heterogeneity_score_value(machine_heterogeneity_profile),
+        "scenario_urgency_skew_score": scenario_urgency_skew_score_value(urgency_skew_profile),
     }
+
+
+def normalize_rule_coverage_v2_scenario(raw: Dict[str, Any]) -> Dict[str, Any]:
+    return normalize_rule_coverage_scenario(raw)
+
+
+def normalize_rule_coverage_v3_scenario(raw: Dict[str, Any]) -> Dict[str, Any]:
+    return normalize_rule_coverage_scenario(raw)
 
 
 def apply_rule_coverage_v2_distribution(cfg: SimConfig, *, segment_jobs: int) -> SimConfig:
     scenarios = tuple(normalize_rule_coverage_v2_scenario(item) for item in RULE_COVERAGE_V2_SCENARIOS)
+    cfg.ARRIVAL_LAM_VALUES = tuple(sorted({float(item["arrival_lam"]) for item in scenarios}))
+    cfg.DDT_VALUES = tuple(sorted({float(item["ddt"]) for item in scenarios}))
+    cfg.TRAIN_EXPLICIT_COMBOS = None
+    cfg.EVAL_EXPLICIT_COMBOS = None
+    cfg.TRAIN_EXPLICIT_COMBO_WEIGHTS = None
+    cfg.EVAL_EXPLICIT_COMBO_WEIGHTS = None
+    cfg.TRAIN_EXPLICIT_SCENARIOS = scenarios
+    cfg.EVAL_EXPLICIT_SCENARIOS = scenarios
+    cfg.TRAIN_EXPLICIT_SCENARIO_WEIGHTS = tuple(float(item["train_weight"]) for item in scenarios)
+    cfg.EVAL_EXPLICIT_SCENARIO_WEIGHTS = None
+    cfg.COMBO_SEGMENT_JOBS = int(segment_jobs)
+    return cfg
+
+
+def apply_rule_coverage_v3_distribution(cfg: SimConfig, *, segment_jobs: int) -> SimConfig:
+    scenarios = tuple(normalize_rule_coverage_v3_scenario(item) for item in RULE_COVERAGE_V3_SCENARIOS)
     cfg.ARRIVAL_LAM_VALUES = tuple(sorted({float(item["arrival_lam"]) for item in scenarios}))
     cfg.DDT_VALUES = tuple(sorted({float(item["ddt"]) for item in scenarios}))
     cfg.TRAIN_EXPLICIT_COMBOS = None
@@ -387,7 +460,7 @@ def explicit_scenario_pool(cfg: SimConfig, combo_purpose: str = "eval") -> List[
     raw = getattr(cfg, attr, None)
     if not raw:
         return []
-    return [normalize_rule_coverage_v2_scenario(dict(item)) for item in raw]
+    return [normalize_rule_coverage_scenario(dict(item)) for item in raw]
 
 
 def explicit_combo_weights(cfg: SimConfig, combos: List[Tuple[float, float]], combo_purpose: str = "train") -> Optional[List[float]]:
@@ -487,6 +560,8 @@ def scheduler_state_dim_for_context(cfg: SimConfig, scheduler_mode: Optional[str
             return 13
         if state_mode == "ops_regime_rule_coverage":
             return 16
+        if state_mode == "ops_regime_rule_coverage_v3":
+            return 18
     return 15
 
 
@@ -763,6 +838,60 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
         cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
         cfg.SCHEDULER_POLICY_FAMILY = "flat_rule_selector"
         return cfg
+    if profile == "thesis_ppo_sched_rule_coverage_v3":
+        cfg.TRAIN_SCHEDULER_MODES = (
+            "PPO_CONSERVATIVE_LEGACY",
+            "PPO_ENTROPY_LEGACY",
+        )
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("NONE",)
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 200
+        apply_rule_coverage_v3_distribution(cfg, segment_jobs=12)
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_rule_coverage_v3"
+        cfg.SCHED_HEALTH_GATE_MODE = "off"
+        cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
+        cfg.ENABLE_MAINTENANCE_DECISIONS = False
+        cfg.DISABLE_HEALTH_SYSTEM = True
+        cfg.BREAKDOWN_ENABLE = False
+        cfg.FAIL_STOCHASTIC = False
+        cfg.SCHED_SAFE_DISPATCH = False
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        cfg.SCHEDULER_POLICY_FAMILY = "flat_rule_selector"
+        return cfg
+    if profile == "thesis_ppo_sched_rule_coverage_v3_smoke":
+        cfg.TRAIN_SCHEDULER_MODES = (
+            "PPO_CONSERVATIVE_LEGACY",
+            "PPO_ENTROPY_LEGACY",
+        )
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("NONE",)
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 24
+        apply_rule_coverage_v3_distribution(cfg, segment_jobs=2)
+        cfg.TRAIN_EPISODES = 2
+        cfg.EVAL_EVERY = 1
+        cfg.SAVE_EVERY = 1
+        cfg.EARLY_STOP_ENABLED = False
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_rule_coverage_v3"
+        cfg.SCHED_HEALTH_GATE_MODE = "off"
+        cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
+        cfg.ENABLE_MAINTENANCE_DECISIONS = False
+        cfg.DISABLE_HEALTH_SYSTEM = True
+        cfg.BREAKDOWN_ENABLE = False
+        cfg.FAIL_STOCHASTIC = False
+        cfg.SCHED_SAFE_DISPATCH = False
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        cfg.SCHEDULER_POLICY_FAMILY = "flat_rule_selector"
+        return cfg
     if profile == "thesis_sched_rule_baselines":
         cfg.TRAIN_SCHEDULER_MODES = tuple(f"RULE_{i}" for i in range(6))
         cfg.TRAIN_POLICY_ROUTES = ("region_off",)
@@ -821,6 +950,54 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
         cfg.EARLY_STOP_ENABLED = False
         cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
         cfg.PPO_SCHED_STATE_MODE = "ops_regime_rule_coverage"
+        cfg.SCHED_HEALTH_GATE_MODE = "off"
+        cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
+        cfg.ENABLE_MAINTENANCE_DECISIONS = False
+        cfg.DISABLE_HEALTH_SYSTEM = True
+        cfg.BREAKDOWN_ENABLE = False
+        cfg.FAIL_STOCHASTIC = False
+        cfg.SCHED_SAFE_DISPATCH = False
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        cfg.SCHEDULER_POLICY_FAMILY = "flat_rule_selector"
+        return cfg
+    if profile == "thesis_sched_rule_coverage_baselines_v3":
+        cfg.TRAIN_SCHEDULER_MODES = tuple(f"RULE_{i}" for i in range(6))
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("NONE",)
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 200
+        apply_rule_coverage_v3_distribution(cfg, segment_jobs=12)
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_rule_coverage_v3"
+        cfg.SCHED_HEALTH_GATE_MODE = "off"
+        cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
+        cfg.ENABLE_MAINTENANCE_DECISIONS = False
+        cfg.DISABLE_HEALTH_SYSTEM = True
+        cfg.BREAKDOWN_ENABLE = False
+        cfg.FAIL_STOCHASTIC = False
+        cfg.SCHED_SAFE_DISPATCH = False
+        cfg.ENABLE_MAINT_ONLY_COMPARE = False
+        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+        cfg.SCHEDULER_POLICY_FAMILY = "flat_rule_selector"
+        return cfg
+    if profile == "thesis_sched_rule_coverage_baselines_v3_smoke":
+        cfg.TRAIN_SCHEDULER_MODES = tuple(f"RULE_{i}" for i in range(6))
+        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
+        cfg.TRAIN_MAINT_MODES = ("NONE",)
+        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
+        cfg.TRAIN_COMBO_MODE = "episode_fixed"
+        cfg.EVAL_COMBO_MODE = "grid_full"
+        cfg.TRAIN_JOBS_TARGET = 24
+        apply_rule_coverage_v3_distribution(cfg, segment_jobs=2)
+        cfg.TRAIN_EPISODES = 1
+        cfg.EVAL_EVERY = 1
+        cfg.SAVE_EVERY = 1
+        cfg.EARLY_STOP_ENABLED = False
+        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
+        cfg.PPO_SCHED_STATE_MODE = "ops_regime_rule_coverage_v3"
         cfg.SCHED_HEALTH_GATE_MODE = "off"
         cfg.SCHED_HEALTH_GATE_H_END_MIN = 0.20
         cfg.ENABLE_MAINTENANCE_DECISIONS = False
@@ -914,6 +1091,8 @@ def scheduler_fixed_mode_for_profile(cfg: SimConfig) -> str:
         "thesis_ppo_sched_core_compare",
         "thesis_ppo_sched_rule_coverage_v2",
         "thesis_ppo_sched_rule_coverage_v2_smoke",
+        "thesis_ppo_sched_rule_coverage_v3",
+        "thesis_ppo_sched_rule_coverage_v3_smoke",
         "thesis_ppo_sched_full_ablation",
         "thesis_ppo_sched_full_ablation_smoke",
     }:
@@ -922,6 +1101,8 @@ def scheduler_fixed_mode_for_profile(cfg: SimConfig) -> str:
         "thesis_sched_rule_baselines",
         "thesis_sched_rule_coverage_baselines_v2",
         "thesis_sched_rule_coverage_baselines_v2_smoke",
+        "thesis_sched_rule_coverage_baselines_v3",
+        "thesis_sched_rule_coverage_baselines_v3_smoke",
     }:
         return "RULE"
     return ""
@@ -938,8 +1119,10 @@ def horizon_mode_for_profile(cfg: SimConfig) -> str:
         "thesis_ppo_sched_core_compare",
         "thesis_ppo_sched_rule_coverage_v2",
         "thesis_ppo_sched_rule_coverage_v2_smoke",
+        "thesis_ppo_sched_rule_coverage_v3",
         "thesis_sched_rule_baselines",
         "thesis_sched_rule_coverage_baselines_v2",
+        "thesis_sched_rule_coverage_baselines_v3",
         "thesis_ppo_sched_full_ablation",
     }:
         return "long"
@@ -947,6 +1130,8 @@ def horizon_mode_for_profile(cfg: SimConfig) -> str:
         "thesis_ppo_maint_short",
         "thesis_ppo_sched_full_ablation_smoke",
         "thesis_sched_rule_coverage_baselines_v2_smoke",
+        "thesis_ppo_sched_rule_coverage_v3_smoke",
+        "thesis_sched_rule_coverage_baselines_v3_smoke",
     }:
         return "short"
     return ""
@@ -987,9 +1172,13 @@ def comparison_role_for_profile(
         "thesis_ppo_sched_rule_coverage",
         "thesis_ppo_sched_rule_coverage_v2",
         "thesis_ppo_sched_rule_coverage_v2_smoke",
+        "thesis_ppo_sched_rule_coverage_v3",
+        "thesis_ppo_sched_rule_coverage_v3_smoke",
         "thesis_sched_rule_baselines",
         "thesis_sched_rule_coverage_baselines_v2",
         "thesis_sched_rule_coverage_baselines_v2_smoke",
+        "thesis_sched_rule_coverage_baselines_v3",
+        "thesis_sched_rule_coverage_baselines_v3_smoke",
         "thesis_ppo_sched_full_ablation",
         "thesis_ppo_sched_full_ablation_smoke",
     }:
@@ -1010,6 +1199,8 @@ def comparison_role_for_profile(
             "thesis_ppo_sched_rule_coverage",
             "thesis_ppo_sched_rule_coverage_v2",
             "thesis_ppo_sched_rule_coverage_v2_smoke",
+            "thesis_ppo_sched_rule_coverage_v3",
+            "thesis_ppo_sched_rule_coverage_v3_smoke",
         }
         and str(compare_type) == "scheduler_core_compare"
         and canonical_scheduler_mode(scheduler_mode) == "PPO"
@@ -1170,6 +1361,8 @@ def extract_scheduler_reward_features(
             mode = "ops_regime_only"
         elif arr.shape[0] == 16:
             mode = "ops_regime_rule_coverage"
+        elif arr.shape[0] == 18:
+            mode = "ops_regime_rule_coverage_v3"
         else:
             raise ValueError(
                 f"unsupported scheduler reward state length {arr.shape[0]} for "
@@ -1235,6 +1428,31 @@ def extract_scheduler_reward_features(
             "scenario_proc_bias": float(arr[13]),
             "scenario_route_depth_score": float(arr[14]),
             "scenario_flex_width_score": float(arr[15]),
+            "idle_fail_risk_mean": 0.0,
+            "idle_fail_risk_max": 0.0,
+        }
+    if mode == "ops_regime_rule_coverage_v3":
+        if arr.shape[0] < 18:
+            raise ValueError(f"ops_regime_rule_coverage_v3 scheduler reward state expects 18 dims, got {arr.shape[0]}")
+        return {
+            "idle": float(arr[0]),
+            "wip": float(arr[1]),
+            "ready_len": float(arr[2]),
+            "arrivals": float(arr[3]),
+            "sched_lambda": float(arr[4]),
+            "sched_ddt": float(arr[5]),
+            "avg_slack": float(arr[6]),
+            "slack_q10": float(arr[7]),
+            "slack_pressure": float(arr[8]),
+            "utilization": float(arr[9]),
+            "overdue_rate": float(arr[10]),
+            "rush": float(arr[11]),
+            "current_stress": float(arr[12]),
+            "scenario_proc_bias": float(arr[13]),
+            "scenario_route_depth_score": float(arr[14]),
+            "scenario_flex_width_score": float(arr[15]),
+            "scenario_machine_heterogeneity_score": float(arr[16]),
+            "scenario_urgency_skew_score": float(arr[17]),
             "idle_fail_risk_mean": 0.0,
             "idle_fail_risk_max": 0.0,
         }
@@ -1982,6 +2200,38 @@ def _sample_proc_time(cfg: SimConfig, rng: random.Random, job_size_profile: str,
     return float(raw * machine_scale)
 
 
+def _adjust_machine_scale_for_profile(
+    cfg: SimConfig,
+    machine_scale: float,
+    machine_heterogeneity_profile: str,
+    machine_id: Optional[int] = None,
+) -> float:
+    profile = str(machine_heterogeneity_profile).strip().lower()
+    base = float(machine_scale)
+    delta = base - 1.0
+    if abs(delta) < 1e-9 and machine_id is not None and int(getattr(cfg, "NUM_MACHINES", 1)) > 1:
+        normalized_idx = (2.0 * float(machine_id) / float(max(int(cfg.NUM_MACHINES) - 1, 1))) - 1.0
+        delta = 0.25 * normalized_idx
+    if profile == "homogeneous":
+        adjusted = 1.0
+    elif profile == "wide":
+        adjusted = 1.0 + 1.60 * delta
+    else:
+        adjusted = 1.0 + delta
+    return float(np.clip(adjusted, float(cfg.MACHINE_PT_SCALE_MIN), float(cfg.MACHINE_PT_SCALE_MAX)))
+
+
+def _sample_job_urgency(cfg: SimConfig, rng: random.Random, urgency_skew_profile: str) -> float:
+    profile = str(urgency_skew_profile).strip().lower()
+    if profile == "flat":
+        return float(rng.uniform(0.95, 1.05))
+    if profile == "spiky":
+        if rng.random() < 0.20:
+            return float(rng.uniform(1.40, 1.80))
+        return float(rng.uniform(0.75, 1.05))
+    return float(rng.uniform(0.8, 1.2))
+
+
 def build_episode_regime_plan(
     cfg: SimConfig,
     rng: random.Random,
@@ -2143,7 +2393,17 @@ def build_episode_scenario(
                 int(m): (
                     float(scenario_rng.uniform(cfg.PT_MIN, cfg.PT_MAX) * machine_time_scale.get(m, 1.0))
                     if level is None else
-                    _sample_proc_time(cfg, scenario_rng, str(level.get("job_size_profile", "balanced")), machine_time_scale.get(m, 1.0))
+                    _sample_proc_time(
+                        cfg,
+                        scenario_rng,
+                        str(level.get("job_size_profile", "balanced")),
+                        _adjust_machine_scale_for_profile(
+                            cfg,
+                            machine_time_scale.get(m, 1.0),
+                            str(level.get("machine_heterogeneity_profile", "medium")),
+                            machine_id=int(m),
+                        ),
+                    )
                 )
                 for m in feasible
             }
@@ -2152,7 +2412,11 @@ def build_episode_scenario(
         for op in ops:
             avg_sum += float(np.mean(list(op.proc_times.values())))
         due = arrival + avg_sum * ddt if math.isfinite(arrival) else math.inf
-        urgency = float(scenario_rng.uniform(0.8, 1.2))
+        urgency = (
+            float(scenario_rng.uniform(0.8, 1.2))
+            if level is None else
+            _sample_job_urgency(cfg, scenario_rng, str(level.get("urgency_skew_profile", "mixed")))
+        )
         job_templates.append(
             JobTemplate(arrival=arrival, due=float(due), urgency=urgency, ops=ops)
         )
@@ -2533,6 +2797,7 @@ def build_scenario_rule_baseline_rows(combo_rows: List[Dict[str, Any]]) -> List[
         for rank, row in enumerate(ranked, start=1):
             output_rows.append({
                 "scenario_key": scenario_key,
+                "scenario_family": row.get("scenario_family"),
                 "target_rule": row.get("target_rule"),
                 "rule_id": fixed_rule_id_from_mode(row.get("scheduler_mode", "RULE_0")),
                 "rule_tag": f"R{fixed_rule_id_from_mode(row.get('scheduler_mode', 'RULE_0'))}",
@@ -2543,11 +2808,108 @@ def build_scenario_rule_baseline_rows(combo_rows: List[Dict[str, Any]]) -> List[
                 "job_size_profile": row.get("job_size_profile"),
                 "route_depth_profile": row.get("route_depth_profile"),
                 "flexibility_profile": row.get("flexibility_profile"),
+                "machine_heterogeneity_profile": row.get("machine_heterogeneity_profile"),
+                "urgency_skew_profile": row.get("urgency_skew_profile"),
                 "twt": float(row.get("combo_tard", 0.0) or 0.0),
                 "uave": float(row.get("uave", 0.0) or 0.0),
                 "rank_within_scenario": int(rank),
             })
     return output_rows
+
+
+def build_scenario_family_baseline_summary(scenario_rule_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    rows = [dict(row) for row in (scenario_rule_rows or [])]
+    scenario_to_target: Dict[str, int] = {}
+    scenario_to_family: Dict[str, str] = {}
+    scenario_to_target_rank: Dict[str, int] = {}
+    family_to_target: Dict[str, int] = {}
+    family_to_target_ranks: Dict[str, List[int]] = {}
+    family_to_target_top1_hits: Dict[str, int] = {}
+    family_to_target_top2_hits: Dict[str, int] = {}
+    family_order: List[str] = []
+    hard_families = ("R3", "R4", "R5")
+
+    for row in rows:
+        scenario_key = str(row.get("scenario_key") or "").strip()
+        scenario_family = str(row.get("scenario_family") or "").strip()
+        if not scenario_key or not scenario_family:
+            continue
+        target_rule = int(row.get("target_rule", -1))
+        scenario_to_target.setdefault(scenario_key, target_rule)
+        scenario_to_family.setdefault(scenario_key, scenario_family)
+        family_to_target.setdefault(scenario_family, target_rule)
+        if scenario_family not in family_order:
+            family_order.append(scenario_family)
+        if int(row.get("rule_id", -1)) == target_rule:
+            scenario_to_target_rank[scenario_key] = int(row.get("rank_within_scenario", 999))
+
+    for scenario_key, rank in scenario_to_target_rank.items():
+        family = scenario_to_family.get(scenario_key, "")
+        if not family:
+            continue
+        family_to_target_ranks.setdefault(family, []).append(int(rank))
+        family_to_target_top1_hits[family] = family_to_target_top1_hits.get(family, 0) + (1 if int(rank) == 1 else 0)
+        family_to_target_top2_hits[family] = family_to_target_top2_hits.get(family, 0) + (1 if int(rank) <= 2 else 0)
+
+    scenario_target_rule_match_count = int(sum(1 for rank in scenario_to_target_rank.values() if int(rank) == 1))
+    scenario_target_rule_top2_count = int(sum(1 for rank in scenario_to_target_rank.values() if int(rank) <= 2))
+    scenario_target_rule_rank_mean = (
+        float(np.mean(list(scenario_to_target_rank.values())))
+        if scenario_to_target_rank else 0.0
+    )
+
+    family_target_rule_top1_count = int(sum(1 for family in family_order if family_to_target_top1_hits.get(family, 0) >= 1))
+    family_target_rule_top2_count = int(sum(1 for family in family_order if family_to_target_top2_hits.get(family, 0) >= 1))
+    family_rank_means = [
+        float(np.mean(family_to_target_ranks.get(family, [])))
+        for family in family_order
+        if family_to_target_ranks.get(family)
+    ]
+    family_target_rule_rank_mean = float(np.mean(family_rank_means)) if family_rank_means else 0.0
+    hard_family_target_rule_top2_pass_count = int(
+        sum(1 for family in hard_families if family_to_target_top2_hits.get(family, 0) >= 2)
+    )
+
+    threshold_scenario_top2 = 12
+    threshold_family_top1 = len(family_order) if family_order else 6
+    threshold_hard_top2 = len(hard_families)
+    baseline_gate_passed = bool(
+        scenario_target_rule_top2_count >= threshold_scenario_top2
+        and family_target_rule_top1_count >= threshold_family_top1
+        and hard_family_target_rule_top2_pass_count >= threshold_hard_top2
+    )
+
+    failure_reasons: List[str] = []
+    if scenario_target_rule_top2_count < threshold_scenario_top2:
+        failure_reasons.append("scenario_target_rule_top2_count_below_threshold")
+    if family_target_rule_top1_count < threshold_family_top1:
+        failure_reasons.append("family_target_rule_top1_count_below_threshold")
+    if hard_family_target_rule_top2_pass_count < threshold_hard_top2:
+        failure_reasons.append("hard_family_target_rule_top2_pass_count_below_threshold")
+
+    return {
+        "scenario_count": int(len(scenario_to_target)),
+        "family_count": int(len(family_order)),
+        "scenario_target_rule_match_count": int(scenario_target_rule_match_count),
+        "scenario_target_rule_top2_count": int(scenario_target_rule_top2_count),
+        "scenario_target_rule_rank_mean": float(scenario_target_rule_rank_mean),
+        "family_target_rule_top1_count": int(family_target_rule_top1_count),
+        "family_target_rule_top2_count": int(family_target_rule_top2_count),
+        "family_target_rule_rank_mean": float(family_target_rule_rank_mean),
+        "hard_family_target_rule_top2_pass_count": int(hard_family_target_rule_top2_pass_count),
+        "baseline_gate_target_rule_top2_threshold": int(threshold_scenario_top2),
+        "baseline_gate_family_top1_threshold": int(threshold_family_top1),
+        "baseline_gate_hard_family_top2_threshold": int(threshold_hard_top2),
+        "baseline_gate_passed": bool(baseline_gate_passed),
+        "baseline_gate_failure_reasons": list(failure_reasons),
+        "family_target_rule_top1_hits": {family: int(family_to_target_top1_hits.get(family, 0)) for family in family_order},
+        "family_target_rule_top2_hits": {family: int(family_to_target_top2_hits.get(family, 0)) for family in family_order},
+        "family_target_rule_rank_means": {
+            family: float(np.mean(family_to_target_ranks.get(family, [])))
+            if family_to_target_ranks.get(family) else 0.0
+            for family in family_order
+        },
+    }
 
 def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, rul: RULPredictorWrapper,
                   sched_agent: THDQNAgent, maint_agent: Optional[MaintenanceAgentDDQN],
@@ -2637,13 +2999,18 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
             rec.setdefault("combo_segment", regime.get("segment"))
             rec.setdefault("combo_level_idx", regime.get("level_idx"))
             rec.setdefault("scenario_key", regime.get("scenario_key"))
+            rec.setdefault("scenario_family", regime.get("scenario_family"))
             rec.setdefault("target_rule", regime.get("target_rule"))
             rec.setdefault("job_size_profile", regime.get("job_size_profile"))
             rec.setdefault("route_depth_profile", regime.get("route_depth_profile"))
             rec.setdefault("flexibility_profile", regime.get("flexibility_profile"))
+            rec.setdefault("machine_heterogeneity_profile", regime.get("machine_heterogeneity_profile"))
+            rec.setdefault("urgency_skew_profile", regime.get("urgency_skew_profile"))
             rec.setdefault("scenario_proc_bias", regime.get("scenario_proc_bias"))
             rec.setdefault("scenario_route_depth_score", regime.get("scenario_route_depth_score"))
             rec.setdefault("scenario_flex_width_score", regime.get("scenario_flex_width_score"))
+            rec.setdefault("scenario_machine_heterogeneity_score", regime.get("scenario_machine_heterogeneity_score"))
+            rec.setdefault("scenario_urgency_skew_score", regime.get("scenario_urgency_skew_score"))
             rec.setdefault("im_invalid_flag", False)
             rec.setdefault("dn_imminent_breakdown_veto", False)
             rec.setdefault("cm_emergency_override", False)
@@ -4860,8 +5227,12 @@ def main(profile_override: Optional[str] = None):
                         "thesis_ppo_sched_core_compare",
                         "thesis_ppo_sched_rule_coverage_v2",
                         "thesis_ppo_sched_rule_coverage_v2_smoke",
+                        "thesis_ppo_sched_rule_coverage_v3",
+                        "thesis_ppo_sched_rule_coverage_v3_smoke",
                         "thesis_sched_rule_coverage_baselines_v2",
                         "thesis_sched_rule_coverage_baselines_v2_smoke",
+                        "thesis_sched_rule_coverage_baselines_v3",
+                        "thesis_sched_rule_coverage_baselines_v3_smoke",
                         "thesis_ppo_sched_full_ablation",
                         "thesis_ppo_sched_full_ablation_smoke",
                     }:
@@ -5121,6 +5492,8 @@ def main(profile_override: Optional[str] = None):
                 "thesis_ppo_sched_core_compare",
                 "thesis_ppo_sched_rule_coverage_v2",
                 "thesis_ppo_sched_rule_coverage_v2_smoke",
+                "thesis_ppo_sched_rule_coverage_v3",
+                "thesis_ppo_sched_rule_coverage_v3_smoke",
                 "thesis_ppo_sched_full_ablation",
                 "thesis_ppo_sched_full_ablation_smoke",
             }:
@@ -5144,7 +5517,7 @@ def main(profile_override: Optional[str] = None):
                             candidate_run["official_result"],
                             anchor_mode,
                             candidate_mode,
-                            compare_type="scheduler_core_compare" if experiment_profile in {"thesis_ppo_sched_core_compare", "thesis_ppo_sched_rule_coverage_v2", "thesis_ppo_sched_rule_coverage_v2_smoke"} else "scheduler_full_ablation",
+                            compare_type="scheduler_core_compare" if experiment_profile in {"thesis_ppo_sched_core_compare", "thesis_ppo_sched_rule_coverage_v2", "thesis_ppo_sched_rule_coverage_v2_smoke", "thesis_ppo_sched_rule_coverage_v3", "thesis_ppo_sched_rule_coverage_v3_smoke"} else "scheduler_full_ablation",
                             train_policy_tag=train_policy_tag,
                             eval_policy_tag=train_policy_tag,
                             scheduler_anchor=anchor_mode,
@@ -5173,7 +5546,7 @@ def main(profile_override: Optional[str] = None):
                             **experiment_result_metadata(
                                 cfg,
                                 maint_mode="NONE",
-                                compare_type="scheduler_core_compare" if experiment_profile in {"thesis_ppo_sched_core_compare", "thesis_ppo_sched_rule_coverage_v2", "thesis_ppo_sched_rule_coverage_v2_smoke"} else "scheduler_full_ablation",
+                                compare_type="scheduler_core_compare" if experiment_profile in {"thesis_ppo_sched_core_compare", "thesis_ppo_sched_rule_coverage_v2", "thesis_ppo_sched_rule_coverage_v2_smoke", "thesis_ppo_sched_rule_coverage_v3", "thesis_ppo_sched_rule_coverage_v3_smoke"} else "scheduler_full_ablation",
                                 scheduler_mode=anchor_mode,
                                 train_policy_tag=train_policy_tag,
                                 eval_policy_tag=train_policy_tag,
@@ -5192,7 +5565,7 @@ def main(profile_override: Optional[str] = None):
                         all_combo_compare_rows.extend(combo_rows)
                         stem_prefix = (
                             "compare_scheduler_core_compare_"
-                            if experiment_profile in {"thesis_ppo_sched_core_compare", "thesis_ppo_sched_rule_coverage_v2", "thesis_ppo_sched_rule_coverage_v2_smoke"}
+                            if experiment_profile in {"thesis_ppo_sched_core_compare", "thesis_ppo_sched_rule_coverage_v2", "thesis_ppo_sched_rule_coverage_v2_smoke", "thesis_ppo_sched_rule_coverage_v3", "thesis_ppo_sched_rule_coverage_v3_smoke"}
                             else "compare_scheduler_full_ablation_"
                         )
                         stem = (
@@ -5205,7 +5578,7 @@ def main(profile_override: Optional[str] = None):
                             full_summary,
                             full_rows,
                             policy_label=(
-                                f"{train_policy_label} | Compare: {'scheduler_core_compare' if experiment_profile in {'thesis_ppo_sched_core_compare', 'thesis_ppo_sched_rule_coverage_v2', 'thesis_ppo_sched_rule_coverage_v2_smoke'} else 'scheduler_full_ablation'} | "
+                                f"{train_policy_label} | Compare: {'scheduler_core_compare' if experiment_profile in {'thesis_ppo_sched_core_compare', 'thesis_ppo_sched_rule_coverage_v2', 'thesis_ppo_sched_rule_coverage_v2_smoke', 'thesis_ppo_sched_rule_coverage_v3', 'thesis_ppo_sched_rule_coverage_v3_smoke'} else 'scheduler_full_ablation'} | "
                                 f"{anchor_mode} vs {candidate_mode}"
                             ),
                         )
@@ -5419,12 +5792,20 @@ def main(profile_override: Optional[str] = None):
         rule_baseline_dir.mkdir(parents=True, exist_ok=True)
         scenario_rule_rows = build_scenario_rule_baseline_rows(all_combo_eval_rows)
         write_rows_files(rule_baseline_dir, "scenario_rule_baseline_rows", scenario_rule_rows)
+    if experiment_profile in {"thesis_sched_rule_coverage_baselines_v3", "thesis_sched_rule_coverage_baselines_v3_smoke"}:
+        rule_baseline_dir = output_root / "rule_coverage_baselines_v3"
+        rule_baseline_dir.mkdir(parents=True, exist_ok=True)
+        scenario_rule_rows = build_scenario_rule_baseline_rows(all_combo_eval_rows)
+        scenario_family_summary = build_scenario_family_baseline_summary(scenario_rule_rows)
+        write_rows_files(rule_baseline_dir, "scenario_rule_baseline_rows", scenario_rule_rows)
+        write_summary_files(rule_baseline_dir, "scenario_family_baseline_summary", scenario_family_summary)
 
     for _, _, policy_tag, _ in route_specs:
         for scheduler_mode in scheduler_modes:
             write_aggregate_compare_outputs(output_root, policy_tag, scheduler_mode, all_result_rows, all_compare_rows)
 
     print(f"paired training finished; outputs saved to {output_root}")
+    return output_root
 
 if __name__ == "__main__":
     main()
