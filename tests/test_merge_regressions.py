@@ -128,6 +128,14 @@ class _BestRewardPOMCP:
         return int(best_action)
 
 
+class _FixedActionMaintAgent:
+    def __init__(self, action: int):
+        self.action = int(action)
+
+    def act(self, state, explore=True, allowed_actions=None):
+        return int(self.action)
+
+
 class _CompareEnvStub:
     def __init__(self, breakdown_count: int, breakdown_cost: float,
                  requeued_op_count: int, interrupted_proc_time: float, makespan: float,
@@ -188,6 +196,23 @@ class _LatePreferenceEnvStub(_ImGainEnvStub):
 class _HardBreakdownVetoEnvStub(_ImGainEnvStub):
     def __init__(self):
         super().__init__(False)
+
+    def expected_breakdown_loss(self, mid: int, local_urgency: float, *,
+                                pt=None, stress=None, h_true=None, idx_before=None):
+        return {
+            "p_fail_exec": 1.0,
+            "expected_breakdown_loss": 99.0,
+            "breakdown_penalty_cost": 99.0,
+            "expected_redispatch_pt": 1.0,
+            "recovery_dur": 5.0,
+            "hard_breakdown_flag": 1.0,
+            "h_end_true": 0.02,
+        }
+
+
+class _ForceCmEnvStub(_ImGainEnvStub):
+    def __init__(self):
+        super().__init__(True)
 
     def expected_breakdown_loss(self, mid: int, local_urgency: float, *,
                                 pt=None, stress=None, h_true=None, idx_before=None):
@@ -510,8 +535,10 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertFalse(cfg.FAIL_STOCHASTIC)
         self.assertTrue(cfg.RUL_LINEAR_TAIL_ENABLE)
         self.assertIsNone(cfg.RUL_LINEAR_TAIL_STEP)
-        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("THDQN",))
-        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN",))
+        self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("THDQN", "PPO"))
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN", "POMCP"))
+        self.assertEqual(cfg.PPO_DEFAULT_VARIANT, "PPO_ENTROPY")
+        self.assertEqual(cfg.PPO_SCHED_REWARD_VERSION, "legacy_balanced")
         self.assertAlmostEqual(cfg.DEGRADATION_RATE_SCALE, 1.30)
         self.assertEqual(cfg.SCHEDULER_STATE_DIM, 15)
         self.assertEqual(cfg.MAINTENANCE_STATE_DIM, 18)
@@ -582,6 +609,41 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertAlmostEqual(cfg.PPO_CLIP, 0.15)
         self.assertEqual(cfg.PPO_EPOCHS, 2)
 
+    def test_ppo_train_temperature_only_affects_exploration_distribution(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "PPO"
+        cfg.PPO_TRAIN_TEMPERATURE = 2.0
+        agent = PPOSchedulerAgent(state_dim=15, cfg=cfg, rng=random.Random(0), device=torch.device("cpu"))
+        with torch.no_grad():
+            for p in agent.actor.parameters():
+                p.zero_()
+            agent.actor.net[-1].bias.copy_(torch.tensor([2.0, 0.5, -1.0, -1.5, -2.0, -2.5]))
+            for p in agent.critic.parameters():
+                p.zero_()
+
+        state = np.zeros(15, dtype=np.float32)
+        torch.manual_seed(0)
+        _, explore_action, explore_logprob, _ = agent.act_with_info(state, explore=True)
+        scaled_dist = torch.distributions.Categorical(
+            logits=torch.tensor([[2.0, 0.5, -1.0, -1.5, -2.0, -2.5]]) / cfg.PPO_TRAIN_TEMPERATURE
+        )
+        self.assertAlmostEqual(
+            explore_logprob,
+            float(scaled_dist.log_prob(torch.tensor([explore_action])).item()),
+            places=6,
+        )
+
+        _, greedy_action, greedy_logprob, _ = agent.act_with_info(state, explore=False)
+        base_dist = torch.distributions.Categorical(
+            logits=torch.tensor([[2.0, 0.5, -1.0, -1.5, -2.0, -2.5]])
+        )
+        self.assertEqual(greedy_action, 0)
+        self.assertAlmostEqual(
+            greedy_logprob,
+            float(base_dist.log_prob(torch.tensor([greedy_action])).item()),
+            places=6,
+        )
+
     def test_hier_maintenance_arch_only_enables_for_thdqn_dqn_unrestricted(self):
         cfg = SimConfig()
         cfg.SCHEDULER_MODE = "THDQN"
@@ -590,6 +652,63 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(maintenance_agent_arch_for_context(cfg, "DQN", True, "THDQN"), "flat_ddqn")
         self.assertEqual(maintenance_agent_arch_for_context(cfg, "DQN", False, "PPO"), "flat_ddqn")
         self.assertEqual(maintenance_agent_arch_for_context(cfg, "POMCP", False, "THDQN"), "flat_ddqn")
+
+    def test_ppo_dqn_high_health_cm_is_remapped_to_im(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "PPO"
+        cfg.MAINT_MODE = "DQN"
+        cfg.ENFORCE_REGION_POLICY = False
+        env = _ImGainEnvStub(True)
+
+        action, meta = select_maintenance_action(
+            "DQN",
+            _FixedActionMaintAgent(2),
+            None,
+            None,
+            env,
+            0,
+            0.9,
+            np.zeros(18, dtype=np.float32),
+            0.1,
+            0.1,
+            0.0,
+            cfg,
+            random.Random(0),
+            explore=False,
+        )
+
+        self.assertEqual(action, 1)
+        self.assertTrue(meta["flat_dqn_cm_remap"])
+        self.assertEqual(meta["flat_dqn_cm_original_action"], "CM")
+        self.assertEqual(meta["flat_dqn_cm_remap_to"], "IM")
+        self.assertEqual(meta["maint_type_action"], "IM")
+
+    def test_ppo_dqn_imminent_breakdown_does_not_block_cm(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "PPO"
+        cfg.MAINT_MODE = "DQN"
+        cfg.ENFORCE_REGION_POLICY = False
+        env = _HardBreakdownVetoEnvStub()
+
+        action, meta = select_maintenance_action(
+            "DQN",
+            _FixedActionMaintAgent(2),
+            None,
+            None,
+            env,
+            0,
+            0.9,
+            np.zeros(18, dtype=np.float32),
+            0.1,
+            0.4,
+            0.2,
+            cfg,
+            random.Random(0),
+            explore=False,
+        )
+
+        self.assertEqual(action, 2)
+        self.assertFalse(meta["flat_dqn_cm_remap"])
 
     def test_hier_maintenance_rewards_separate_gate_and_type_penalties(self):
         cfg = SimConfig()
@@ -1048,9 +1167,10 @@ class MergeRegressionTests(unittest.TestCase):
 
     def test_pomcp_unrestricted_high_health_gate_blocks_only_cm(self):
         cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "THDQN"
         cfg.ENFORCE_REGION_POLICY = False
         cfg.POMCP_UNRESTRICTED_SAFETY_FILTER = True
-        cfg.POMCP_MAINT_ACTION_MAX_H = 0.40
+        cfg.THDQN_POMCP_CM_BLOCK_H = 0.40
         env = _ImGainEnvStub(True)
         planner = _BestRewardPOMCP()
         particle = {
@@ -1082,12 +1202,14 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertIn("CM", meta["safety_filtered_actions"])
         self.assertNotIn("IM", meta["safety_filtered_actions"])
         self.assertFalse(meta["cm_emergency_override"])
+        self.assertTrue(meta["pomcp_cm_blocked"])
 
     def test_pomcp_unrestricted_high_health_cm_emergency_override(self):
         cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "THDQN"
         cfg.ENFORCE_REGION_POLICY = False
         cfg.POMCP_UNRESTRICTED_SAFETY_FILTER = True
-        cfg.POMCP_MAINT_ACTION_MAX_H = 0.40
+        cfg.THDQN_POMCP_CM_BLOCK_H = 0.40
         env = _HardBreakdownVetoEnvStub()
         planner = _SingleStepPOMCP()
         particle = {
@@ -1123,9 +1245,10 @@ class MergeRegressionTests(unittest.TestCase):
 
     def test_pomcp_cm_emergency_override_is_not_set_when_cm_was_not_blocked(self):
         cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "THDQN"
         cfg.ENFORCE_REGION_POLICY = False
         cfg.POMCP_UNRESTRICTED_SAFETY_FILTER = True
-        cfg.POMCP_MAINT_ACTION_MAX_H = 0.40
+        cfg.THDQN_POMCP_CM_BLOCK_H = 0.40
         env = _LatePreferenceEnvStub()
         planner = _BestRewardPOMCP()
         particle = {
@@ -1154,6 +1277,81 @@ class MergeRegressionTests(unittest.TestCase):
 
         self.assertEqual(action, 2)
         self.assertFalse(meta["cm_emergency_override"])
+
+    def test_ppo_pomcp_low_health_dn_veto_forces_cm(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "PPO"
+        cfg.ENFORCE_REGION_POLICY = False
+        cfg.POMCP_UNRESTRICTED_SAFETY_FILTER = True
+        cfg.PPO_POMCP_FORCE_CM_H = 0.18
+        env = _ForceCmEnvStub()
+        planner = _SingleStepPOMCP()
+        particle = {
+            "h_true": 0.15,
+            "stress": 0.4,
+            "baseline_rul": 1.0,
+            "region_b_elapsed": 0.0,
+        }
+
+        action, meta = select_maintenance_action(
+            "POMCP",
+            None,
+            planner,
+            {0: [particle]},
+            env,
+            0,
+            0.15,
+            np.zeros(18, dtype=np.float32),
+            0.1,
+            0.4,
+            0.2,
+            cfg,
+            random.Random(0),
+            explore=False,
+        )
+
+        self.assertEqual(action, 2)
+        self.assertEqual(meta["allowed_actions"], [2])
+        self.assertTrue(meta["dn_imminent_breakdown_veto"])
+        self.assertTrue(meta["pomcp_force_cm"])
+        self.assertIn("IM", meta["safety_filtered_actions"])
+
+    def test_thdqn_pomcp_low_health_dn_veto_forces_cm(self):
+        cfg = SimConfig()
+        cfg.SCHEDULER_MODE = "THDQN"
+        cfg.ENFORCE_REGION_POLICY = False
+        cfg.POMCP_UNRESTRICTED_SAFETY_FILTER = True
+        cfg.THDQN_POMCP_FORCE_CM_H = 0.20
+        env = _ForceCmEnvStub()
+        planner = _SingleStepPOMCP()
+        particle = {
+            "h_true": 0.19,
+            "stress": 0.4,
+            "baseline_rul": 1.0,
+            "region_b_elapsed": 0.0,
+        }
+
+        action, meta = select_maintenance_action(
+            "POMCP",
+            None,
+            planner,
+            {0: [particle]},
+            env,
+            0,
+            0.19,
+            np.zeros(18, dtype=np.float32),
+            0.1,
+            0.4,
+            0.2,
+            cfg,
+            random.Random(0),
+            explore=False,
+        )
+
+        self.assertEqual(action, 2)
+        self.assertEqual(meta["allowed_actions"], [2])
+        self.assertTrue(meta["dn_imminent_breakdown_veto"])
+        self.assertTrue(meta["pomcp_force_cm"])
 
     def test_combo_conditioned_behavior_groups_rule_goal_and_maintenance_counts(self):
         decision_log = [
@@ -1631,6 +1829,8 @@ class MergeRegressionTests(unittest.TestCase):
 
         self.assertEqual(summary["goal_counts"], {"0": 0, "1": 0, "2": 0, "3": 0})
         self.assertEqual(summary["rule_counts"]["3"], 2)
+        self.assertEqual(summary["rule_unique_count"], 2)
+        self.assertAlmostEqual(summary["rule_top1_share"], 2.0 / 3.0)
         self.assertEqual(summary["dispatch_count"], 2)
 
     def test_scheduler_summary_includes_current_stress_stats(self):

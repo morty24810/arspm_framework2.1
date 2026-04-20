@@ -100,32 +100,73 @@ def _draw_badge_small(ax, x: float, y: float, text: str, *, face: str = "#EFF3F6
     )
 
 
-def _draw_info_card(fig, policy_label: Optional[str], extra_note: Optional[str] = None):
+def _badge_width(text: str, *, small: bool = False) -> float:
+    base = 0.14 if small else 0.18
+    scale = 0.007 if small else 0.010
+    cap = 0.32 if small else 0.40
+    return min(cap, base + scale * len(str(text)))
+
+
+def _draw_badge_rows(ax, items: List[Tuple[str, str, str]], *, start_y: float, max_width: float = 0.92,
+                     left: float = 0.05, row_gap: float = 0.28, small: bool = False) -> int:
+    x = left
+    y = start_y
+    rows = 1
+    for text, face, edge in items:
+        width = _badge_width(text, small=small)
+        if x + width > max_width:
+            rows += 1
+            x = left
+            y -= row_gap
+        if small:
+            _draw_badge_small(ax, x, y, text, face=face, edge=edge)
+        else:
+            _draw_badge(ax, x, y, text, face=face, edge=edge)
+        x += width + 0.02
+    return rows
+
+
+def _draw_info_card(fig, policy_label: Optional[str], extra_note: Optional[str] = None,
+                    *, bounds: Optional[Tuple[float, float, float, float]] = None):
     parts = _compact_policy_parts(policy_label)
     notes = [chunk.strip() for chunk in str(extra_note or "").split("\n") if chunk.strip()]
     if not parts and not notes:
         return
-    note_rows = max(1, len(notes)) if notes else 0
-    height = 0.065 + 0.042 * note_rows
-    ax = _add_card_axes(fig, (0.06, 0.05, 0.36, height))
 
-    badge_specs = []
     palette = [
         ("#EEF4FB", "#C7D8EA"),
         ("#F2F4F7", "#D8DEE4"),
         ("#EDF6EC", "#C7DEC3"),
     ]
+    badge_specs = []
     for idx, part in enumerate(parts[:3]):
         face, edge = palette[idx % len(palette)]
         badge_specs.append((part, face, edge))
 
-    x = 0.05
-    for text, face, edge in badge_specs:
-        _draw_badge(ax, x, 0.70 if notes else 0.52, text, face=face, edge=edge)
-        x += 0.13 + min(0.26, 0.013 * len(text))
+    badge_rows = 0
+    if badge_specs:
+        row_width = 0.88
+        used = 0.0
+        badge_rows = 1
+        for text, _, _ in badge_specs:
+            width = _badge_width(text)
+            if used > 0.0 and used + width > row_width:
+                badge_rows += 1
+                used = 0.0
+            used += width + 0.02
+    note_rows = len(notes)
+    height = 0.06 + 0.048 * max(badge_rows, 1) + 0.042 * note_rows
+    if bounds is None:
+        bounds = (0.06, 0.03, 0.50, height)
+    ax = _add_card_axes(fig, bounds)
+
+    current_y = 0.70 if notes else 0.55
+    if badge_specs:
+        used_rows = _draw_badge_rows(ax, badge_specs, start_y=current_y, max_width=0.92, left=0.05, row_gap=0.30)
+        current_y -= 0.30 * max(used_rows, 1)
 
     if notes:
-        y = 0.30
+        y = max(0.18, current_y + 0.02)
         for note in notes:
             ax.text(
                 0.05,
@@ -146,16 +187,16 @@ def _draw_compare_card(fig, title: str, rows: List[Tuple[str, str]]):
     parts = _compact_policy_parts(title)
     title_y = 0.82
     if parts:
-        x = 0.05
         palette = [
             ("#EEF4FB", "#C7D8EA"),
             ("#F2F4F7", "#D8DEE4"),
             ("#EDF6EC", "#C7DEC3"),
         ]
+        badge_specs = []
         for idx, part in enumerate(parts[:3]):
             face, edge = palette[idx % len(palette)]
-            _draw_badge_small(ax, x, title_y, part, face=face, edge=edge)
-            x += 0.08 + min(0.20, 0.009 * len(part))
+            badge_specs.append((part, face, edge))
+        _draw_badge_rows(ax, badge_specs, start_y=title_y, max_width=0.94, left=0.05, row_gap=0.24, small=True)
     else:
         ax.text(0.05, title_y, title, transform=ax.transAxes, ha="left", va="center",
                 fontsize=9.2, color="#24323D", fontweight="semibold")
@@ -176,30 +217,36 @@ def _draw_compare_card(fig, title: str, rows: List[Tuple[str, str]]):
 def _draw_schedule_table(fig, combo_order, combo_colors, bounds: Tuple[float, float, float, float]):
     if not combo_order:
         return
-    rows = len(combo_order)
     ax = _add_card_axes(fig, bounds)
     ax.text(0.08, 0.90, "Load Settings", transform=ax.transAxes, ha="left", va="center",
             fontsize=9.0, color="#24323D", fontweight="semibold")
-    ax.text(0.08, 0.74, "", transform=ax.transAxes)
-    ax.text(0.23, 0.72, "λ", transform=ax.transAxes, ha="left", va="center",
-            fontsize=8.6, color="#6A737B", fontweight="semibold")
-    ax.text(0.39, 0.72, "DDT", transform=ax.transAxes, ha="left", va="center",
-            fontsize=8.6, color="#6A737B", fontweight="semibold")
-    y_start, y_end = 0.60, 0.14
-    step = (y_start - y_end) / max(rows - 1, 1)
-    box_h = max(0.04, min(0.07, step * 0.68 if rows > 1 else 0.06))
-    y = y_start
-    for key in combo_order:
+    n_cols = 1 if len(combo_order) <= 5 else 2
+    rows_per_col = int(np.ceil(len(combo_order) / n_cols))
+    col_x = [0.08, 0.54]
+    y_top = 0.74
+    y_bottom = 0.18
+    row_step = (y_top - y_bottom) / max(rows_per_col - 1, 1)
+    box_h = max(0.05, min(0.08, row_step * 0.72 if rows_per_col > 1 else 0.08))
+    for idx, key in enumerate(combo_order):
+        col = min(idx // rows_per_col, n_cols - 1)
+        row = idx % rows_per_col
+        x0 = col_x[col]
+        y = y_top - row * row_step
         ax.add_patch(
-            FancyBboxPatch((0.08, y - box_h / 2.0), 0.06, box_h, transform=ax.transAxes,
+            FancyBboxPatch((x0, y - box_h / 2.0), 0.06, box_h, transform=ax.transAxes,
                            boxstyle="round,pad=0.01,rounding_size=0.01",
                            linewidth=0.0, facecolor=combo_colors[key], alpha=0.9)
         )
-        ax.text(0.23, y, f"{key[0]:.0f}", transform=ax.transAxes, ha="left", va="center",
-                fontsize=8.6, color="#24323D")
-        ax.text(0.39, y, f"{key[1]:.2f}", transform=ax.transAxes, ha="left", va="center",
-                fontsize=8.6, color="#24323D")
-        y -= step
+        ax.text(
+            x0 + 0.09,
+            y,
+            f"λ {key[0]:.0f} | DDT {key[1]:.2f}",
+            transform=ax.transAxes,
+            ha="left",
+            va="center",
+            fontsize=8.4,
+            color="#24323D",
+        )
 
 
 def _draw_named_legend_card(fig, title: str, items: List[Tuple[str, str, Optional[str]]], bounds: Tuple[float, float, float, float]):
@@ -254,7 +301,8 @@ def plot_gantt(timeline_ops, timeline_maint, jobs, out_path: str,
     mids = sorted(set([m for m, *_ in timeline_ops] + [m for m, *_ in timeline_maint]))
     if not mids:
         return
-    fig, ax = plt.subplots(figsize=(14, 1 + 0.6 * len(mids)))
+    fig_height = max(5.8, 2.4 + 0.72 * len(mids))
+    fig, ax = plt.subplots(figsize=(14.5, fig_height))
 
     job_ids = sorted({jid for _, _, _, jid, _, *_ in timeline_ops})
     cmap = plt.get_cmap("tab20")
@@ -342,10 +390,10 @@ def plot_gantt(timeline_ops, timeline_maint, jobs, out_path: str,
     if has_interrupted_ops:
         maint_items.append(("INTERRUPTED", "#9E9E9E", "xx"))
 
-    fig.subplots_adjust(left=0.08, right=0.98, bottom=0.34, top=0.90)
-    _draw_schedule_table(fig, combo_order, combo_colors, bounds=(0.08, 0.13, 0.34, 0.17))
-    _draw_named_legend_card(fig, "Maintenance", maint_items, bounds=(0.45, 0.13, 0.25, 0.17))
-    _draw_info_card(fig, policy_label)
+    fig.subplots_adjust(left=0.08, right=0.98, bottom=0.30, top=0.90)
+    _draw_schedule_table(fig, combo_order, combo_colors, bounds=(0.06, 0.06, 0.42, 0.18))
+    _draw_named_legend_card(fig, "Maintenance", maint_items, bounds=(0.50, 0.06, 0.16, 0.18))
+    _draw_info_card(fig, policy_label, bounds=(0.68, 0.06, 0.26, 0.18))
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=200)
     plt.close(fig)
@@ -357,7 +405,7 @@ def plot_rul_curves(rul_log: Dict[int, List[Tuple[float, float]]], maint: List[T
                     rul_obs_log: Optional[Dict[int, List[Tuple[float, float]]]] = None,
                     hard_threshold: Optional[float] = None,
                     rul_segments: Optional[Dict[int, List[Tuple[float, float, float, float, str]]]] = None):
-    fig, ax = plt.subplots(figsize=(12, 4))
+    fig, ax = plt.subplots(figsize=(12.5, 4.8))
     has_flat_processing_segments = False
     for mid in sorted(rul_log.keys()):
         pts = rul_log.get(mid) or []
@@ -462,7 +510,7 @@ def plot_rul_curves(rul_log: Dict[int, List[Tuple[float, float]]], maint: List[T
     if not threshold_enforced:
         notes.append("Hx/Hy shown as reference only.")
     _draw_info_card(fig, policy_label, extra_note="\n".join(notes) if notes else None)
-    fig.subplots_adjust(left=0.08, right=0.78, bottom=0.24, top=0.88)
+    fig.subplots_adjust(left=0.08, right=0.78, bottom=0.30, top=0.88)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=200)
     plt.close(fig)
@@ -472,7 +520,7 @@ def _plot_categorical_scatter(x, y, categories, color_map: Dict[int, str], label
                               out_path: Path, *, xlabel: str, ylabel: str, title: str,
                               policy_label: Optional[str] = None, y_ticks=None, y_ticklabels=None,
                               legend_title: str = "Category"):
-    fig, ax = plt.subplots(figsize=(10, 4.5))
+    fig, ax = plt.subplots(figsize=(10.8, 5.0))
     colors = [color_map[int(cat)] for cat in categories]
     ax.scatter(x, y, c=colors, s=24, alpha=0.85, edgecolors="none")
     ax.set_xlabel(xlabel)
@@ -491,7 +539,7 @@ def _plot_categorical_scatter(x, y, categories, color_map: Dict[int, str], label
         anchor_y=1.0,
     )
     _draw_info_card(fig, policy_label)
-    fig.subplots_adjust(left=0.10, right=0.80, bottom=0.22, top=0.88)
+    fig.subplots_adjust(left=0.10, right=0.80, bottom=0.28, top=0.88)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(str(out_path), dpi=200)
     plt.close(fig)
@@ -528,7 +576,7 @@ def _plot_combo_categorical_heatmap(
     if not uniq_lam or not uniq_ddt:
         return
 
-    fig, ax = plt.subplots(figsize=(1.8 + 1.3 * len(uniq_ddt), 1.8 + 0.95 * len(uniq_lam)))
+    fig, ax = plt.subplots(figsize=(2.4 + 1.55 * len(uniq_ddt), 2.6 + 1.05 * len(uniq_lam)))
     ax.set_xlim(0, len(uniq_ddt))
     ax.set_ylim(0, len(uniq_lam))
     ax.invert_yaxis()
@@ -536,7 +584,7 @@ def _plot_combo_categorical_heatmap(
     ax.set_yticks(np.arange(len(uniq_lam)) + 0.5)
     ax.set_xticklabels([f"{x:.2f}" for x in uniq_ddt], fontsize=9)
     ax.set_yticklabels([f"{x:.0f}" for x in uniq_lam], fontsize=9)
-    ax.set_xlabel("DDT")
+    ax.set_xlabel("DDT", labelpad=6)
     ax.set_ylabel("λ")
     ax.set_title(title)
     ax.set_facecolor("#F7F8FA")
@@ -594,7 +642,7 @@ def _plot_combo_categorical_heatmap(
         for val in allowed_values
     ]
     _legend_outside(ax, handles, title=legend_title, anchor_y=1.0)
-    fig.subplots_adjust(right=0.80, left=0.12, bottom=0.14, top=0.86)
+    fig.subplots_adjust(right=0.80, left=0.12, bottom=0.30, top=0.86)
     _draw_info_card(fig, policy_label, extra_note="Cells show dominant category and share by λ×DDT combo.")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=220)
@@ -674,7 +722,7 @@ def plot_training_curves(tard_list, maint_list, out_path: str, smooth_window: in
         kernel = np.ones(w, dtype=np.float32) / float(w)
         return np.convolve(x, kernel, mode="valid")
 
-    fig, ax = plt.subplots(figsize=(10, 4))
+    fig, ax = plt.subplots(figsize=(10.8, 4.6))
     ax.plot(ep, tard_list, color="#1f77b4", alpha=0.35, label="tardiness")
     ax.plot(ep, maint_list, color="#ff7f0e", alpha=0.35, label="maintenance")
     ax.plot(ep, total, color="#2ca02c", alpha=0.35, label="total")
@@ -690,7 +738,7 @@ def plot_training_curves(tard_list, maint_list, out_path: str, smooth_window: in
     ax.set_ylabel("Cost")
     ax.set_title("Training Convergence")
     ax.grid(True, alpha=0.3)
-    ax.legend()
+    ax.legend(loc="upper left", frameon=False)
     fig.tight_layout()
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=200)
@@ -701,7 +749,7 @@ def plot_maint_action_rates(dn_rates, im_rates, cm_rates, out_path: str, avg_im_
     if not dn_rates:
         return
     ep = np.arange(1, len(dn_rates) + 1, dtype=np.int32)
-    fig, ax = plt.subplots(figsize=(10, 4))
+    fig, ax = plt.subplots(figsize=(10.8, 4.6))
     ax.plot(ep, dn_rates, label="DN", color="#1f77b4")
     ax.plot(ep, im_rates, label="IM", color="#ff7f0e")
     ax.plot(ep, cm_rates, label="CM", color="#2ca02c")
@@ -710,12 +758,12 @@ def plot_maint_action_rates(dn_rates, im_rates, cm_rates, out_path: str, avg_im_
     ax.set_title("Maintenance Action Rates per Episode")
     ax.set_ylim(0.0, 1.0)
     ax.grid(True, alpha=0.3)
-    ax.legend()
+    ax.legend(loc="upper left", frameon=False)
     if avg_im_counts:
         ax2 = ax.twinx()
         ax2.plot(ep, avg_im_counts, label="avg_im_count", color="#9467bd", alpha=0.7)
         ax2.set_ylabel("Avg IM Count")
-        ax2.legend(loc="upper right")
+        ax2.legend(loc="upper right", frameon=False)
     fig.tight_layout()
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=200)
@@ -748,7 +796,7 @@ def plot_maint_vs_slack(points, out_path: str, policy_label: Optional[str] = Non
 
 def plot_maint_mode_comparison(summary: Dict[str, object], compare_rows: List[Dict[str, object]],
                                out_path: str, policy_label: Optional[str] = None):
-    fig, ax = plt.subplots(figsize=(12, 5.2))
+    fig, ax = plt.subplots(figsize=(12.4, 5.6))
 
     modes = [str(summary.get("primary_mode", "POMCP")), str(summary.get("compare_mode", "DQN"))]
     action_order = ["DN", "IM", "CM"]

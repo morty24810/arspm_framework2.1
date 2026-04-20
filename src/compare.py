@@ -276,6 +276,9 @@ def summarize_scheduling_strategy(decision_log: List[Dict[str, Any]], env: Any =
     sched_rows = extract_scheduling_rows(decision_log)
     goal_counts = summarize_action_counts(sched_rows, key="goal", values=[0, 1, 2, 3])
     rule_counts = summarize_action_counts(sched_rows, key="rule", values=[0, 1, 2, 3, 4, 5])
+    total_rule_count = sum(int(v) for v in rule_counts.values())
+    rule_unique_count = sum(1 for v in rule_counts.values() if int(v) > 0)
+    rule_top1_share = (max((int(v) for v in rule_counts.values()), default=0) / total_rule_count) if total_rule_count else 0.0
     dispatched_count = sum(1 for row in sched_rows if bool(row.get("dispatched")))
     breakdown_count = sum(1 for row in sched_rows if bool(row.get("breakdown_flag")))
     hard_breakdown_count = max((_safe_int(row.get("hard_breakdown_count")) or 0) for row in sched_rows) if sched_rows else 0
@@ -290,6 +293,8 @@ def summarize_scheduling_strategy(decision_log: List[Dict[str, Any]], env: Any =
     return {
         "goal_counts": goal_counts,
         "rule_counts": rule_counts,
+        "rule_unique_count": int(rule_unique_count),
+        "rule_top1_share": float(rule_top1_share),
         "dispatch_count": int(dispatched_count),
         "scheduling_events": int(len(sched_rows)),
         "breakdown_count": int(breakdown_count),
@@ -444,9 +449,14 @@ def compare_mode_results(
             "breakdown_cost": float(getattr(primary_result.get("env"), "breakdown_cost_total", 0.0)),
             "requeued_op_count": float(getattr(primary_result.get("env"), "requeued_op_count", 0)),
             "interrupted_proc_time": float(getattr(primary_result.get("env"), "interrupted_proc_time", 0.0)),
+            "rule_unique_count": float(primary_schedule_summary.get("rule_unique_count", 0)),
+            "rule_top1_share": float(primary_schedule_summary.get("rule_top1_share", 0.0)),
             "rule_distinct_count": float(primary_rule_diversity["rule_distinct_count"]),
             "rule_avg_dominant_share": float(primary_rule_diversity["rule_avg_dominant_share"]),
             "rule_mean_pairwise_jsd": float(primary_rule_diversity["rule_mean_pairwise_jsd"]),
+            "flat_dqn_cm_remap_count": float(sum(1 for row in primary_rows if bool(row.get("flat_dqn_cm_remap")))),
+            "pomcp_cm_block_count": float(sum(1 for row in primary_rows if bool(row.get("pomcp_cm_blocked")))),
+            "pomcp_force_cm_count": float(sum(1 for row in primary_rows if bool(row.get("pomcp_force_cm")))),
             **primary_final_health,
         },
         "compare_metrics": {
@@ -458,9 +468,14 @@ def compare_mode_results(
             "breakdown_cost": float(getattr(compare_result.get("env"), "breakdown_cost_total", 0.0)),
             "requeued_op_count": float(getattr(compare_result.get("env"), "requeued_op_count", 0)),
             "interrupted_proc_time": float(getattr(compare_result.get("env"), "interrupted_proc_time", 0.0)),
+            "rule_unique_count": float(compare_schedule_summary.get("rule_unique_count", 0)),
+            "rule_top1_share": float(compare_schedule_summary.get("rule_top1_share", 0.0)),
             "rule_distinct_count": float(compare_rule_diversity["rule_distinct_count"]),
             "rule_avg_dominant_share": float(compare_rule_diversity["rule_avg_dominant_share"]),
             "rule_mean_pairwise_jsd": float(compare_rule_diversity["rule_mean_pairwise_jsd"]),
+            "flat_dqn_cm_remap_count": float(sum(1 for row in compare_rows if bool(row.get("flat_dqn_cm_remap")))),
+            "pomcp_cm_block_count": float(sum(1 for row in compare_rows if bool(row.get("pomcp_cm_blocked")))),
+            "pomcp_force_cm_count": float(sum(1 for row in compare_rows if bool(row.get("pomcp_force_cm")))),
             **compare_final_health,
         },
         "delta_compare_minus_primary": {

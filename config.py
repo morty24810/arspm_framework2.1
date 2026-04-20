@@ -25,7 +25,8 @@ def resolve_machine_set(cfg: "SimConfig") -> tuple[str, tuple[int, ...], int]:
 @dataclass
 class SimConfig:
     # --- experiment profile ---
-    # "default": preserve the repo's general paired experiment behavior
+    # "default": run the general paired matrix with THDQN and PPO schedulers,
+    # each evaluated against DQN and POMCP maintenance
     # "thesis_ppo_maint": thesis main experiment with fixed PPO scheduler,
     # unrestricted maintenance comparison (DQN vs POMCP), and long horizon
     # "thesis_ppo_maint_short": short-horizon PPO maintenance comparison
@@ -283,7 +284,7 @@ class SimConfig:
 
     # scheduler algorithm
     SCHEDULER_MODE: str = "THDQN"
-    TRAIN_SCHEDULER_MODES: tuple = ("THDQN",)
+    TRAIN_SCHEDULER_MODES: tuple = ("THDQN", "PPO")
     SCHED_REGIME_FEATURE_MODE: str = "oracle"
     SCHEDULER_STATE_DIM: int = 15
     THDQN_LOW_STATE_MODE: str = "pruned"
@@ -301,6 +302,12 @@ class SimConfig:
     THDQN_DQN_HIGH_HEALTH_CM_H: float = 0.70
     THDQN_DQN_POST_IM_GRACE_H: float = 0.60
     PPO_DEFAULT_VARIANT: str = "PPO_ENTROPY"
+    PPO_DQN_CM_BLOCK_H: float = 0.60
+    PPO_POMCP_CM_BLOCK_H: float = 0.65
+    THDQN_POMCP_CM_BLOCK_H: float = 0.60
+    PPO_POMCP_FORCE_CM_H: float = 0.18
+    THDQN_POMCP_FORCE_CM_H: float = 0.20
+    PPO_TRAIN_TEMPERATURE: float = 1.15
     PPO_SCHED_REWARD_GOAL: int = 2
     PPO_SCHED_REWARD_VERSION: str = "legacy_balanced"
     PPO_EFFICIENCY_MAINT_W: float = 0.15
@@ -319,7 +326,7 @@ class SimConfig:
 
     # paired experiment runner
     EXPERIMENT_SEEDS: tuple = (42,)
-    TRAIN_MAINT_MODES: tuple = ("DQN",)
+    TRAIN_MAINT_MODES: tuple = ("DQN", "POMCP")
     TRAIN_POLICY_ROUTES: tuple = ("region_off",)
     SCENARIO_LOCK_SCOPE: str = "full"
     ENABLE_OOD_DIAGNOSTIC_EVAL: bool = False
