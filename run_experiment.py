@@ -121,6 +121,64 @@ def canonical_scheduler_mode(scheduler_mode: Optional[str]) -> str:
     return "THDQN"
 
 
+def strip_ppo_reward_suffix(scheduler_mode: Optional[str]) -> str:
+    mode = str(scheduler_mode or "PPO").strip().upper()
+    for suffix in ("_LEGACY", "_EFFICIENCY"):
+        if mode.endswith(suffix):
+            return mode[: -len(suffix)]
+    return mode
+
+
+def canonical_ppo_variant(cfg: SimConfig, scheduler_mode: Optional[str] = None) -> str:
+    mode = strip_ppo_reward_suffix(scheduler_mode or getattr(cfg, "SCHEDULER_MODE", "PPO"))
+    default_variant = str(getattr(cfg, "PPO_DEFAULT_VARIANT", "PPO_ENTROPY")).strip().upper() or "PPO_ENTROPY"
+    if mode == "PPO":
+        mode = default_variant
+    if mode in {"PPO_BASE", "PPO_ENTROPY", "PPO_CONSERVATIVE", "PPO_CONSERVATIVE_LR", "PPO_BALANCED_CTX"}:
+        return mode
+    return default_variant
+
+
+def apply_scheduler_mode_runtime_overrides(cfg: SimConfig, scheduler_mode: Optional[str]) -> SimConfig:
+    mode = str(scheduler_mode or getattr(cfg, "SCHEDULER_MODE", "THDQN")).strip().upper()
+    cfg.SCHEDULER_MODE = mode
+    if canonical_scheduler_mode(mode) != "PPO":
+        return cfg
+
+    ppo_variant = canonical_ppo_variant(cfg, mode)
+    if ppo_variant == "PPO_BASE":
+        cfg.PPO_LR = 3e-4
+        cfg.PPO_ENTROPY_COEF = 0.01
+        cfg.PPO_CLIP = 0.20
+        cfg.PPO_EPOCHS = 4
+        cfg.PPO_MINIBATCH = 64
+    elif ppo_variant == "PPO_ENTROPY":
+        cfg.PPO_LR = 3e-4
+        cfg.PPO_ENTROPY_COEF = 0.03
+        cfg.PPO_CLIP = 0.20
+        cfg.PPO_EPOCHS = 4
+        cfg.PPO_MINIBATCH = 64
+    elif ppo_variant == "PPO_CONSERVATIVE":
+        cfg.PPO_LR = 3e-4
+        cfg.PPO_ENTROPY_COEF = 0.03
+        cfg.PPO_CLIP = 0.15
+        cfg.PPO_EPOCHS = 2
+        cfg.PPO_MINIBATCH = 64
+    elif ppo_variant == "PPO_CONSERVATIVE_LR":
+        cfg.PPO_LR = 1e-4
+        cfg.PPO_ENTROPY_COEF = 0.03
+        cfg.PPO_CLIP = 0.15
+        cfg.PPO_EPOCHS = 2
+        cfg.PPO_MINIBATCH = 64
+    elif ppo_variant == "PPO_BALANCED_CTX":
+        cfg.PPO_LR = 1.5e-4
+        cfg.PPO_ENTROPY_COEF = 0.03
+        cfg.PPO_CLIP = 0.20
+        cfg.PPO_EPOCHS = 3
+        cfg.PPO_MINIBATCH = 64
+    return cfg
+
+
 def effective_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = None) -> str:
     raw = profile_override if profile_override is not None else getattr(cfg, "EXPERIMENT_PROFILE", "default")
     profile = str(raw).strip().lower()
@@ -183,6 +241,38 @@ def maintenance_family_for_mode(maint_mode: str) -> str:
     return "other"
 
 
+def maintenance_constraint_profile(
+    cfg: SimConfig,
+    *,
+    maint_mode: Optional[str] = None,
+    scheduler_mode: Optional[str] = None,
+    enforce_region: Optional[bool] = None,
+) -> Dict[str, Any]:
+    mode = str(maint_mode or getattr(cfg, "MAINT_MODE", "DQN")).upper()
+    sched_mode = str(scheduler_mode or getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
+    unrestricted = not bool(
+        getattr(cfg, "ENFORCE_REGION_POLICY", True) if enforce_region is None else enforce_region
+    )
+    profile: Dict[str, Any] = {
+        "flat_dqn_cm_block_h": None,
+        "pomcp_cm_block_h": float(getattr(cfg, "POMCP_MAINT_ACTION_MAX_H", 0.40)),
+        "pomcp_force_cm_h": None,
+    }
+    if not unrestricted:
+        return profile
+    canonical_sched = canonical_scheduler_mode(sched_mode)
+    if canonical_sched == "PPO" and mode == "DQN":
+        profile["flat_dqn_cm_block_h"] = float(getattr(cfg, "PPO_DQN_CM_BLOCK_H", 0.60))
+    elif mode == "POMCP":
+        if canonical_sched == "PPO":
+            profile["pomcp_cm_block_h"] = float(getattr(cfg, "PPO_POMCP_CM_BLOCK_H", 0.65))
+            profile["pomcp_force_cm_h"] = float(getattr(cfg, "PPO_POMCP_FORCE_CM_H", 0.18))
+        elif canonical_sched == "THDQN":
+            profile["pomcp_cm_block_h"] = float(getattr(cfg, "THDQN_POMCP_CM_BLOCK_H", 0.60))
+            profile["pomcp_force_cm_h"] = float(getattr(cfg, "THDQN_POMCP_FORCE_CM_H", 0.20))
+    return profile
+
+
 def scheduler_fixed_mode_for_profile(cfg: SimConfig) -> str:
     profile = effective_experiment_profile(cfg)
     if profile in {"thesis_ppo_maint", "thesis_ppo_maint_short", "thesis_ppo_reward_ablation"}:
@@ -201,6 +291,10 @@ def horizon_mode_for_profile(cfg: SimConfig) -> str:
 
 def scheduler_reward_version_for_mode(cfg: SimConfig, scheduler_mode: Optional[str] = None) -> str:
     mode = str(scheduler_mode or getattr(cfg, "SCHEDULER_MODE", "THDQN")).strip().upper()
+    if mode.endswith("_LEGACY"):
+        return "legacy_balanced"
+    if mode.endswith("_EFFICIENCY"):
+        return "efficiency_balanced"
     if mode == "PPO_LEGACY":
         return "legacy_balanced"
     if mode == "PPO_EFFICIENCY":
@@ -710,6 +804,11 @@ def default_maint_action_meta(action: Optional[int] = None) -> Dict[str, Any]:
         "type_penalty_active": False,
         "post_im_grace_active": False,
         "post_im_grace_forced_dn": False,
+        "flat_dqn_cm_remap": False,
+        "flat_dqn_cm_original_action": "",
+        "flat_dqn_cm_remap_to": "",
+        "pomcp_cm_blocked": False,
+        "pomcp_force_cm": False,
     }
 
 
@@ -1305,19 +1404,28 @@ def _pomcp_safety_filtered_actions(
     enforce_region: bool,
     mode: str,
 ) -> Tuple[List[int], Dict[str, Any]]:
+    constraint_profile = maintenance_constraint_profile(
+        cfg,
+        maint_mode=mode,
+        scheduler_mode=getattr(cfg, "SCHEDULER_MODE", "THDQN"),
+        enforce_region=enforce_region,
+    )
     base_allowed = filter_non_improving_im(
         env,
         mid,
         h_state,
         allowed_actions_by_region(h_state, cfg, enforce_region),
     )
-    max_h = float(getattr(cfg, "POMCP_MAINT_ACTION_MAX_H", 0.40))
+    max_h = float(constraint_profile.get("pomcp_cm_block_h", getattr(cfg, "POMCP_MAINT_ACTION_MAX_H", 0.40)))
+    force_cm_h = constraint_profile.get("pomcp_force_cm_h")
     info: Dict[str, Any] = {
         "im_invalid_flag": bool(1 not in base_allowed),
         "dn_imminent_breakdown_veto": False,
         "cm_emergency_override": False,
         "safety_filtered_actions": [],
         "allowed_actions": list(base_allowed),
+        "pomcp_cm_blocked": False,
+        "pomcp_force_cm": False,
     }
     if not pomcp_unrestricted_safety_filter_enabled(mode, cfg, enforce_region):
         return list(base_allowed), info
@@ -1329,6 +1437,7 @@ def _pomcp_safety_filtered_actions(
             allowed = [a for a in allowed if a != 2]
             cm_blocked_high_health = True
             info["safety_filtered_actions"].append("CM")
+            info["pomcp_cm_blocked"] = True
 
     if 0 in allowed:
         idx_before = env.operating_index_from_rul(mid, h_state)
@@ -1345,6 +1454,17 @@ def _pomcp_safety_filtered_actions(
             allowed = [a for a in allowed if a != 0]
             info["dn_imminent_breakdown_veto"] = True
             info["safety_filtered_actions"].append("DN")
+
+    if (
+        info["dn_imminent_breakdown_veto"]
+        and force_cm_h is not None
+        and float(h_state) <= float(force_cm_h)
+        and 2 in allowed
+    ):
+        if 1 in allowed:
+            info["safety_filtered_actions"].append("IM")
+        allowed = [2]
+        info["pomcp_force_cm"] = True
 
     if info["im_invalid_flag"]:
         info["safety_filtered_actions"].append("IM")
@@ -1487,6 +1607,11 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
             rec.setdefault("type_penalty_active", False)
             rec.setdefault("post_im_grace_active", False)
             rec.setdefault("post_im_grace_forced_dn", False)
+            rec.setdefault("flat_dqn_cm_remap", False)
+            rec.setdefault("flat_dqn_cm_original_action", "")
+            rec.setdefault("flat_dqn_cm_remap_to", "")
+            rec.setdefault("pomcp_cm_blocked", False)
+            rec.setdefault("pomcp_force_cm", False)
             rec.setdefault("safety_filtered_actions", "")
             if rec.get("event") == "maintenance":
                 mid_val = rec.get("mid")
@@ -2014,7 +2139,8 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         "lambda_hat", "ddt_hat", "lambda_true_segment", "ddt_true_segment", "sched_lambda", "sched_ddt", "sched_regime_feature_mode", "combo_segment", "combo_level_idx",
                         "im_invalid_flag", "dn_imminent_breakdown_veto", "cm_emergency_override", "maint_gate_action", "maint_type_action", "maint_need_score",
                         "im_since_cm_norm", "im_repeat_norm", "im_damage_norm", "im_since_cm_raw", "cm_readiness", "cm_preference_penalty_active",
-                        "gate_penalty_active", "type_penalty_active", "post_im_grace_active", "post_im_grace_forced_dn", "safety_filtered_actions",
+                        "gate_penalty_active", "type_penalty_active", "post_im_grace_active", "post_im_grace_forced_dn",
+                        "flat_dqn_cm_remap", "flat_dqn_cm_original_action", "flat_dqn_cm_remap_to", "pomcp_cm_blocked", "pomcp_force_cm", "safety_filtered_actions",
                         "goal", "rule", "dispatched", "op", "job_due", "overdue",
                         "local_urgency", "breakdown_flag", "breakdown_kind", "breakdown_cost", "breakdown_count", "hard_breakdown_count",
                         "stochastic_breakdown_count", "requeued_op_count", "interrupted_proc_time",
@@ -2038,7 +2164,9 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                             row.get("im_since_cm_norm"), row.get("im_repeat_norm"), row.get("im_damage_norm"), row.get("im_since_cm_raw"),
                             row.get("cm_readiness"), row.get("cm_preference_penalty_active"),
                             row.get("gate_penalty_active"), row.get("type_penalty_active"),
-                            row.get("post_im_grace_active"), row.get("post_im_grace_forced_dn"), row.get("safety_filtered_actions"),
+                            row.get("post_im_grace_active"), row.get("post_im_grace_forced_dn"),
+                            row.get("flat_dqn_cm_remap"), row.get("flat_dqn_cm_original_action"), row.get("flat_dqn_cm_remap_to"),
+                            row.get("pomcp_cm_blocked"), row.get("pomcp_force_cm"), row.get("safety_filtered_actions"),
                             row.get("goal"), row.get("rule"), row.get("dispatched"),
                             json.dumps(row.get("op"), separators=(",", ":"), ensure_ascii=True) if row.get("op") is not None else "",
                             row.get("job_due"), row.get("overdue"),
@@ -2105,6 +2233,12 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
                               explore: bool) -> Tuple[int, Dict[str, Any]]:
     mode = mode.upper()
     enforce_region = bool(getattr(cfg, "ENFORCE_REGION_POLICY", True))
+    constraint_profile = maintenance_constraint_profile(
+        cfg,
+        maint_mode=mode,
+        scheduler_mode=getattr(cfg, "SCHEDULER_MODE", "THDQN"),
+        enforce_region=enforce_region,
+    )
     allowed_actions = filter_non_improving_im(env, mid, h_obs, allowed_actions_by_region(h_obs, cfg, enforce_region))
     action_meta: Dict[str, Any] = {
         "im_invalid_flag": bool(1 not in allowed_actions),
@@ -2116,7 +2250,7 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
     }
     if mode == "OFF":
         action = int(allowed_actions[0]) if len(allowed_actions) == 1 else 0
-        action_meta.update(default_maint_action_meta(action))
+        action_meta.update(normalize_maint_action_meta(action_meta, action))
         return action, action_meta
     if mode == "DQN":
         if maint_agent is None:
@@ -2165,6 +2299,26 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
                 action_meta.update(normalize_maint_action_meta(action_meta, action))
             return int(enforce_action_by_region(action, h_obs, cfg, enforce_region)), action_meta
         action = int(maint_agent.act(state, explore=explore, allowed_actions=allowed_actions))
+        flat_cm_block_h = constraint_profile.get("flat_dqn_cm_block_h")
+        if int(action) == 2 and flat_cm_block_h is not None and float(h_obs) > float(flat_cm_block_h):
+            dn_imminent = maintenance_dn_imminent_breakdown(
+                env,
+                mid,
+                h_obs,
+                current_stress,
+                local_urgency,
+                cfg,
+            )
+            if not dn_imminent:
+                baseline_rul = float(getattr(env.machines[mid], "maint_rul_baseline", 1.0))
+                can_use_im = bool(1 in allowed_actions)
+                if can_use_im and hasattr(env, "im_has_positive_gain"):
+                    can_use_im = bool(env.im_has_positive_gain(mid, h_obs, baseline_rul=baseline_rul))
+                remap_action = 1 if can_use_im else 0
+                action_meta["flat_dqn_cm_remap"] = True
+                action_meta["flat_dqn_cm_original_action"] = "CM"
+                action_meta["flat_dqn_cm_remap_to"] = "IM" if remap_action == 1 else "DN"
+                action = int(remap_action)
         action_meta.update(normalize_maint_action_meta(action_meta, action))
         return int(enforce_action_by_region(action, h_obs, cfg, enforce_region)), action_meta
 
@@ -2285,14 +2439,14 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
             action = int(root_allowed_actions[0])
         if action == 1 and not env.im_has_positive_gain(mid, h_obs, baseline_rul=baseline_rul):
             action_meta["safety_filtered_actions"] = sorted(set(list(action_meta["safety_filtered_actions"]) + ["IM"]))
-            action_meta.update(default_maint_action_meta(0))
+            action_meta.update(normalize_maint_action_meta(action_meta, 0))
             return int(enforce_action_by_region(0, h_obs, cfg, enforce_region)), action_meta
-        action_meta.update(default_maint_action_meta(action))
+        action_meta.update(normalize_maint_action_meta(action_meta, action))
         return int(enforce_action_by_region(action, h_obs, cfg, enforce_region)), action_meta
 
     # fallback: conservative threshold rule
     fallback_action = 2 if h_obs < cfg.Hy else 0
-    action_meta.update(default_maint_action_meta(fallback_action))
+    action_meta.update(normalize_maint_action_meta(action_meta, fallback_action))
     return int(enforce_action_by_region(fallback_action, h_obs, cfg, enforce_region)), action_meta
 
 def _make_scheduler_agent(cfg: SimConfig, seed: int, device):
@@ -2328,7 +2482,8 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
                       final_result: Dict[str, Any], compare_type: str = "full_system",
                       scheduler_anchor: str = "none") -> Dict[str, Any]:
     decision_log = list(final_result.get("decision_log", []))
-    maint_counts = summarize_action_counts(extract_maintenance_rows(decision_log), key="kind", values=["DN", "IM", "CM"])
+    maint_rows = extract_maintenance_rows(decision_log)
+    maint_counts = summarize_action_counts(maint_rows, key="kind", values=["DN", "IM", "CM"])
     schedule_summary = summarize_scheduling_strategy(decision_log, env=final_result.get("env"))
     combo_behavior = summarize_combo_conditioned_behavior(decision_log)
     dominant_rule_by_combo, dominant_goal_by_combo = combo_dominant_maps(combo_behavior)
@@ -2337,22 +2492,25 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
     cfg_env = getattr(env, "cfg", None)
     health_summary = summarize_final_machine_health(env)
     scheduler_mode = str(final_result.get("scheduler_mode", "THDQN")).upper()
-    im_invalid_filtered_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("im_invalid_flag")))
-    dn_veto_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("dn_imminent_breakdown_veto")))
-    cm_emergency_override_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("cm_emergency_override")))
-    cm_preference_penalty_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("cm_preference_penalty_active")))
-    gate_dn_count = sum(1 for row in extract_maintenance_rows(decision_log) if str(row.get("maint_gate_action", "")).upper() == "DN")
-    gate_maint_count = sum(1 for row in extract_maintenance_rows(decision_log) if str(row.get("maint_gate_action", "")).upper() == "MAINT")
-    gate_penalty_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("gate_penalty_active")))
-    type_penalty_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("type_penalty_active")))
-    post_im_grace_forced_dn_count = sum(1 for row in extract_maintenance_rows(decision_log) if bool(row.get("post_im_grace_forced_dn")))
+    im_invalid_filtered_count = sum(1 for row in maint_rows if bool(row.get("im_invalid_flag")))
+    dn_veto_count = sum(1 for row in maint_rows if bool(row.get("dn_imminent_breakdown_veto")))
+    cm_emergency_override_count = sum(1 for row in maint_rows if bool(row.get("cm_emergency_override")))
+    cm_preference_penalty_count = sum(1 for row in maint_rows if bool(row.get("cm_preference_penalty_active")))
+    gate_dn_count = sum(1 for row in maint_rows if str(row.get("maint_gate_action", "")).upper() == "DN")
+    gate_maint_count = sum(1 for row in maint_rows if str(row.get("maint_gate_action", "")).upper() == "MAINT")
+    gate_penalty_count = sum(1 for row in maint_rows if bool(row.get("gate_penalty_active")))
+    type_penalty_count = sum(1 for row in maint_rows if bool(row.get("type_penalty_active")))
+    post_im_grace_forced_dn_count = sum(1 for row in maint_rows if bool(row.get("post_im_grace_forced_dn")))
+    flat_dqn_cm_remap_count = sum(1 for row in maint_rows if bool(row.get("flat_dqn_cm_remap")))
+    pomcp_cm_block_count = sum(1 for row in maint_rows if bool(row.get("pomcp_cm_blocked")))
+    pomcp_force_cm_count = sum(1 for row in maint_rows if bool(row.get("pomcp_force_cm")))
     high_health_cm_h = float(getattr(cfg_env, "THDQN_DQN_HIGH_HEALTH_CM_H", 0.70))
     high_health_cm_count = sum(
-        1 for row in extract_maintenance_rows(decision_log)
+        1 for row in maint_rows
         if str(row.get("kind", "")).upper() == "CM" and float(row.get("h", -1.0)) > high_health_cm_h
     )
     cm_after_single_im_count = sum(
-        1 for row in extract_maintenance_rows(decision_log)
+        1 for row in maint_rows
         if str(row.get("kind", "")).upper() == "CM"
         and int(float(row.get("im_count", 0) or 0)) == 1
         and float(row.get("im_damage", 0.0) or 0.0) == 0.0
@@ -2413,6 +2571,8 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "combo_behavior": combo_behavior,
         "dominant_rule_by_combo": dominant_rule_by_combo,
         "dominant_goal_by_combo": dominant_goal_by_combo,
+        "rule_unique_count": int(schedule_summary.get("rule_unique_count", 0)),
+        "rule_top1_share": float(schedule_summary.get("rule_top1_share", 0.0)),
         "rule_distinct_count": int(rule_diversity["rule_distinct_count"]),
         "rule_avg_dominant_share": float(rule_diversity["rule_avg_dominant_share"]),
         "rule_mean_pairwise_jsd": float(rule_diversity["rule_mean_pairwise_jsd"]),
@@ -2430,8 +2590,12 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "gate_penalty_count": int(gate_penalty_count),
         "type_penalty_count": int(type_penalty_count),
         "post_im_grace_forced_dn_count": int(post_im_grace_forced_dn_count),
+        "flat_dqn_cm_remap_count": int(flat_dqn_cm_remap_count),
+        "pomcp_cm_block_count": int(pomcp_cm_block_count),
+        "pomcp_force_cm_count": int(pomcp_force_cm_count),
         "high_health_cm_count": int(high_health_cm_count),
         "cm_after_single_im_count": int(cm_after_single_im_count),
+        "ppo_train_temperature": float(getattr(cfg_env, "PPO_TRAIN_TEMPERATURE", 1.0)),
         "maint_dn": int(maint_counts.get("DN", 0)),
         "maint_im": int(maint_counts.get("IM", 0)),
         "maint_cm": int(maint_counts.get("CM", 0)),
@@ -2480,6 +2644,8 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
         "current_stress_mean", "current_stress_max",
         "final_health_mean", "final_health_min", "final_health_p25",
         "final_low_health_count_h20", "final_low_health_count_h10",
+        "flat_dqn_cm_remap_count", "pomcp_cm_block_count", "pomcp_force_cm_count",
+        "rule_unique_count", "rule_top1_share",
         "rule_distinct_count", "rule_avg_dominant_share", "rule_mean_pairwise_jsd",
     ]
     for mode in ("DQN", "POMCP"):
@@ -2510,6 +2676,11 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
         "final_health_p25": "delta_final_health_p25",
         "final_low_health_count_h20": "delta_final_low_health_count_h20",
         "final_low_health_count_h10": "delta_final_low_health_count_h10",
+        "flat_dqn_cm_remap_count": "delta_flat_dqn_cm_remap_count",
+        "pomcp_cm_block_count": "delta_pomcp_cm_block_count",
+        "pomcp_force_cm_count": "delta_pomcp_force_cm_count",
+        "rule_unique_count": "delta_rule_unique_count",
+        "rule_top1_share": "delta_rule_top1_share",
         "rule_distinct_count": "delta_rule_distinct_count",
         "rule_avg_dominant_share": "delta_rule_avg_dominant_share",
         "rule_mean_pairwise_jsd": "delta_rule_mean_pairwise_jsd",
@@ -2566,9 +2737,14 @@ def _finalize_compare_summary(summary: Dict[str, Any], **extra: Any) -> Dict[str
     finalized["delta_breakdown_cost"] = float(delta_metrics.get("breakdown_cost", 0.0))
     finalized["delta_requeued_op_count"] = float(delta_metrics.get("requeued_op_count", 0.0))
     finalized["delta_interrupted_proc_time"] = float(delta_metrics.get("interrupted_proc_time", 0.0))
+    finalized["delta_rule_unique_count"] = float(delta_metrics.get("rule_unique_count", 0.0))
+    finalized["delta_rule_top1_share"] = float(delta_metrics.get("rule_top1_share", 0.0))
     finalized["delta_rule_distinct_count"] = float(delta_metrics.get("rule_distinct_count", 0.0))
     finalized["delta_rule_avg_dominant_share"] = float(delta_metrics.get("rule_avg_dominant_share", 0.0))
     finalized["delta_rule_mean_pairwise_jsd"] = float(delta_metrics.get("rule_mean_pairwise_jsd", 0.0))
+    finalized["delta_flat_dqn_cm_remap_count"] = float(delta_metrics.get("flat_dqn_cm_remap_count", 0.0))
+    finalized["delta_pomcp_cm_block_count"] = float(delta_metrics.get("pomcp_cm_block_count", 0.0))
+    finalized["delta_pomcp_force_cm_count"] = float(delta_metrics.get("pomcp_force_cm_count", 0.0))
     finalized["delta_final_health_mean"] = float(delta_metrics.get("final_health_mean", 0.0))
     finalized["delta_final_health_min"] = float(delta_metrics.get("final_health_min", 0.0))
     finalized["delta_final_health_p25"] = float(delta_metrics.get("final_health_p25", 0.0))
@@ -2660,7 +2836,7 @@ def train_one_mode(
 ) -> Dict[str, Any]:
     cfg = copy.deepcopy(base_cfg)
     cfg.SEED = int(seed)
-    cfg.SCHEDULER_MODE = str(scheduler_mode).upper()
+    apply_scheduler_mode_runtime_overrides(cfg, str(scheduler_mode).upper())
     cfg.MAINT_MODE = str(mode).upper()
     cfg.CKPT_DIR = str(ckpt_dir)
     cfg.ENFORCE_REGION_POLICY = bool(train_enforce_region)
@@ -3399,6 +3575,8 @@ def train_one_mode(
         "combo_behavior": official_combo_behavior,
         "dominant_rule_by_combo": official_dominant_rule_by_combo,
         "dominant_goal_by_combo": official_dominant_goal_by_combo,
+        "rule_unique_count": int(official_sched_summary.get("rule_unique_count", 0)),
+        "rule_top1_share": float(official_sched_summary.get("rule_top1_share", 0.0)),
         "rule_distinct_count": int(official_rule_diversity["rule_distinct_count"]),
         "rule_avg_dominant_share": float(official_rule_diversity["rule_avg_dominant_share"]),
         "rule_mean_pairwise_jsd": float(official_rule_diversity["rule_mean_pairwise_jsd"]),
@@ -3416,6 +3594,9 @@ def train_one_mode(
         "gate_penalty_count": int(sum(1 for row in official_maint_rows if bool(row.get("gate_penalty_active")))),
         "type_penalty_count": int(sum(1 for row in official_maint_rows if bool(row.get("type_penalty_active")))),
         "post_im_grace_forced_dn_count": int(sum(1 for row in official_maint_rows if bool(row.get("post_im_grace_forced_dn")))),
+        "flat_dqn_cm_remap_count": int(sum(1 for row in official_maint_rows if bool(row.get("flat_dqn_cm_remap")))),
+        "pomcp_cm_block_count": int(sum(1 for row in official_maint_rows if bool(row.get("pomcp_cm_blocked")))),
+        "pomcp_force_cm_count": int(sum(1 for row in official_maint_rows if bool(row.get("pomcp_force_cm")))),
         "high_health_cm_count": int(sum(
             1 for row in official_maint_rows
             if str(row.get("kind", "")).upper() == "CM"
@@ -3427,6 +3608,7 @@ def train_one_mode(
             and int(float(row.get("im_count", 0) or 0)) == 1
             and float(row.get("im_damage", 0.0) or 0.0) == 0.0
         )),
+        "ppo_train_temperature": float(getattr(cfg, "PPO_TRAIN_TEMPERATURE", 1.0)),
     }
     write_summary_files(outdir, f"summary_{ts}_{maint_mode_tag}_{train_policy_tag}", summary_row)
 

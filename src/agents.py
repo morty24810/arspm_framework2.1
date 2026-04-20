@@ -343,10 +343,12 @@ class PPOSchedulerAgent:
             x = torch.tensor(s[None], dtype=torch.float32, device=self.device)
             logits = self.actor(x)
             value = float(self.critic(x).squeeze(1).item())
-            dist = Categorical(logits=logits)
             if explore:
+                temperature = max(float(getattr(self.cfg, "PPO_TRAIN_TEMPERATURE", 1.0)), 1e-6)
+                dist = Categorical(logits=logits / temperature)
                 action = int(dist.sample().item())
             else:
+                dist = Categorical(logits=logits)
                 action = int(torch.argmax(logits, dim=1).item())
             logprob = float(dist.log_prob(torch.tensor(action, device=self.device)).item())
         return None, action, logprob, value
