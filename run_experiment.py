@@ -121,6 +121,64 @@ def canonical_scheduler_mode(scheduler_mode: Optional[str]) -> str:
     return "THDQN"
 
 
+def strip_ppo_reward_suffix(scheduler_mode: Optional[str]) -> str:
+    mode = str(scheduler_mode or "PPO").strip().upper()
+    for suffix in ("_LEGACY", "_EFFICIENCY"):
+        if mode.endswith(suffix):
+            return mode[: -len(suffix)]
+    return mode
+
+
+def canonical_ppo_variant(cfg: SimConfig, scheduler_mode: Optional[str] = None) -> str:
+    mode = strip_ppo_reward_suffix(scheduler_mode or getattr(cfg, "SCHEDULER_MODE", "PPO"))
+    default_variant = str(getattr(cfg, "PPO_DEFAULT_VARIANT", "PPO_ENTROPY")).strip().upper() or "PPO_ENTROPY"
+    if mode == "PPO":
+        mode = default_variant
+    if mode in {"PPO_BASE", "PPO_ENTROPY", "PPO_CONSERVATIVE", "PPO_CONSERVATIVE_LR", "PPO_BALANCED_CTX"}:
+        return mode
+    return default_variant
+
+
+def apply_scheduler_mode_runtime_overrides(cfg: SimConfig, scheduler_mode: Optional[str]) -> SimConfig:
+    mode = str(scheduler_mode or getattr(cfg, "SCHEDULER_MODE", "THDQN")).strip().upper()
+    cfg.SCHEDULER_MODE = mode
+    if canonical_scheduler_mode(mode) != "PPO":
+        return cfg
+
+    ppo_variant = canonical_ppo_variant(cfg, mode)
+    if ppo_variant == "PPO_BASE":
+        cfg.PPO_LR = 3e-4
+        cfg.PPO_ENTROPY_COEF = 0.01
+        cfg.PPO_CLIP = 0.20
+        cfg.PPO_EPOCHS = 4
+        cfg.PPO_MINIBATCH = 64
+    elif ppo_variant == "PPO_ENTROPY":
+        cfg.PPO_LR = 3e-4
+        cfg.PPO_ENTROPY_COEF = 0.03
+        cfg.PPO_CLIP = 0.20
+        cfg.PPO_EPOCHS = 4
+        cfg.PPO_MINIBATCH = 64
+    elif ppo_variant == "PPO_CONSERVATIVE":
+        cfg.PPO_LR = 3e-4
+        cfg.PPO_ENTROPY_COEF = 0.03
+        cfg.PPO_CLIP = 0.15
+        cfg.PPO_EPOCHS = 2
+        cfg.PPO_MINIBATCH = 64
+    elif ppo_variant == "PPO_CONSERVATIVE_LR":
+        cfg.PPO_LR = 1e-4
+        cfg.PPO_ENTROPY_COEF = 0.03
+        cfg.PPO_CLIP = 0.15
+        cfg.PPO_EPOCHS = 2
+        cfg.PPO_MINIBATCH = 64
+    elif ppo_variant == "PPO_BALANCED_CTX":
+        cfg.PPO_LR = 1.5e-4
+        cfg.PPO_ENTROPY_COEF = 0.03
+        cfg.PPO_CLIP = 0.20
+        cfg.PPO_EPOCHS = 3
+        cfg.PPO_MINIBATCH = 64
+    return cfg
+
+
 def effective_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = None) -> str:
     raw = profile_override if profile_override is not None else getattr(cfg, "EXPERIMENT_PROFILE", "default")
     profile = str(raw).strip().lower()
@@ -201,6 +259,10 @@ def horizon_mode_for_profile(cfg: SimConfig) -> str:
 
 def scheduler_reward_version_for_mode(cfg: SimConfig, scheduler_mode: Optional[str] = None) -> str:
     mode = str(scheduler_mode or getattr(cfg, "SCHEDULER_MODE", "THDQN")).strip().upper()
+    if mode.endswith("_LEGACY"):
+        return "legacy_balanced"
+    if mode.endswith("_EFFICIENCY"):
+        return "efficiency_balanced"
     if mode == "PPO_LEGACY":
         return "legacy_balanced"
     if mode == "PPO_EFFICIENCY":
@@ -2660,7 +2722,7 @@ def train_one_mode(
 ) -> Dict[str, Any]:
     cfg = copy.deepcopy(base_cfg)
     cfg.SEED = int(seed)
-    cfg.SCHEDULER_MODE = str(scheduler_mode).upper()
+    apply_scheduler_mode_runtime_overrides(cfg, str(scheduler_mode).upper())
     cfg.MAINT_MODE = str(mode).upper()
     cfg.CKPT_DIR = str(ckpt_dir)
     cfg.ENFORCE_REGION_POLICY = bool(train_enforce_region)

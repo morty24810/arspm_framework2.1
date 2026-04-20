@@ -300,6 +300,7 @@ class SimConfig:
     THDQN_DQN_IM_LATE_PENALTY: float = 4.0
     THDQN_DQN_HIGH_HEALTH_CM_H: float = 0.70
     THDQN_DQN_POST_IM_GRACE_H: float = 0.60
+    PPO_DEFAULT_VARIANT: str = "PPO_ENTROPY"
     PPO_SCHED_REWARD_GOAL: int = 2
     PPO_SCHED_REWARD_VERSION: str = "legacy_balanced"
     PPO_EFFICIENCY_MAINT_W: float = 0.15

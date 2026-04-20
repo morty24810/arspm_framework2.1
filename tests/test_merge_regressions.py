@@ -19,9 +19,11 @@ from infer_demo import (
 from run_experiment import (
     _sync_idle_after_maintenance,
     _build_run_record,
+    apply_scheduler_mode_runtime_overrides,
     apply_experiment_profile,
     build_episode_combos,
     build_maintenance_state,
+    canonical_ppo_variant,
     effective_base_degradation_rate,
     effective_degradation_bounds,
     filter_non_improving_im,
@@ -41,7 +43,9 @@ from run_experiment import (
     compute_train_jobs_target,
     compute_eval_jobs_target,
     scheduling_reward,
+    scheduler_reward_version_for_mode,
     select_maintenance_action,
+    strip_ppo_reward_suffix,
     summarize_final_machine_health,
 )
 from src.agents import HierMaintenanceAgentDDQN, MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
@@ -543,6 +547,40 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN",))
         self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
         self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
+
+    def test_plain_ppo_now_uses_entropy_variant_runtime_overrides(self):
+        cfg = SimConfig()
+        cfg.PPO_ENTROPY_COEF = 0.01
+        cfg.SCHEDULER_STATE_DIM = 15
+        apply_scheduler_mode_runtime_overrides(cfg, "PPO")
+
+        self.assertEqual(cfg.SCHEDULER_MODE, "PPO")
+        self.assertEqual(canonical_ppo_variant(cfg, "PPO"), "PPO_ENTROPY")
+        self.assertEqual(cfg.SCHEDULER_STATE_DIM, 15)
+        self.assertAlmostEqual(cfg.PPO_LR, 3e-4)
+        self.assertAlmostEqual(cfg.PPO_ENTROPY_COEF, 0.03)
+        self.assertAlmostEqual(cfg.PPO_CLIP, 0.20)
+        self.assertEqual(cfg.PPO_EPOCHS, 4)
+        self.assertEqual(cfg.PPO_MINIBATCH, 64)
+
+    def test_ppo_reward_suffixes_keep_reward_mapping_separate_from_variant(self):
+        cfg = SimConfig()
+
+        self.assertEqual(strip_ppo_reward_suffix("PPO_ENTROPY_LEGACY"), "PPO_ENTROPY")
+        self.assertEqual(strip_ppo_reward_suffix("PPO_CONSERVATIVE_EFFICIENCY"), "PPO_CONSERVATIVE")
+        self.assertEqual(scheduler_reward_version_for_mode(cfg, "PPO_ENTROPY_LEGACY"), "legacy_balanced")
+        self.assertEqual(scheduler_reward_version_for_mode(cfg, "PPO_ENTROPY_EFFICIENCY"), "efficiency_balanced")
+
+    def test_default_ppo_variant_can_be_overridden_without_touching_reward_mode(self):
+        cfg = SimConfig()
+        cfg.PPO_DEFAULT_VARIANT = "PPO_CONSERVATIVE"
+        apply_scheduler_mode_runtime_overrides(cfg, "PPO_EFFICIENCY")
+
+        self.assertEqual(canonical_ppo_variant(cfg, "PPO_EFFICIENCY"), "PPO_CONSERVATIVE")
+        self.assertEqual(scheduler_reward_version_for_mode(cfg, "PPO_EFFICIENCY"), "efficiency_balanced")
+        self.assertAlmostEqual(cfg.PPO_ENTROPY_COEF, 0.03)
+        self.assertAlmostEqual(cfg.PPO_CLIP, 0.15)
+        self.assertEqual(cfg.PPO_EPOCHS, 2)
 
     def test_hier_maintenance_arch_only_enables_for_thdqn_dqn_unrestricted(self):
         cfg = SimConfig()
