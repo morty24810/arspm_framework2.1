@@ -31,6 +31,8 @@ from run_experiment import (
     effective_base_degradation_rate,
     effective_degradation_rate_scale,
     experiment_result_metadata,
+    maintenance_mode_family,
+    maintenance_variant_for_context,
     make_rng,
     normalize_jobs_target_for_combo_mode,
     write_summary_files,
@@ -48,7 +50,7 @@ def parse_args():
     parser.add_argument("--randomize_combos", type=int, default=0) # randomize lambda/DDT combos
     parser.add_argument("--segment_jobs", type=int, default=None) # jobs per combo segment
     parser.add_argument("--combo_plan", type=str, default="") # lam:ddt[:segments],lam:ddt[:segments]
-    parser.add_argument("--maint_mode", type=str, default="POMCP", choices=["DQN", "POMCP", "OFF"]) # maintenance mode
+    parser.add_argument("--maint_mode", type=str, default="pomcp", choices=["flat_ddqn", "hier_ddqn", "pomcp", "DQN", "POMCP", "OFF"]) # maintenance mode
     parser.add_argument("--compare_maint_modes", type=int, default=0, choices=[0, 1]) # compare POMCP vs DQN
     parser.add_argument("--dqn_ckpt", type=str, default="") # optional DQN maintenance checkpoint for compare mode
     parser.add_argument("--compare_unrestricted", type=int, default=1, choices=[0, 1]) # run constrained vs unrestricted side-by-side
@@ -111,7 +113,8 @@ def make_sched_agent(cfg: SimConfig, seed: int, device: torch.device,
 def build_infer_route_result(metrics: Dict[str, Any], env: Any, overdue_stats: Dict[str, Any],
                              policy_label: str, maint_mode_tag: str) -> Dict[str, Any]:
     cfg_env = getattr(env, "cfg", None)
-    maint_mode = maint_mode_tag.replace("maint_", "").upper()
+    maint_variant = maint_mode_tag.replace("maint_", "").lower()
+    maint_mode = maintenance_mode_family(maint_variant)
     return {
         "metrics": metrics,
         "env": env,
@@ -119,9 +122,11 @@ def build_infer_route_result(metrics: Dict[str, Any], env: Any, overdue_stats: D
         "policy_label": policy_label,
         "decision_log": list(getattr(env, "last_decision_log", [])),
         "maint_mode_tag": maint_mode_tag,
+        "maint_variant": maint_variant,
+        "maint_arch": "pomcp" if maint_variant == "pomcp" else maint_variant,
         **experiment_result_metadata(
             cfg_env if cfg_env is not None else SimConfig(),
-            maint_mode=maint_mode,
+            maint_mode=maint_variant,
             compare_type="full_system",
             scheduler_mode=str(getattr(env, "last_scheduler_mode", "THDQN")).upper(),
             train_policy_tag=getattr(env, "last_train_policy_tag", None),
@@ -148,7 +153,7 @@ def build_infer_summary_row(ts: str, episode_idx: int, cfg_eval: SimConfig, seed
         "episode": int(episode_idx),
         **experiment_result_metadata(
             cfg_eval,
-            maint_mode=maint_mode,
+            maint_mode=getattr(cfg_eval, "MAINT_VARIANT", maint_mode),
             compare_type="full_system",
             scheduler_mode=cfg_eval.SCHEDULER_MODE,
             train_policy_tag=policy_tag,
@@ -156,7 +161,8 @@ def build_infer_summary_row(ts: str, episode_idx: int, cfg_eval: SimConfig, seed
         ),
         "policy_tag": policy_tag,
         "policy_label": policy_label,
-        "maint_mode": str(maint_mode),
+        "maint_mode": maintenance_mode_family(maint_mode),
+        "maint_variant": str(getattr(cfg_eval, "MAINT_VARIANT", maint_mode)),
         "maint_mode_tag": maint_mode_tag,
         "scheduler_mode": str(cfg_eval.SCHEDULER_MODE).upper(),
         "scheduler_mode_tag": f"sched_{str(cfg_eval.SCHEDULER_MODE).lower()}",
@@ -335,7 +341,7 @@ def main():
     _, resolved_machine_curve_ids = apply_machine_set_mode(cfg)
     if args.machines is not None:
         cfg.NUM_MACHINES = int(args.machines)
-    cfg.MAINT_MODE = str(args.maint_mode).upper()
+    requested_maint_mode = str(args.maint_mode).strip()
     cfg.ENFORCE_REGION_POLICY = True
     checkpoint_enforce_region = bool(meta_cfg.get("ENFORCE_REGION_POLICY", True))
     cfg.COMBO_RANDOMIZE = bool(int(args.randomize_combos))
@@ -352,21 +358,11 @@ def main():
     print("device:", device)
 
     compare_maint_modes = bool(int(args.compare_maint_modes))
-    if compare_maint_modes:
-        if cfg.MAINT_MODE == "OFF":
-            raise ValueError("--compare_maint_modes=1 does not support maint_mode=OFF.")
-        if not args.dqn_ckpt:
-            raise ValueError("--compare_maint_modes=1 requires --dqn_ckpt.")
-        dqn_ckpt_path = Path(args.dqn_ckpt)
-        if not dqn_ckpt_path.exists():
-            raise FileNotFoundError(f"DQN maintenance checkpoint not found: {dqn_ckpt_path}")
-        maint_modes = [cfg.MAINT_MODE]
-        for mode in ("POMCP", "DQN"):
-            if mode not in maint_modes:
-                maint_modes.append(mode)
-    else:
-        dqn_ckpt_path = None
-        maint_modes = [cfg.MAINT_MODE]
+    dqn_ckpt_path = Path(args.dqn_ckpt) if args.dqn_ckpt else None
+    if compare_maint_modes and dqn_ckpt_path is None:
+        raise ValueError("--compare_maint_modes=1 requires --dqn_ckpt.")
+    if dqn_ckpt_path is not None and not dqn_ckpt_path.exists():
+        raise FileNotFoundError(f"DQN maintenance checkpoint not found: {dqn_ckpt_path}")
 
     machine_curve_ids = list(resolved_machine_curve_ids)
     _, degr, rul = build_degradation_and_rul(cfg, machine_curve_ids)
@@ -383,13 +379,24 @@ def main():
         cfg.THDQN_LOW_STATE_MODE = str(thdqn_low_state_mode)
     cfg.MAINT_AGENT_ARCH = str(maint_agent_arch)
     cfg.MAINTENANCE_STATE_DIM = int(maint_state_dim)
+    cfg.MAINT_VARIANT = maintenance_variant_for_context(
+        cfg,
+        requested_maint_mode,
+        enforce_region=True,
+        scheduler_mode=cfg.SCHEDULER_MODE,
+    )
+    cfg.MAINT_MODE = maintenance_mode_family(cfg.MAINT_VARIANT)
+    if cfg.MAINT_MODE == "DQN":
+        cfg.MAINT_AGENT_ARCH = str(cfg.MAINT_VARIANT)
     if (
         str(cfg.SCHEDULER_MODE).upper() == "THDQN"
-        and str(cfg.MAINT_MODE).upper() == "DQN"
+        and str(cfg.MAINT_VARIANT).lower() == "hier_ddqn"
         and not checkpoint_enforce_region
         and str(cfg.MAINT_AGENT_ARCH).lower() != "hier_ddqn"
     ):
         raise ValueError("Legacy flat THDQN + DQN + unrestricted maintenance checkpoints are not compatible with the hierarchical maintenance architecture.")
+    if compare_maint_modes and cfg.MAINT_MODE == "OFF":
+        raise ValueError("--compare_maint_modes=1 does not support maint_mode=OFF.")
     maint_agent = make_maint_agent(cfg, cfg.SEED, device)
     sched_agent = make_sched_agent(
         cfg,
@@ -431,10 +438,14 @@ def main():
         maint_agent.qt.eval()
 
     dqn_compare_agent = None
+    compare_dqn_variant = None
     if compare_maint_modes:
         compare_cfg = copy.deepcopy(cfg)
         compare_cfg.MAINT_AGENT_ARCH = infer_maint_agent_arch(dqn_ckpt_path, device)
         compare_cfg.MAINTENANCE_STATE_DIM = infer_maint_state_dim(dqn_ckpt_path, device)
+        compare_cfg.MAINT_VARIANT = str(compare_cfg.MAINT_AGENT_ARCH).lower()
+        compare_cfg.MAINT_MODE = maintenance_mode_family(compare_cfg.MAINT_VARIANT)
+        compare_dqn_variant = str(compare_cfg.MAINT_VARIANT)
         dqn_compare_agent = make_maint_agent(compare_cfg, cfg.SEED + 997, device)
         load_maintenance_only(str(dqn_ckpt_path), dqn_compare_agent, map_location=device, allow_missing_maint=False)
         if isinstance(dqn_compare_agent, HierMaintenanceAgentDDQN):
@@ -445,6 +456,13 @@ def main():
         else:
             dqn_compare_agent.q.eval()
             dqn_compare_agent.qt.eval()
+
+    maint_modes = [str(cfg.MAINT_VARIANT)]
+    if compare_maint_modes:
+        if compare_dqn_variant and compare_dqn_variant not in maint_modes:
+            maint_modes.append(compare_dqn_variant)
+        if "pomcp" not in maint_modes:
+            maint_modes.append("pomcp")
 
     base_outdir = Path(args.outdir)
     base_outdir.mkdir(parents=True, exist_ok=True)
@@ -508,20 +526,29 @@ def main():
         route_modes = [True, False] if int(args.compare_unrestricted) else [True]
         for enforce_region in route_modes:
             route_results.setdefault(build_policy_tag(cfg_eval_base, enforce_region), {})
-            for maint_mode in maint_modes:
+            for maint_variant in maint_modes:
                 cfg_eval = copy.deepcopy(cfg_eval_base)
                 cfg_eval.ENFORCE_REGION_POLICY = enforce_region
-                cfg_eval.MAINT_MODE = maint_mode
+                cfg_eval.MAINT_VARIANT = maintenance_variant_for_context(
+                    cfg_eval,
+                    maint_variant,
+                    enforce_region=enforce_region,
+                    scheduler_mode=cfg_eval.SCHEDULER_MODE,
+                )
+                cfg_eval.MAINT_MODE = maintenance_mode_family(cfg_eval.MAINT_VARIANT)
+                if cfg_eval.MAINT_MODE == "DQN":
+                    cfg_eval.MAINT_AGENT_ARCH = str(cfg_eval.MAINT_VARIANT)
                 policy_tag = build_policy_tag(cfg_eval, enforce_region)
-                maint_mode_tag = build_maint_mode_tag(maint_mode)
-                policy_label = build_policy_context_label(cfg_eval, enforce_region, maint_mode)
+                maint_mode_tag = build_maint_mode_tag(cfg_eval.MAINT_VARIANT)
+                policy_label = build_policy_context_label(cfg_eval, enforce_region, cfg_eval.MAINT_VARIANT)
                 route_rng = random.Random(seed)
                 pomcp_ep = (
                     POMCPPlanner(num_actions=3, gamma=cfg.GAMMA, c_ucb=cfg.POMCP_UCB_C, rng=route_rng)
-                    if maint_mode == "POMCP" else None
+                    if cfg_eval.MAINT_MODE == "POMCP" else None
                 )
-                if maint_mode == "DQN":
-                    maint_agent_eval = dqn_compare_agent if compare_maint_modes else maint_agent
+                if cfg_eval.MAINT_MODE == "DQN":
+                    use_compare_agent = bool(compare_maint_modes and compare_dqn_variant == cfg_eval.MAINT_VARIANT and cfg_eval.MAINT_VARIANT != cfg.MAINT_VARIANT)
+                    maint_agent_eval = dqn_compare_agent if use_compare_agent else maint_agent
                 else:
                     maint_agent_eval = None
 
@@ -538,7 +565,7 @@ def main():
                         rul,
                         sched_agent,
                         maint_agent_eval,
-                        maint_mode,
+                        cfg_eval.MAINT_VARIANT,
                         pomcp_ep,
                         machine_curve_ids,
                         jobs_target=int(jobs_target),
@@ -556,9 +583,9 @@ def main():
                         scenario=scenario,
                         env_rng=make_rng(seed, "infer", ep + 1, policy_tag, "env_breakdown"),
                         rul_obs_rng=make_rng(seed, "infer", ep + 1, policy_tag, "env_obs"),
-                        belief_rng=make_rng(seed, maint_mode, "infer", ep + 1, policy_tag, "belief"),
+                        belief_rng=make_rng(seed, cfg_eval.MAINT_VARIANT, "infer", ep + 1, policy_tag, "belief"),
                     )
-                route_results[policy_tag][maint_mode] = build_infer_route_result(
+                route_results[policy_tag][cfg_eval.MAINT_VARIANT] = build_infer_route_result(
                     metrics,
                     env,
                     overdue_stats,
@@ -573,7 +600,7 @@ def main():
                     jobs_target,
                     policy_tag,
                     policy_label,
-                    maint_mode,
+                    cfg_eval.MAINT_VARIANT,
                     maint_mode_tag,
                     metrics,
                     env,
@@ -590,13 +617,17 @@ def main():
                     f"overdue_ratio={overdue_stats['ratio_ops']:.3f}"
                 )
 
-            if compare_maint_modes and "POMCP" in route_results[policy_tag] and "DQN" in route_results[policy_tag]:
-                primary_mode = cfg.MAINT_MODE if cfg.MAINT_MODE in route_results[policy_tag] else "POMCP"
-                if "DQN" in route_results[policy_tag] and "POMCP" in route_results[policy_tag]:
-                    primary_mode = "DQN"
-                    compare_mode = "POMCP"
-                else:
-                    compare_mode = "DQN" if primary_mode != "DQN" else "POMCP"
+            if compare_maint_modes and "pomcp" in route_results[policy_tag]:
+                primary_mode = str(cfg.MAINT_VARIANT) if str(cfg.MAINT_VARIANT) in route_results[policy_tag] else None
+                compare_mode = "pomcp"
+                if primary_mode == "pomcp":
+                    primary_mode = compare_dqn_variant if compare_dqn_variant in route_results[policy_tag] else None
+                elif primary_mode not in route_results[policy_tag]:
+                    primary_mode = compare_dqn_variant if compare_dqn_variant in route_results[policy_tag] else None
+                if primary_mode is None:
+                    primary_mode = next((mode for mode in route_results[policy_tag].keys() if mode != "pomcp"), None)
+                if primary_mode is None:
+                    continue
                 primary_result = route_results[policy_tag][primary_mode]
                 compare_result = route_results[policy_tag][compare_mode]
                 compare_summary, compare_rows = compare_mode_results(
@@ -613,7 +644,7 @@ def main():
                 compare_stem_parts.append(policy_tag)
                 compare_label = (
                     f"{build_policy_label(cfg_eval_base, enforce_region)} | "
-                    f"Maintenance: {primary_mode} vs {compare_mode}"
+                    f"maintenance: {primary_mode} vs {compare_mode}"
                 )
                 write_mode_comparison_outputs(
                     outdir,
@@ -626,7 +657,11 @@ def main():
         constrained_tag = build_policy_tag(cfg_eval_base, True)
         unrestricted_tag = build_policy_tag(cfg_eval_base, False)
         if constrained_tag in route_results and unrestricted_tag in route_results:
-            for maint_mode in maint_modes:
+            shared_modes = [
+                maint_variant for maint_variant in route_results[constrained_tag].keys()
+                if maint_variant in route_results[unrestricted_tag]
+            ]
+            for maint_mode in shared_modes:
                 if maint_mode not in route_results[constrained_tag] or maint_mode not in route_results[unrestricted_tag]:
                     continue
                 c = route_results[constrained_tag][maint_mode]
@@ -650,7 +685,8 @@ def main():
                 )
                 route_summary["policy_tag"] = f"{constrained_tag}__to__{unrestricted_tag}"
                 route_summary["policy_label"] = "Route delta: unrestricted - constrained"
-                route_summary["maint_mode"] = str(maint_mode)
+                route_summary["maint_mode"] = maintenance_mode_family(str(maint_mode))
+                route_summary["maint_variant"] = str(maint_mode)
                 route_summary["maint_mode_tag"] = build_maint_mode_tag(maint_mode)
                 route_summary["route_delta_direction"] = "unrestricted_minus_constrained"
                 route_summary["seed"] = int(seed)
@@ -664,7 +700,7 @@ def main():
                     "_".join(route_stem_parts),
                     route_summary,
                     route_rows,
-                    policy_label=f"Route compare | Full system | Maintenance: {maint_mode}",
+                    policy_label=f"Route compare | Full system | maintenance: {maint_mode}",
                 )
         print(f"outputs saved to: {outdir}")
 

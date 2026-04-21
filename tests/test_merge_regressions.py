@@ -536,7 +536,7 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertTrue(cfg.RUL_LINEAR_TAIL_ENABLE)
         self.assertIsNone(cfg.RUL_LINEAR_TAIL_STEP)
         self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("THDQN", "PPO"))
-        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN", "POMCP"))
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("flat_ddqn", "hier_ddqn", "pomcp"))
         self.assertEqual(cfg.PPO_DEFAULT_VARIANT, "PPO_ENTROPY")
         self.assertEqual(cfg.PPO_SCHED_REWARD_VERSION, "legacy_balanced")
         self.assertAlmostEqual(cfg.DEGRADATION_RATE_SCALE, 1.30)
@@ -1473,6 +1473,8 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(row["scheduler_fixed_mode"], "")
         self.assertEqual(row["scheduler_reward_version"], "legacy_balanced")
         self.assertEqual(row["maint_family"], "learning")
+        self.assertEqual(row["maint_variant"], "flat_ddqn")
+        self.assertEqual(row["maint_mode_tag"], "maint_flat_ddqn")
         self.assertEqual(row["comparison_role"], "supplement")
         self.assertEqual(row["train_combo_mode"], "episode_fixed")
         self.assertEqual(row["eval_combo_mode"], "grid_full")
@@ -1528,6 +1530,7 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(row["scheduler_fixed_mode"], "PPO")
         self.assertEqual(row["scheduler_reward_version"], "legacy_balanced")
         self.assertEqual(row["maint_family"], "planning")
+        self.assertEqual(row["maint_variant"], "pomcp")
         self.assertEqual(row["comparison_role"], "main_experiment")
 
     def test_infer_route_results_keep_env_for_compare_metrics(self):

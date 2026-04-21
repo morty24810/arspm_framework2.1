@@ -29,12 +29,8 @@ def _safe_int(value: Any) -> int | None:
 
 
 def _missing_status_label(mode: str) -> str:
-    mode = str(mode).upper()
-    if mode == "POMCP":
-        return "missing_on_pomcp"
-    if mode == "DQN":
-        return "missing_on_dqn"
-    return f"missing_on_{mode.lower()}"
+    normalized = str(mode).strip().lower()
+    return f"missing_on_{normalized}" if normalized else "missing_on_unknown"
 
 
 def _normalize_op(op: Any) -> Dict[str, Any] | None:
@@ -281,6 +277,7 @@ def summarize_scheduling_strategy(decision_log: List[Dict[str, Any]], env: Any =
     rule_top1_share = (max((int(v) for v in rule_counts.values()), default=0) / total_rule_count) if total_rule_count else 0.0
     dispatched_count = sum(1 for row in sched_rows if bool(row.get("dispatched")))
     breakdown_count = sum(1 for row in sched_rows if bool(row.get("breakdown_flag")))
+    sched_safe_block_count = sum(1 for row in sched_rows if bool(row.get("sched_safe_blocked")))
     hard_breakdown_count = max((_safe_int(row.get("hard_breakdown_count")) or 0) for row in sched_rows) if sched_rows else 0
     stochastic_breakdown_count = max((_safe_int(row.get("stochastic_breakdown_count")) or 0) for row in sched_rows) if sched_rows else 0
     requeued_op_count = max((_safe_int(row.get("requeued_op_count")) or 0) for row in sched_rows) if sched_rows else 0
@@ -297,6 +294,7 @@ def summarize_scheduling_strategy(decision_log: List[Dict[str, Any]], env: Any =
         "rule_top1_share": float(rule_top1_share),
         "dispatch_count": int(dispatched_count),
         "scheduling_events": int(len(sched_rows)),
+        "sched_safe_block_count": int(sched_safe_block_count),
         "breakdown_count": int(breakdown_count),
         "hard_breakdown_count": int(hard_breakdown_count),
         "stochastic_breakdown_count": int(stochastic_breakdown_count),
@@ -320,8 +318,12 @@ def compare_mode_results(
     eval_policy_tag: str | None = None,
     scheduler_anchor: str | None = None,
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
-    primary_mode = str(primary_mode).upper()
-    compare_mode = str(compare_mode).upper()
+    primary_mode = str(primary_mode)
+    compare_mode = str(compare_mode)
+    primary_maint_variant = str(primary_result.get("maint_variant", primary_mode))
+    compare_maint_variant = str(compare_result.get("maint_variant", compare_mode))
+    primary_maint_arch = str(primary_result.get("maint_arch", primary_maint_variant))
+    compare_maint_arch = str(compare_result.get("maint_arch", compare_maint_variant))
     primary_rows = extract_maintenance_rows(primary_result.get("decision_log", []))
     compare_rows = extract_maintenance_rows(compare_result.get("decision_log", []))
     primary_map = {
@@ -406,6 +408,10 @@ def compare_mode_results(
     summary = {
         "primary_mode": primary_mode,
         "compare_mode": compare_mode,
+        "primary_maint_variant": primary_maint_variant,
+        "compare_maint_variant": compare_maint_variant,
+        "primary_maint_arch": primary_maint_arch,
+        "compare_maint_arch": compare_maint_arch,
         "compare_type": compare_type,
         "train_policy_tag": train_policy_tag,
         "eval_policy_tag": eval_policy_tag,
@@ -438,8 +444,8 @@ def compare_mode_results(
         "divergence_rate": float(divergence_count / union_count) if union_count else 0.0,
         "missing_on_primary": int(missing_on_primary),
         "missing_on_compare": int(missing_on_compare),
-        "missing_on_pomcp": int(missing_on_primary if primary_mode == "POMCP" else missing_on_compare if compare_mode == "POMCP" else 0),
-        "missing_on_dqn": int(missing_on_primary if primary_mode == "DQN" else missing_on_compare if compare_mode == "DQN" else 0),
+        "missing_on_pomcp": int(missing_on_primary if primary_maint_variant == "pomcp" else missing_on_compare if compare_maint_variant == "pomcp" else 0),
+        "missing_on_dqn": int(missing_on_primary if primary_maint_variant in {"flat_ddqn", "hier_ddqn"} else missing_on_compare if compare_maint_variant in {"flat_ddqn", "hier_ddqn"} else 0),
         "primary_metrics": {
             "tard": float(primary_metrics["tard"]),
             "maint": float(primary_metrics["maint"]),
@@ -457,6 +463,8 @@ def compare_mode_results(
             "flat_dqn_cm_remap_count": float(sum(1 for row in primary_rows if bool(row.get("flat_dqn_cm_remap")))),
             "pomcp_cm_block_count": float(sum(1 for row in primary_rows if bool(row.get("pomcp_cm_blocked")))),
             "pomcp_force_cm_count": float(sum(1 for row in primary_rows if bool(row.get("pomcp_force_cm")))),
+            "pomcp_dn_conservative_veto_count": float(sum(1 for row in primary_rows if bool(row.get("pomcp_dn_conservative_veto")))),
+            "sched_safe_block_count": float(primary_schedule_summary.get("sched_safe_block_count", 0)),
             **primary_final_health,
         },
         "compare_metrics": {
@@ -476,6 +484,8 @@ def compare_mode_results(
             "flat_dqn_cm_remap_count": float(sum(1 for row in compare_rows if bool(row.get("flat_dqn_cm_remap")))),
             "pomcp_cm_block_count": float(sum(1 for row in compare_rows if bool(row.get("pomcp_cm_blocked")))),
             "pomcp_force_cm_count": float(sum(1 for row in compare_rows if bool(row.get("pomcp_force_cm")))),
+            "pomcp_dn_conservative_veto_count": float(sum(1 for row in compare_rows if bool(row.get("pomcp_dn_conservative_veto")))),
+            "sched_safe_block_count": float(compare_schedule_summary.get("sched_safe_block_count", 0)),
             **compare_final_health,
         },
         "delta_compare_minus_primary": {
@@ -487,6 +497,11 @@ def compare_mode_results(
             "breakdown_cost": float(getattr(compare_result.get("env"), "breakdown_cost_total", 0.0) - getattr(primary_result.get("env"), "breakdown_cost_total", 0.0)),
             "requeued_op_count": float(getattr(compare_result.get("env"), "requeued_op_count", 0) - getattr(primary_result.get("env"), "requeued_op_count", 0)),
             "interrupted_proc_time": float(getattr(compare_result.get("env"), "interrupted_proc_time", 0.0) - getattr(primary_result.get("env"), "interrupted_proc_time", 0.0)),
+            "sched_safe_block_count": float(compare_schedule_summary.get("sched_safe_block_count", 0) - primary_schedule_summary.get("sched_safe_block_count", 0)),
+            "pomcp_dn_conservative_veto_count": float(
+                sum(1 for row in compare_rows if bool(row.get("pomcp_dn_conservative_veto")))
+                - sum(1 for row in primary_rows if bool(row.get("pomcp_dn_conservative_veto")))
+            ),
             "rule_distinct_count": float(compare_rule_diversity["rule_distinct_count"] - primary_rule_diversity["rule_distinct_count"]),
             "rule_avg_dominant_share": float(compare_rule_diversity["rule_avg_dominant_share"] - primary_rule_diversity["rule_avg_dominant_share"]),
             "rule_mean_pairwise_jsd": float(compare_rule_diversity["rule_mean_pairwise_jsd"] - primary_rule_diversity["rule_mean_pairwise_jsd"]),
@@ -501,6 +516,7 @@ def compare_mode_results(
         "delta_schedule_summary": {
             "dispatch_count": int(compare_schedule_summary["dispatch_count"] - primary_schedule_summary["dispatch_count"]),
             "scheduling_events": int(compare_schedule_summary["scheduling_events"] - primary_schedule_summary["scheduling_events"]),
+            "sched_safe_block_count": int(compare_schedule_summary["sched_safe_block_count"] - primary_schedule_summary["sched_safe_block_count"]),
             "breakdown_count": int(compare_schedule_summary["breakdown_count"] - primary_schedule_summary["breakdown_count"]),
             "hard_breakdown_count": int(compare_schedule_summary["hard_breakdown_count"] - primary_schedule_summary["hard_breakdown_count"]),
             "stochastic_breakdown_count": int(compare_schedule_summary["stochastic_breakdown_count"] - primary_schedule_summary["stochastic_breakdown_count"]),
@@ -554,6 +570,10 @@ def write_mode_comparison_outputs(
     summary_row = {
         "primary_mode": summary.get("primary_mode"),
         "compare_mode": summary.get("compare_mode"),
+        "primary_maint_variant": summary.get("primary_maint_variant"),
+        "compare_maint_variant": summary.get("compare_maint_variant"),
+        "primary_maint_arch": summary.get("primary_maint_arch"),
+        "compare_maint_arch": summary.get("compare_maint_arch"),
         "compare_type": summary.get("compare_type"),
         "train_policy_tag": summary.get("train_policy_tag"),
         "eval_policy_tag": summary.get("eval_policy_tag"),
@@ -579,6 +599,8 @@ def write_mode_comparison_outputs(
         "compare_overdue_ratio": summary.get("compare_metrics", {}).get("overdue_ratio"),
         "primary_dispatch_count": summary.get("primary_schedule_summary", {}).get("dispatch_count"),
         "compare_dispatch_count": summary.get("compare_schedule_summary", {}).get("dispatch_count"),
+        "primary_sched_safe_block_count": summary.get("primary_schedule_summary", {}).get("sched_safe_block_count"),
+        "compare_sched_safe_block_count": summary.get("compare_schedule_summary", {}).get("sched_safe_block_count"),
         "primary_current_stress_mean": summary.get("primary_schedule_summary", {}).get("current_stress_mean"),
         "compare_current_stress_mean": summary.get("compare_schedule_summary", {}).get("current_stress_mean"),
         "primary_current_stress_max": summary.get("primary_schedule_summary", {}).get("current_stress_max"),

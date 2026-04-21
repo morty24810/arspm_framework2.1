@@ -24,7 +24,8 @@ def _compact_policy_parts(policy_label: Optional[str]) -> List[str]:
     parts = [p.strip() for p in str(policy_label).split("|") if p.strip()]
     compact: List[str] = []
     for part in parts:
-        if part.startswith("Policy:"):
+        lower = part.lower()
+        if lower.startswith("policy:"):
             body = part.replace("Policy:", "", 1).strip()
             if "Region constrained" in body:
                 compact.append("Restricted")
@@ -32,12 +33,12 @@ def _compact_policy_parts(policy_label: Optional[str]) -> List[str]:
                 compact.append("Unrestricted")
             else:
                 compact.append(body)
-        elif part.startswith("Maintenance:"):
-            compact.append(part.replace("Maintenance:", "", 1).strip())
-        elif part.startswith("Compare:"):
+        elif lower.startswith("maintenance:"):
+            compact.append(part.split(":", 1)[1].strip())
+        elif lower.startswith("compare:"):
             body = part.replace("Compare:", "", 1).strip().replace("_", " ")
             compact.append(body.title())
-        elif part.startswith("Scheduler anchor:"):
+        elif lower.startswith("scheduler anchor:"):
             compact.append(part.replace("Scheduler anchor:", "", 1).strip())
         else:
             compact.append(part)
@@ -798,7 +799,7 @@ def plot_maint_mode_comparison(summary: Dict[str, object], compare_rows: List[Di
                                out_path: str, policy_label: Optional[str] = None):
     fig, ax = plt.subplots(figsize=(12.4, 5.6))
 
-    modes = [str(summary.get("primary_mode", "POMCP")), str(summary.get("compare_mode", "DQN"))]
+    modes = [str(summary.get("primary_mode", "pomcp")), str(summary.get("compare_mode", "flat_ddqn"))]
     action_order = ["DN", "IM", "CM"]
     primary_counts = [float(summary.get("primary_action_counts", {}).get(a, 0.0)) for a in action_order]
     compare_counts = [float(summary.get("compare_action_counts", {}).get(a, 0.0)) for a in action_order]
@@ -816,7 +817,7 @@ def plot_maint_mode_comparison(summary: Dict[str, object], compare_rows: List[Di
     compare_type = str(summary.get("compare_type", "full_system"))
     title = policy_label or "Compare"
     if compare_type == "full_system_route_compare":
-        title = policy_label or f"Route compare | Full system | Maintenance: {summary.get('maint_mode', '')}"
+        title = policy_label or f"Route compare | Full system | maintenance: {summary.get('maint_variant', summary.get('maint_mode', ''))}"
 
     p_sched = summary.get("primary_schedule_summary", {}) or {}
     c_sched = summary.get("compare_schedule_summary", {}) or {}

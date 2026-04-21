@@ -1104,6 +1104,10 @@ class EventDrivenShopEnv:
 
         # machine selection helpers
         stress = self._current_processing_stress()
+        strict_safe_dispatch = (
+            bool(getattr(self.cfg, "SCHED_SAFE_DISPATCH", True))
+            and str(getattr(self.cfg, "MAINT_VARIANT", getattr(self.cfg, "MAINT_MODE", ""))).strip().lower() == "pomcp"
+        )
 
         def safe_idle_machines(op: Operation) -> List[int]:
             idle = [m.mid for m in self.machines if m.status == "IDLE" and m.mid in op.feasible_machines]
@@ -1113,15 +1117,25 @@ class EventDrivenShopEnv:
                 mid for mid in idle
                 if self.is_safe_dispatch(mid, float(op.proc_times[mid]), stress=stress)
             ]
+            if strict_safe_dispatch:
+                return safe
             return safe if safe else idle
 
-        def earliest_idle_machine(op: Operation) -> int:
+        def earliest_idle_machine(op: Operation) -> Optional[int]:
             idle = safe_idle_machines(op)
-            return min(idle)  # tie-break: smallest id
+            return min(idle) if idle else None  # tie-break: smallest id
 
-        def shortest_pt_machine(op: Operation) -> int:
+        def shortest_pt_machine(op: Operation) -> Optional[int]:
             idle = safe_idle_machines(op)
-            return min(idle, key=lambda mid: op.proc_times[mid])
+            return min(idle, key=lambda mid: op.proc_times[mid]) if idle else None
+
+        def eligible_pairs(machine_selector) -> List[Tuple[Operation, int]]:
+            pairs: List[Tuple[Operation, int]] = []
+            for op in avail:
+                mid = machine_selector(op)
+                if mid is not None:
+                    pairs.append((op, int(mid)))
+            return pairs
 
         # job-level metrics
         def rpt(job: Job) -> float:
@@ -1142,23 +1156,41 @@ class EventDrivenShopEnv:
 
         # --- operation selection (6 rules) ---
         if rule_id == 0:  # EDD + earliest idle
-            op = min(avail, key=lambda o: job_of(o).due)
-            mid = earliest_idle_machine(op)
+            candidates = eligible_pairs(earliest_idle_machine)
+            if not candidates:
+                self.last_dispatch_info = {"dispatched": False, "sched_safe_blocked": bool(strict_safe_dispatch)}
+                return False
+            op, mid = min(candidates, key=lambda pair: job_of(pair[0]).due)
         elif rule_id == 1:  # EDD + SPT machine
-            op = min(avail, key=lambda o: job_of(o).due)
-            mid = shortest_pt_machine(op)
+            candidates = eligible_pairs(shortest_pt_machine)
+            if not candidates:
+                self.last_dispatch_info = {"dispatched": False, "sched_safe_blocked": bool(strict_safe_dispatch)}
+                return False
+            op, mid = min(candidates, key=lambda pair: job_of(pair[0]).due)
         elif rule_id == 2:  # max urgency*tard + SPT
-            op = max(avail, key=lambda o: job_of(o).urgency * tard(job_of(o)))
-            mid = shortest_pt_machine(op)
+            candidates = eligible_pairs(shortest_pt_machine)
+            if not candidates:
+                self.last_dispatch_info = {"dispatched": False, "sched_safe_blocked": bool(strict_safe_dispatch)}
+                return False
+            op, mid = max(candidates, key=lambda pair: job_of(pair[0]).urgency * tard(job_of(pair[0])))
         elif rule_id == 3:  # SRPT + SPT
-            op = min(avail, key=lambda o: rpt(job_of(o)))
-            mid = shortest_pt_machine(op)
+            candidates = eligible_pairs(shortest_pt_machine)
+            if not candidates:
+                self.last_dispatch_info = {"dispatched": False, "sched_safe_blocked": bool(strict_safe_dispatch)}
+                return False
+            op, mid = min(candidates, key=lambda pair: rpt(job_of(pair[0])))
         elif rule_id == 4:  # LRPT + earliest idle
-            op = max(avail, key=lambda o: rpt(job_of(o)))
-            mid = earliest_idle_machine(op)
+            candidates = eligible_pairs(earliest_idle_machine)
+            if not candidates:
+                self.last_dispatch_info = {"dispatched": False, "sched_safe_blocked": bool(strict_safe_dispatch)}
+                return False
+            op, mid = max(candidates, key=lambda pair: rpt(job_of(pair[0])))
         else:  # slack min + earliest idle
-            op = min(avail, key=lambda o: slack(job_of(o)))
-            mid = earliest_idle_machine(op)
+            candidates = eligible_pairs(earliest_idle_machine)
+            if not candidates:
+                self.last_dispatch_info = {"dispatched": False, "sched_safe_blocked": bool(strict_safe_dispatch)}
+                return False
+            op, mid = min(candidates, key=lambda pair: slack(job_of(pair[0])))
 
         # start processing
         m = self.machines[mid]

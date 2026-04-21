@@ -290,6 +290,7 @@ class SimConfig:
     THDQN_LOW_STATE_MODE: str = "pruned"
     THDQN_LOW_STATE_DIM: int = 11
     MAINT_AGENT_ARCH: str = "flat_ddqn"
+    MAINT_VARIANT: str = "flat_ddqn"
     MAINTENANCE_STATE_DIM: int = 18
     THDQN_DQN_HIER_MAINT: bool = True
     THDQN_DQN_MAINT_STATE_DIM: int = 20
@@ -326,7 +327,7 @@ class SimConfig:
 
     # paired experiment runner
     EXPERIMENT_SEEDS: tuple = (42,)
-    TRAIN_MAINT_MODES: tuple = ("DQN", "POMCP")
+    TRAIN_MAINT_MODES: tuple = ("flat_ddqn", "hier_ddqn", "pomcp")
     TRAIN_POLICY_ROUTES: tuple = ("region_off",)
     SCENARIO_LOCK_SCOPE: str = "full"
     ENABLE_OOD_DIAGNOSTIC_EVAL: bool = False

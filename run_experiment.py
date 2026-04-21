@@ -101,11 +101,81 @@ def resolve_train_policy_route(route_name: str, cfg: SimConfig) -> Tuple[str, bo
         return "region_off", enforce_region, policy_tag, build_policy_label(cfg, False)
     raise ValueError(f"unsupported train policy route: {route_name}")
 
-def build_maint_mode_tag(maint_mode: str) -> str:
-    return f"maint_{str(maint_mode).lower()}"
+def maintenance_mode_family(maint_mode: Optional[str]) -> str:
+    raw = str(maint_mode or "DQN").strip()
+    if not raw:
+        return "DQN"
+    upper = raw.upper()
+    lower = raw.lower()
+    if upper == "OFF" or lower == "off":
+        return "OFF"
+    if upper == "POMCP" or lower == "pomcp":
+        return "POMCP"
+    if upper == "DQN" or lower in {"flat_ddqn", "hier_ddqn"}:
+        return "DQN"
+    return upper
 
-def build_maint_mode_label(maint_mode: str) -> str:
-    return f"Maintenance: {str(maint_mode).upper()}"
+
+def maintenance_variant_for_context(
+    cfg: Optional[SimConfig],
+    maint_mode: Optional[str] = None,
+    *,
+    enforce_region: Optional[bool] = None,
+    scheduler_mode: Optional[str] = None,
+) -> str:
+    raw = maint_mode if maint_mode is not None else getattr(cfg, "MAINT_VARIANT", getattr(cfg, "MAINT_MODE", "flat_ddqn"))
+    text = str(raw or "flat_ddqn").strip()
+    lower = text.lower()
+    if lower in {"flat_ddqn", "hier_ddqn", "pomcp", "off"}:
+        return lower
+
+    family = maintenance_mode_family(text)
+    if family == "POMCP":
+        return "pomcp"
+    if family == "OFF":
+        return "off"
+    if family != "DQN":
+        return lower
+
+    sched_mode = str(scheduler_mode or getattr(cfg, "SCHEDULER_MODE", "THDQN")).strip().upper() if cfg is not None else "THDQN"
+    unrestricted = not bool(
+        getattr(cfg, "ENFORCE_REGION_POLICY", True) if (cfg is not None and enforce_region is None) else enforce_region
+    )
+    if (
+        cfg is not None
+        and bool(getattr(cfg, "THDQN_DQN_HIER_MAINT", False))
+        and canonical_scheduler_mode(sched_mode) == "THDQN"
+        and unrestricted
+    ):
+        return "hier_ddqn"
+    default_arch = str(getattr(cfg, "MAINT_AGENT_ARCH", "flat_ddqn")).strip().lower() if cfg is not None else "flat_ddqn"
+    return default_arch if default_arch in {"flat_ddqn", "hier_ddqn"} else "flat_ddqn"
+
+
+def build_maint_mode_tag(
+    maint_mode: str,
+    *,
+    cfg: Optional[SimConfig] = None,
+    enforce_region: Optional[bool] = None,
+    scheduler_mode: Optional[str] = None,
+) -> str:
+    return f"maint_{maintenance_variant_for_context(cfg, maint_mode, enforce_region=enforce_region, scheduler_mode=scheduler_mode)}"
+
+
+def build_maint_mode_label(
+    maint_mode: str,
+    *,
+    cfg: Optional[SimConfig] = None,
+    enforce_region: Optional[bool] = None,
+    scheduler_mode: Optional[str] = None,
+) -> str:
+    variant = maintenance_variant_for_context(
+        cfg,
+        maint_mode,
+        enforce_region=enforce_region,
+        scheduler_mode=scheduler_mode,
+    )
+    return f"maintenance: {variant}"
 
 def build_scheduler_mode_tag(scheduler_mode: str) -> str:
     return f"sched_{str(scheduler_mode).lower()}"
@@ -233,7 +303,7 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
 
 
 def maintenance_family_for_mode(maint_mode: str) -> str:
-    mode = str(maint_mode).upper()
+    mode = maintenance_mode_family(maint_mode)
     if mode == "DQN":
         return "learning"
     if mode == "POMCP":
@@ -248,7 +318,13 @@ def maintenance_constraint_profile(
     scheduler_mode: Optional[str] = None,
     enforce_region: Optional[bool] = None,
 ) -> Dict[str, Any]:
-    mode = str(maint_mode or getattr(cfg, "MAINT_MODE", "DQN")).upper()
+    family = maintenance_mode_family(maint_mode or getattr(cfg, "MAINT_MODE", "DQN"))
+    variant = maintenance_variant_for_context(
+        cfg,
+        maint_mode or getattr(cfg, "MAINT_VARIANT", getattr(cfg, "MAINT_MODE", "DQN")),
+        enforce_region=enforce_region,
+        scheduler_mode=scheduler_mode,
+    )
     sched_mode = str(scheduler_mode or getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
     unrestricted = not bool(
         getattr(cfg, "ENFORCE_REGION_POLICY", True) if enforce_region is None else enforce_region
@@ -261,9 +337,9 @@ def maintenance_constraint_profile(
     if not unrestricted:
         return profile
     canonical_sched = canonical_scheduler_mode(sched_mode)
-    if canonical_sched == "PPO" and mode == "DQN":
+    if canonical_sched == "PPO" and variant == "flat_ddqn":
         profile["flat_dqn_cm_block_h"] = float(getattr(cfg, "PPO_DQN_CM_BLOCK_H", 0.60))
-    elif mode == "POMCP":
+    elif family == "POMCP":
         if canonical_sched == "PPO":
             profile["pomcp_cm_block_h"] = float(getattr(cfg, "PPO_POMCP_CM_BLOCK_H", 0.65))
             profile["pomcp_force_cm_h"] = float(getattr(cfg, "PPO_POMCP_FORCE_CM_H", 0.18))
@@ -271,6 +347,26 @@ def maintenance_constraint_profile(
             profile["pomcp_cm_block_h"] = float(getattr(cfg, "THDQN_POMCP_CM_BLOCK_H", 0.60))
             profile["pomcp_force_cm_h"] = float(getattr(cfg, "THDQN_POMCP_FORCE_CM_H", 0.20))
     return profile
+
+
+def resolve_active_maint_variants(
+    cfg: SimConfig,
+    requested_modes: List[str],
+    *,
+    scheduler_mode: str,
+    enforce_region: bool,
+) -> List[str]:
+    variants: List[str] = []
+    for raw_mode in requested_modes:
+        variant = maintenance_variant_for_context(
+            cfg,
+            raw_mode,
+            enforce_region=enforce_region,
+            scheduler_mode=scheduler_mode,
+        )
+        if variant not in variants:
+            variants.append(variant)
+    return variants
 
 
 def scheduler_fixed_mode_for_profile(cfg: SimConfig) -> str:
@@ -390,6 +486,7 @@ def experiment_result_metadata(
     eval_policy_tag: Optional[str],
     include_maint_family: bool = True,
 ) -> Dict[str, Any]:
+    maint_variant = maintenance_variant_for_context(cfg, maint_mode, scheduler_mode=scheduler_mode)
     payload = {
         "experiment_profile": effective_experiment_profile(cfg),
         "horizon_mode": horizon_mode_for_profile(cfg),
@@ -404,6 +501,9 @@ def experiment_result_metadata(
             train_policy_tag=train_policy_tag,
             eval_policy_tag=eval_policy_tag,
         ),
+        "maint_variant": maint_variant,
+        "maint_variant_tag": f"maint_{maint_variant}",
+        "maint_arch": "pomcp" if maint_variant == "pomcp" else maintenance_variant_for_context(cfg, maint_mode, scheduler_mode=scheduler_mode),
     }
     if include_maint_family:
         payload["maint_family"] = maintenance_family_for_mode(maint_mode)
@@ -423,7 +523,7 @@ def build_policy_context_label(cfg: SimConfig, enforce_region: bool, maint_mode:
     return (
         f"{build_policy_label(cfg, enforce_region)} | "
         f"{build_scheduler_mode_label(sched_mode)} | "
-        f"{build_maint_mode_label(maint_mode)}"
+        f"{build_maint_mode_label(maint_mode, cfg=cfg, enforce_region=enforce_region, scheduler_mode=sched_mode)}"
     )
 
 def scheduler_has_goal_head(sched_agent) -> bool:
@@ -539,17 +639,13 @@ def filter_non_improving_im(env, mid: int, h_obs: float, allowed_actions: List[i
 def maintenance_agent_arch_for_context(cfg: SimConfig, maint_mode: Optional[str] = None,
                                        enforce_region: Optional[bool] = None,
                                        scheduler_mode: Optional[str] = None) -> str:
-    mode = str(maint_mode or getattr(cfg, "MAINT_MODE", "DQN")).upper()
-    sched_mode = str(scheduler_mode or getattr(cfg, "SCHEDULER_MODE", "THDQN")).upper()
-    unrestricted = not bool(
-        getattr(cfg, "ENFORCE_REGION_POLICY", True) if enforce_region is None else enforce_region
+    variant = maintenance_variant_for_context(
+        cfg,
+        maint_mode,
+        enforce_region=enforce_region,
+        scheduler_mode=scheduler_mode,
     )
-    if (
-        bool(getattr(cfg, "THDQN_DQN_HIER_MAINT", False))
-        and mode == "DQN"
-        and sched_mode == "THDQN"
-        and unrestricted
-    ):
+    if variant == "hier_ddqn":
         return "hier_ddqn"
     arch = str(getattr(cfg, "MAINT_AGENT_ARCH", "flat_ddqn")).strip().lower()
     return arch if arch in {"flat_ddqn", "hier_ddqn"} else "flat_ddqn"
@@ -563,7 +659,7 @@ def thdqn_dqn_cm_pref_fix_active(cfg: SimConfig, maint_mode: Optional[str] = Non
                                  enforce_region: Optional[bool] = None) -> bool:
     return (
         maintenance_agent_arch_for_context(cfg, maint_mode=maint_mode, enforce_region=enforce_region) == "flat_ddqn"
-        and str(maint_mode or getattr(cfg, "MAINT_MODE", "DQN")).upper() == "DQN"
+        and maintenance_mode_family(maint_mode or getattr(cfg, "MAINT_MODE", "DQN")) == "DQN"
     )
 
 
@@ -717,7 +813,7 @@ def maintenance_cm_preference_penalty(action: int, h_for_prior: float, cfg: SimC
 
 def pomcp_unrestricted_safety_filter_enabled(mode: str, cfg: SimConfig, enforce_region: bool) -> bool:
     return (
-        str(mode).upper() == "POMCP"
+        maintenance_mode_family(mode) == "POMCP"
         and not bool(enforce_region)
         and bool(getattr(cfg, "POMCP_UNRESTRICTED_SAFETY_FILTER", False))
     )
@@ -809,6 +905,7 @@ def default_maint_action_meta(action: Optional[int] = None) -> Dict[str, Any]:
         "flat_dqn_cm_remap_to": "",
         "pomcp_cm_blocked": False,
         "pomcp_force_cm": False,
+        "pomcp_dn_conservative_veto": False,
     }
 
 
@@ -1392,6 +1489,21 @@ def compute_breakdown_reward_terms(env: EventDrivenShopEnv, mid: int, local_urge
     }
 
 
+def pomcp_conservative_dispatch_exposure(env: EventDrivenShopEnv, mid: int, cfg: SimConfig) -> float:
+    available_pt: List[float] = []
+    if hasattr(env, "_available_ops"):
+        try:
+            for op in env._available_ops():
+                if int(mid) in getattr(op, "feasible_machines", []):
+                    available_pt.append(float(op.proc_times[int(mid)]))
+        except Exception:
+            available_pt = []
+    if available_pt:
+        return float(max(available_pt))
+    historical_mean = float(env._mean_proc_time(int(mid))) if hasattr(env, "_mean_proc_time") else float(getattr(cfg, "PT_MAX", 50.0))
+    return float(max(historical_mean, float(getattr(cfg, "PT_MAX", 50.0))))
+
+
 def _pomcp_safety_filtered_actions(
     env: EventDrivenShopEnv,
     mid: int,
@@ -1421,6 +1533,7 @@ def _pomcp_safety_filtered_actions(
     info: Dict[str, Any] = {
         "im_invalid_flag": bool(1 not in base_allowed),
         "dn_imminent_breakdown_veto": False,
+        "pomcp_dn_conservative_veto": False,
         "cm_emergency_override": False,
         "safety_filtered_actions": [],
         "allowed_actions": list(base_allowed),
@@ -1441,18 +1554,21 @@ def _pomcp_safety_filtered_actions(
 
     if 0 in allowed:
         idx_before = env.operating_index_from_rul(mid, h_state)
+        preview_pt = pomcp_conservative_dispatch_exposure(env, mid, cfg)
         breakdown_terms = compute_breakdown_reward_terms(
             env,
             mid,
             local_urgency,
             current_stress,
             h_true=h_state,
+            pt=preview_pt,
             idx_before=idx_before,
         )
         hard_threshold = float(getattr(cfg, "HARD_BREAKDOWN_RUL", 0.05))
         if bool(breakdown_terms["would_hard_breakdown"]) or float(breakdown_terms["h_end_true"]) <= hard_threshold:
             allowed = [a for a in allowed if a != 0]
             info["dn_imminent_breakdown_veto"] = True
+            info["pomcp_dn_conservative_veto"] = True
             info["safety_filtered_actions"].append("DN")
 
     if (
@@ -1574,7 +1690,16 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
             if decision_log is None:
                 return
             rec = dict(row)
-            rec.setdefault("maint_mode", str(maint_mode).upper())
+            rec.setdefault("maint_mode", maintenance_mode_family(maint_mode))
+            rec.setdefault(
+                "maint_variant",
+                maintenance_variant_for_context(
+                    cfg,
+                    getattr(cfg, "MAINT_VARIANT", maint_mode),
+                    enforce_region=enforce_region,
+                    scheduler_mode=getattr(cfg, "SCHEDULER_MODE", "THDQN"),
+                ),
+            )
             lambda_hat_val = rec.get("lambda_hat")
             ddt_hat_val = rec.get("ddt_hat")
             if lambda_hat_val is not None and ddt_hat_val is not None:
@@ -1612,6 +1737,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
             rec.setdefault("flat_dqn_cm_remap_to", "")
             rec.setdefault("pomcp_cm_blocked", False)
             rec.setdefault("pomcp_force_cm", False)
+            rec.setdefault("pomcp_dn_conservative_veto", False)
             rec.setdefault("safety_filtered_actions", "")
             if rec.get("event") == "maintenance":
                 mid_val = rec.get("mid")
@@ -2061,6 +2187,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         "goal": None if g is None else int(g),
                         "rule": int(rule),
                         "dispatched": bool(dispatched),
+                        "sched_safe_blocked": bool(dispatch_info.get("sched_safe_blocked", False)),
                         "op": op_info,
                         "job_due": job_due,
                         "overdue": overdue,
@@ -2133,22 +2260,22 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                 with csv_path.open("w", newline="") as f:
                     writer = csv.writer(f)
                     writer.writerow([
-                        "time", "event", "maint_mode", "maint_seq_global", "maint_seq_machine", "mid", "state", "action", "kind", "duration", "h", "h_true", "h_end_true", "hard_breakdown_threshold", "dh", "eta", "slack_pressure", "current_stress",
+                        "time", "event", "maint_mode", "maint_variant", "maint_seq_global", "maint_seq_machine", "mid", "state", "action", "kind", "duration", "h", "h_true", "h_end_true", "hard_breakdown_threshold", "dh", "eta", "slack_pressure", "current_stress",
                         "im_count", "im_damage", "risk_h", "risk_trend", "im_longterm_penalty", "opportunity_cost",
                         "p_fail", "expected_fail_cost", "downtime_cost", "delta_t_since_last_maint",
                         "lambda_hat", "ddt_hat", "lambda_true_segment", "ddt_true_segment", "sched_lambda", "sched_ddt", "sched_regime_feature_mode", "combo_segment", "combo_level_idx",
                         "im_invalid_flag", "dn_imminent_breakdown_veto", "cm_emergency_override", "maint_gate_action", "maint_type_action", "maint_need_score",
                         "im_since_cm_norm", "im_repeat_norm", "im_damage_norm", "im_since_cm_raw", "cm_readiness", "cm_preference_penalty_active",
                         "gate_penalty_active", "type_penalty_active", "post_im_grace_active", "post_im_grace_forced_dn",
-                        "flat_dqn_cm_remap", "flat_dqn_cm_original_action", "flat_dqn_cm_remap_to", "pomcp_cm_blocked", "pomcp_force_cm", "safety_filtered_actions",
-                        "goal", "rule", "dispatched", "op", "job_due", "overdue",
+                        "flat_dqn_cm_remap", "flat_dqn_cm_original_action", "flat_dqn_cm_remap_to", "pomcp_cm_blocked", "pomcp_force_cm", "pomcp_dn_conservative_veto", "safety_filtered_actions",
+                        "goal", "rule", "dispatched", "sched_safe_blocked", "op", "job_due", "overdue",
                         "local_urgency", "breakdown_flag", "breakdown_kind", "breakdown_cost", "breakdown_count", "hard_breakdown_count",
                         "stochastic_breakdown_count", "requeued_op_count", "interrupted_proc_time",
                         "t_e", "t_l", "window_violation", "risk_t", "mat_cost", "scrap_part_cost"
                     ])
                     for row in decision_log:
                         writer.writerow([
-                            row.get("time"), row.get("event"), row.get("maint_mode"), row.get("maint_seq_global"), row.get("maint_seq_machine"), row.get("mid"),
+                            row.get("time"), row.get("event"), row.get("maint_mode"), row.get("maint_variant"), row.get("maint_seq_global"), row.get("maint_seq_machine"), row.get("mid"),
                             json.dumps(row.get("state"), separators=(",", ":"), ensure_ascii=True) if row.get("state") is not None else "",
                             row.get("action"), row.get("kind"), row.get("duration"),
                             row.get("h"), row.get("h_true"), row.get("h_end_true"), row.get("hard_breakdown_threshold"), row.get("dh"), row.get("eta"), row.get("slack_pressure"), row.get("current_stress"),
@@ -2166,8 +2293,8 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                             row.get("gate_penalty_active"), row.get("type_penalty_active"),
                             row.get("post_im_grace_active"), row.get("post_im_grace_forced_dn"),
                             row.get("flat_dqn_cm_remap"), row.get("flat_dqn_cm_original_action"), row.get("flat_dqn_cm_remap_to"),
-                            row.get("pomcp_cm_blocked"), row.get("pomcp_force_cm"), row.get("safety_filtered_actions"),
-                            row.get("goal"), row.get("rule"), row.get("dispatched"),
+                            row.get("pomcp_cm_blocked"), row.get("pomcp_force_cm"), row.get("pomcp_dn_conservative_veto"), row.get("safety_filtered_actions"),
+                            row.get("goal"), row.get("rule"), row.get("dispatched"), row.get("sched_safe_blocked"),
                             json.dumps(row.get("op"), separators=(",", ":"), ensure_ascii=True) if row.get("op") is not None else "",
                             row.get("job_due"), row.get("overdue"),
                             row.get("local_urgency"), row.get("breakdown_flag"), row.get("breakdown_kind"), row.get("breakdown_cost"),
@@ -2231,11 +2358,17 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
                               current_stress: float,
                               local_urgency: float, cfg: SimConfig, rng: random.Random,
                               explore: bool) -> Tuple[int, Dict[str, Any]]:
-    mode = mode.upper()
+    mode_variant = maintenance_variant_for_context(
+        cfg,
+        mode,
+        enforce_region=getattr(cfg, "ENFORCE_REGION_POLICY", True),
+        scheduler_mode=getattr(cfg, "SCHEDULER_MODE", "THDQN"),
+    )
+    mode_family = maintenance_mode_family(mode_variant)
     enforce_region = bool(getattr(cfg, "ENFORCE_REGION_POLICY", True))
     constraint_profile = maintenance_constraint_profile(
         cfg,
-        maint_mode=mode,
+        maint_mode=mode_variant,
         scheduler_mode=getattr(cfg, "SCHEDULER_MODE", "THDQN"),
         enforce_region=enforce_region,
     )
@@ -2248,11 +2381,11 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
         "allowed_actions": list(allowed_actions),
         **default_maint_action_meta(),
     }
-    if mode == "OFF":
+    if mode_family == "OFF":
         action = int(allowed_actions[0]) if len(allowed_actions) == 1 else 0
         action_meta.update(normalize_maint_action_meta(action_meta, action))
         return action, action_meta
-    if mode == "DQN":
+    if mode_family == "DQN":
         if maint_agent is None:
             action = int(allowed_actions[0]) if len(allowed_actions) == 1 else 0
             action_meta.update(normalize_maint_action_meta(action_meta, action))
@@ -2322,7 +2455,7 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
         action_meta.update(normalize_maint_action_meta(action_meta, action))
         return int(enforce_action_by_region(action, h_obs, cfg, enforce_region)), action_meta
 
-    if mode == "POMCP":
+    if mode_family == "POMCP":
         if pomcp is None or pomcp_beliefs is None:
             raise NotImplementedError("MAINT_MODE=POMCP requires POMCP planner and belief tracking.")
         belief = pomcp_beliefs.get(mid, [])
@@ -2352,7 +2485,7 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
             cfg,
             baseline_rul=baseline_rul,
             enforce_region=enforce_region,
-            mode=mode,
+            mode=mode_variant,
         )
         action_meta.update(root_info)
 
@@ -2366,7 +2499,7 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
                 cfg,
                 baseline_rul=float(state_p.get("baseline_rul", baseline_rul)),
                 enforce_region=enforce_region,
-                mode=mode,
+                mode=mode_variant,
             )
             return state_allowed
 
@@ -2374,7 +2507,7 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
             h_state = float(state_p.get("h_true", 1.0))
             state_stress = float(state_p.get("stress", current_stress))
             baseline_state = float(state_p.get("baseline_rul", baseline_rul))
-            if pomcp_unrestricted_safety_filter_enabled(mode, cfg, enforce_region):
+            if pomcp_unrestricted_safety_filter_enabled(mode_variant, cfg, enforce_region):
                 state_allowed_actions, _ = _pomcp_safety_filtered_actions(
                     env,
                     mid,
@@ -2384,7 +2517,7 @@ def select_maintenance_action(mode: str, maint_agent, pomcp, pomcp_beliefs, env,
                     cfg,
                     baseline_rul=baseline_state,
                     enforce_region=enforce_region,
-                    mode=mode,
+                    mode=mode_variant,
                 )
                 a = int(action)
                 if a not in state_allowed_actions:
@@ -2490,8 +2623,19 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
     rule_diversity = combo_rule_diversity_metrics(combo_behavior)
     env = final_result.get("env")
     cfg_env = getattr(env, "cfg", None)
-    health_summary = summarize_final_machine_health(env)
     scheduler_mode = str(final_result.get("scheduler_mode", "THDQN")).upper()
+    maint_variant = str(
+        final_result.get(
+            "maint_variant",
+            maintenance_variant_for_context(
+                cfg_env,
+                mode,
+                enforce_region=getattr(cfg_env, "ENFORCE_REGION_POLICY", True) if cfg_env is not None else None,
+                scheduler_mode=scheduler_mode,
+            ),
+        )
+    )
+    health_summary = summarize_final_machine_health(env)
     im_invalid_filtered_count = sum(1 for row in maint_rows if bool(row.get("im_invalid_flag")))
     dn_veto_count = sum(1 for row in maint_rows if bool(row.get("dn_imminent_breakdown_veto")))
     cm_emergency_override_count = sum(1 for row in maint_rows if bool(row.get("cm_emergency_override")))
@@ -2504,6 +2648,8 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
     flat_dqn_cm_remap_count = sum(1 for row in maint_rows if bool(row.get("flat_dqn_cm_remap")))
     pomcp_cm_block_count = sum(1 for row in maint_rows if bool(row.get("pomcp_cm_blocked")))
     pomcp_force_cm_count = sum(1 for row in maint_rows if bool(row.get("pomcp_force_cm")))
+    pomcp_dn_conservative_veto_count = sum(1 for row in maint_rows if bool(row.get("pomcp_dn_conservative_veto")))
+    sched_safe_block_count = sum(1 for row in decision_log if bool(row.get("sched_safe_blocked")))
     high_health_cm_h = float(getattr(cfg_env, "THDQN_DQN_HIGH_HEALTH_CM_H", 0.70))
     high_health_cm_count = sum(
         1 for row in maint_rows
@@ -2519,14 +2665,15 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "seed": int(seed),
         **experiment_result_metadata(
             cfg_env if cfg_env is not None else SimConfig(),
-            maint_mode=mode,
+            maint_mode=maint_variant,
             compare_type=compare_type,
             scheduler_mode=scheduler_mode,
             train_policy_tag=train_policy_tag,
             eval_policy_tag=eval_policy_tag,
         ),
-        "maint_mode": str(mode),
-        "maint_mode_tag": build_maint_mode_tag(mode),
+        "maint_mode": maintenance_mode_family(mode),
+        "maint_variant": maint_variant,
+        "maint_mode_tag": build_maint_mode_tag(maint_variant),
         "scheduler_mode": scheduler_mode,
         "scheduler_mode_tag": build_scheduler_mode_tag(scheduler_mode),
         "sched_regime_feature_mode": str(final_result.get("sched_regime_feature_mode", getattr(getattr(env, "cfg", None), "SCHED_REGIME_FEATURE_MODE", "observer"))).lower(),
@@ -2593,6 +2740,8 @@ def _build_run_record(seed: int, mode: str, train_policy_tag: str, eval_policy_t
         "flat_dqn_cm_remap_count": int(flat_dqn_cm_remap_count),
         "pomcp_cm_block_count": int(pomcp_cm_block_count),
         "pomcp_force_cm_count": int(pomcp_force_cm_count),
+        "pomcp_dn_conservative_veto_count": int(pomcp_dn_conservative_veto_count),
+        "sched_safe_block_count": int(sched_safe_block_count),
         "high_health_cm_count": int(high_health_cm_count),
         "cm_after_single_im_count": int(cm_after_single_im_count),
         "ppo_train_temperature": float(getattr(cfg_env, "PPO_TRAIN_TEMPERATURE", 1.0)),
@@ -2632,8 +2781,8 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
         "policy_tag": policy_tag,
         "scheduler_mode": str(scheduler_mode).upper(),
         "scheduler_mode_tag": build_scheduler_mode_tag(scheduler_mode),
-        "modes": {},
-        "delta_pomcp_minus_dqn": {},
+        "variants": {},
+        "delta_pairs": {},
     }
     csv_rows: List[Dict[str, Any]] = []
     metrics = [
@@ -2645,19 +2794,20 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
         "final_health_mean", "final_health_min", "final_health_p25",
         "final_low_health_count_h20", "final_low_health_count_h10",
         "flat_dqn_cm_remap_count", "pomcp_cm_block_count", "pomcp_force_cm_count",
+        "pomcp_dn_conservative_veto_count", "sched_safe_block_count",
         "rule_unique_count", "rule_top1_share",
         "rule_distinct_count", "rule_avg_dominant_share", "rule_mean_pairwise_jsd",
     ]
-    for mode in ("DQN", "POMCP"):
-        mode_rows = [row for row in policy_rows if row["maint_mode"] == mode]
-        summary = {"mode": mode}
+    variants = sorted({str(row.get("maint_variant", row.get("maint_mode", ""))) for row in policy_rows if str(row.get("maint_variant", row.get("maint_mode", ""))).strip()})
+    for variant in variants:
+        mode_rows = [row for row in policy_rows if str(row.get("maint_variant", row.get("maint_mode", ""))) == variant]
+        summary = {"row_type": "variant_summary", "variant": variant}
         for metric in metrics:
             stats = _calc_mean_std([float(row[metric]) for row in mode_rows])
             summary[f"{metric}_mean"] = stats["mean"]
             summary[f"{metric}_std"] = stats["std"]
-        payload["modes"][mode] = summary
+        payload["variants"][variant] = summary
         csv_rows.append(summary)
-    delta_summary = {"mode": "POMCP_MINUS_DQN"}
     delta_map = {
         "tard": "delta_tard",
         "maint": "delta_maint",
@@ -2669,6 +2819,7 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
         "breakdown_cost": "delta_breakdown_cost",
         "requeued_op_count": "delta_requeued_op_count",
         "interrupted_proc_time": "delta_interrupted_proc_time",
+        "sched_safe_block_count": "delta_sched_safe_block_count",
         "current_stress_mean": "delta_current_stress_mean",
         "current_stress_max": "delta_current_stress_max",
         "final_health_mean": "delta_final_health_mean",
@@ -2679,18 +2830,37 @@ def write_aggregate_compare_outputs(outdir: Path, policy_tag: str,
         "flat_dqn_cm_remap_count": "delta_flat_dqn_cm_remap_count",
         "pomcp_cm_block_count": "delta_pomcp_cm_block_count",
         "pomcp_force_cm_count": "delta_pomcp_force_cm_count",
+        "pomcp_dn_conservative_veto_count": "delta_pomcp_dn_conservative_veto_count",
         "rule_unique_count": "delta_rule_unique_count",
         "rule_top1_share": "delta_rule_top1_share",
         "rule_distinct_count": "delta_rule_distinct_count",
         "rule_avg_dominant_share": "delta_rule_avg_dominant_share",
         "rule_mean_pairwise_jsd": "delta_rule_mean_pairwise_jsd",
     }
-    for out_metric, source_key in delta_map.items():
-        stats = _calc_mean_std([float(row[source_key]) for row in compare_policy_rows])
-        delta_summary[f"{out_metric}_mean"] = stats["mean"]
-        delta_summary[f"{out_metric}_std"] = stats["std"]
-    payload["delta_pomcp_minus_dqn"] = delta_summary
-    csv_rows.append(delta_summary)
+    pair_keys = sorted({
+        (
+            str(row.get("primary_maint_variant", row.get("primary_mode", ""))),
+            str(row.get("compare_maint_variant", row.get("compare_mode", ""))),
+        )
+        for row in compare_policy_rows
+    })
+    for primary_variant, compare_variant in pair_keys:
+        pair_rows = [
+            row for row in compare_policy_rows
+            if str(row.get("primary_maint_variant", row.get("primary_mode", ""))) == primary_variant
+            and str(row.get("compare_maint_variant", row.get("compare_mode", ""))) == compare_variant
+        ]
+        delta_summary = {
+            "row_type": "pair_delta",
+            "primary_variant": primary_variant,
+            "compare_variant": compare_variant,
+        }
+        for out_metric, source_key in delta_map.items():
+            stats = _calc_mean_std([float(row[source_key]) for row in pair_rows])
+            delta_summary[f"{out_metric}_mean"] = stats["mean"]
+            delta_summary[f"{out_metric}_std"] = stats["std"]
+        payload["delta_pairs"][f"{primary_variant}__vs__{compare_variant}"] = delta_summary
+        csv_rows.append(delta_summary)
     json_path = outdir / f"aggregate_compare_{policy_tag}_{build_scheduler_mode_tag(scheduler_mode)}.json"
     csv_path = outdir / f"aggregate_compare_{policy_tag}_{build_scheduler_mode_tag(scheduler_mode)}.csv"
     with json_path.open("w", encoding="utf-8") as f:
@@ -2707,6 +2877,13 @@ def _make_eval_result(metrics: Dict[str, Any], env, overdue_stats: Dict[str, Any
                       train_policy_tag: str, eval_policy_tag: str,
                       compare_type: str = "full_system",
                       scheduler_anchor: str = "none") -> Dict[str, Any]:
+    cfg_env = getattr(env, "cfg", None)
+    maint_variant = maintenance_variant_for_context(
+        cfg_env,
+        getattr(cfg_env, "MAINT_VARIANT", getattr(cfg_env, "MAINT_MODE", "flat_ddqn")),
+        enforce_region=getattr(cfg_env, "ENFORCE_REGION_POLICY", enforce_region),
+        scheduler_mode=getattr(env, "last_scheduler_mode", getattr(cfg_env, "SCHEDULER_MODE", "THDQN")),
+    )
     return {
         "metrics": metrics,
         "env": env,
@@ -2717,6 +2894,9 @@ def _make_eval_result(metrics: Dict[str, Any], env, overdue_stats: Dict[str, Any
         "eval_policy_tag": eval_policy_tag,
         "compare_type": compare_type,
         "scheduler_anchor": scheduler_anchor,
+        "maint_mode": maintenance_mode_family(getattr(cfg_env, "MAINT_MODE", maint_variant)),
+        "maint_variant": maint_variant,
+        "maint_arch": "pomcp" if maint_variant == "pomcp" else maintenance_agent_arch_for_context(cfg_env, maint_variant) if cfg_env is not None else maint_variant,
         "scheduler_mode": str(getattr(env, "last_scheduler_mode", "THDQN")).upper(),
         "scheduler_mode_tag": build_scheduler_mode_tag(getattr(env, "last_scheduler_mode", "THDQN")),
         "sched_regime_feature_mode": str(getattr(env, "last_sched_regime_feature_mode", getattr(getattr(env, "cfg", None), "SCHED_REGIME_FEATURE_MODE", "observer"))).lower(),
@@ -2737,6 +2917,7 @@ def _finalize_compare_summary(summary: Dict[str, Any], **extra: Any) -> Dict[str
     finalized["delta_breakdown_cost"] = float(delta_metrics.get("breakdown_cost", 0.0))
     finalized["delta_requeued_op_count"] = float(delta_metrics.get("requeued_op_count", 0.0))
     finalized["delta_interrupted_proc_time"] = float(delta_metrics.get("interrupted_proc_time", 0.0))
+    finalized["delta_sched_safe_block_count"] = float(delta_metrics.get("sched_safe_block_count", 0.0))
     finalized["delta_rule_unique_count"] = float(delta_metrics.get("rule_unique_count", 0.0))
     finalized["delta_rule_top1_share"] = float(delta_metrics.get("rule_top1_share", 0.0))
     finalized["delta_rule_distinct_count"] = float(delta_metrics.get("rule_distinct_count", 0.0))
@@ -2745,12 +2926,14 @@ def _finalize_compare_summary(summary: Dict[str, Any], **extra: Any) -> Dict[str
     finalized["delta_flat_dqn_cm_remap_count"] = float(delta_metrics.get("flat_dqn_cm_remap_count", 0.0))
     finalized["delta_pomcp_cm_block_count"] = float(delta_metrics.get("pomcp_cm_block_count", 0.0))
     finalized["delta_pomcp_force_cm_count"] = float(delta_metrics.get("pomcp_force_cm_count", 0.0))
+    finalized["delta_pomcp_dn_conservative_veto_count"] = float(delta_metrics.get("pomcp_dn_conservative_veto_count", 0.0))
     finalized["delta_final_health_mean"] = float(delta_metrics.get("final_health_mean", 0.0))
     finalized["delta_final_health_min"] = float(delta_metrics.get("final_health_min", 0.0))
     finalized["delta_final_health_p25"] = float(delta_metrics.get("final_health_p25", 0.0))
     finalized["delta_final_low_health_count_h20"] = float(delta_metrics.get("final_low_health_count_h20", 0.0))
     finalized["delta_final_low_health_count_h10"] = float(delta_metrics.get("final_low_health_count_h10", 0.0))
     finalized["delta_dispatch_count"] = int(delta_schedule.get("dispatch_count", 0))
+    finalized["delta_sched_safe_block_count_schedule"] = int(delta_schedule.get("sched_safe_block_count", 0))
     finalized["delta_current_stress_mean"] = float(delta_schedule.get("current_stress_mean", 0.0))
     finalized["delta_current_stress_max"] = float(delta_schedule.get("current_stress_max", 0.0))
     finalized["delta_makespan"] = float(delta_schedule.get("makespan", 0.0))
@@ -2769,11 +2952,17 @@ def evaluate_maint_only_results(base_cfg: SimConfig, seed: int, degr: Degradatio
             continue
         eval_cfg = copy.deepcopy(base_cfg)
         eval_cfg.SEED = int(seed)
-        eval_cfg.MAINT_MODE = maint_mode
+        eval_cfg.MAINT_VARIANT = maintenance_variant_for_context(
+            eval_cfg,
+            maint_mode,
+            enforce_region=train_enforce_region,
+            scheduler_mode=getattr(eval_cfg, "SCHEDULER_MODE", "THDQN"),
+        )
+        eval_cfg.MAINT_MODE = maintenance_mode_family(eval_cfg.MAINT_VARIANT)
         eval_cfg.BASE_DEGRADATION_RATE = float(final_scenario.degradation_rate)
         eval_cfg.ENFORCE_REGION_POLICY = bool(train_enforce_region)
         policy_label = (
-            f"{build_policy_context_label(eval_cfg, train_enforce_region, maint_mode)} | "
+            f"{build_policy_context_label(eval_cfg, train_enforce_region, eval_cfg.MAINT_VARIANT)} | "
             "Compare: maint_only | Scheduler anchor: DQN"
         )
         eval_pomcp = (
@@ -2781,18 +2970,18 @@ def evaluate_maint_only_results(base_cfg: SimConfig, seed: int, degr: Degradatio
                 num_actions=3,
                 gamma=eval_cfg.GAMMA,
                 c_ucb=eval_cfg.POMCP_UCB_C,
-                rng=make_rng(seed, train_policy_tag, "maint_only", maint_mode, "pomcp"),
+                rng=make_rng(seed, train_policy_tag, "maint_only", eval_cfg.MAINT_VARIANT, "pomcp"),
             )
-            if maint_mode == "POMCP" else None
+            if eval_cfg.MAINT_MODE == "POMCP" else None
         )
         metrics, env, overdue_stats = evaluate_once(
             eval_cfg,
-            make_rng(seed, train_policy_tag, "maint_only", maint_mode, "root"),
+            make_rng(seed, train_policy_tag, "maint_only", eval_cfg.MAINT_VARIANT, "root"),
             degr,
             rul,
             sched_agent,
-            dqn_maint_agent if maint_mode == "DQN" else None,
-            maint_mode,
+            dqn_maint_agent if eval_cfg.MAINT_MODE == "DQN" else None,
+            eval_cfg.MAINT_VARIANT,
             eval_pomcp,
             final_scenario.machine_curve_ids,
             generate_outputs=False,
@@ -2801,11 +2990,11 @@ def evaluate_maint_only_results(base_cfg: SimConfig, seed: int, degr: Degradatio
             policy_label=policy_label,
             threshold_enforced=train_enforce_region,
             scenario=final_scenario,
-            env_rng=make_rng(seed, train_policy_tag, "maint_only", maint_mode, "env_breakdown"),
-            rul_obs_rng=make_rng(seed, train_policy_tag, "maint_only", maint_mode, "env_obs"),
-            belief_rng=make_rng(seed, train_policy_tag, "maint_only", maint_mode, "belief"),
+            env_rng=make_rng(seed, train_policy_tag, "maint_only", eval_cfg.MAINT_VARIANT, "env_breakdown"),
+            rul_obs_rng=make_rng(seed, train_policy_tag, "maint_only", eval_cfg.MAINT_VARIANT, "env_obs"),
+            belief_rng=make_rng(seed, train_policy_tag, "maint_only", eval_cfg.MAINT_VARIANT, "belief"),
         )
-        results[maint_mode] = _make_eval_result(
+        results[eval_cfg.MAINT_VARIANT] = _make_eval_result(
             metrics,
             env,
             overdue_stats,
@@ -2837,26 +3026,33 @@ def train_one_mode(
     cfg = copy.deepcopy(base_cfg)
     cfg.SEED = int(seed)
     apply_scheduler_mode_runtime_overrides(cfg, str(scheduler_mode).upper())
-    cfg.MAINT_MODE = str(mode).upper()
+    cfg.MAINT_VARIANT = maintenance_variant_for_context(
+        cfg,
+        str(mode),
+        enforce_region=train_enforce_region,
+        scheduler_mode=cfg.SCHEDULER_MODE,
+    )
+    cfg.MAINT_MODE = maintenance_mode_family(cfg.MAINT_VARIANT)
     cfg.CKPT_DIR = str(ckpt_dir)
     cfg.ENFORCE_REGION_POLICY = bool(train_enforce_region)
     cfg.MAINT_AGENT_ARCH = maintenance_agent_arch_for_context(
         cfg,
-        maint_mode=cfg.MAINT_MODE,
+        maint_mode=cfg.MAINT_VARIANT,
         enforce_region=train_enforce_region,
         scheduler_mode=cfg.SCHEDULER_MODE,
     )
     cfg.MAINTENANCE_STATE_DIM = maintenance_state_dim_for_context(
         cfg,
-        maint_mode=cfg.MAINT_MODE,
+        maint_mode=cfg.MAINT_VARIANT,
         enforce_region=train_enforce_region,
     )
     stamp_effective_degradation_config(cfg)
-    set_seed(derive_seed(seed, train_policy_tag, cfg.SCHEDULER_MODE, mode, "global_init"))
+    set_seed(derive_seed(seed, train_policy_tag, cfg.SCHEDULER_MODE, cfg.MAINT_VARIANT, "global_init"))
 
     sched_agent = _make_scheduler_agent(cfg, seed, device)
     maint_agent = _make_maint_agent(cfg, seed, device) if cfg.MAINT_MODE == "DQN" else None
     ckpt_mgr = CheckpointManager(str(ckpt_dir), cfg, device)
+    maint_mode_tag = build_maint_mode_tag(cfg.MAINT_VARIANT)
 
     base_degrad = effective_base_degradation_rate(base_cfg)
     ep_tard: List[float] = []
@@ -2872,9 +3068,9 @@ def train_one_mode(
     for ep, scenario in enumerate(scenario_bank.train_scenarios):
         ep_num = ep + 1
         cfg.BASE_DEGRADATION_RATE = float(scenario.degradation_rate)
-        env_breakdown_rng = make_rng(seed, train_policy_tag, cfg.SCHEDULER_MODE, mode, "train", ep_num, "env_breakdown")
-        env_obs_rng = make_rng(seed, train_policy_tag, cfg.SCHEDULER_MODE, mode, "train", ep_num, "env_obs")
-        belief_rng = make_rng(seed, train_policy_tag, cfg.SCHEDULER_MODE, mode, "train", ep_num, "belief")
+        env_breakdown_rng = make_rng(seed, train_policy_tag, cfg.SCHEDULER_MODE, cfg.MAINT_VARIANT, "train", ep_num, "env_breakdown")
+        env_obs_rng = make_rng(seed, train_policy_tag, cfg.SCHEDULER_MODE, cfg.MAINT_VARIANT, "train", ep_num, "env_obs")
+        belief_rng = make_rng(seed, train_policy_tag, cfg.SCHEDULER_MODE, cfg.MAINT_VARIANT, "train", ep_num, "belief")
         env = EventDrivenShopEnv(cfg, env_breakdown_rng, degr, rul, breakdown_rng=env_breakdown_rng, obs_rng=env_obs_rng)
         env.reset(machine_curve_ids=scenario.machine_curve_ids, scenario=scenario)
         episode_pomcp = (
@@ -2882,7 +3078,7 @@ def train_one_mode(
                 num_actions=3,
                 gamma=cfg.GAMMA,
                 c_ucb=cfg.POMCP_UCB_C,
-                rng=make_rng(seed, train_policy_tag, mode, "train", ep_num, "pomcp"),
+                rng=make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "train", ep_num, "pomcp"),
             )
             if cfg.MAINT_MODE == "POMCP" else None
         )
@@ -2953,7 +3149,7 @@ def train_one_mode(
                                 env=env,
                                 mid=mid,
                                 baseline_rul=env.machines[mid].maint_rul_baseline,
-                                maint_mode=cfg.MAINT_MODE,
+                                maint_mode=cfg.MAINT_VARIANT,
                                 im_since_cm_norm=float(rec.get("im_since_cm_norm", 0.0)),
                                 im_damage_norm=float(rec.get("im_damage_norm", 0.0)),
                                 dn_imminent_breakdown=dn_imminent_breakdown,
@@ -3104,7 +3300,7 @@ def train_one_mode(
                                                     im_damage_norm=im_damage_norm,
                                                     state_dim=state_dim)
                         a, action_meta = select_maintenance_action(
-                            cfg.MAINT_MODE, maint_agent, episode_pomcp, pomcp_beliefs, env, mid, h, s,
+                            cfg.MAINT_VARIANT, maint_agent, episode_pomcp, pomcp_beliefs, env, mid, h, s,
                             slack_pressure, current_stress, local_urgency, cfg, belief_rng, explore=True
                         )
                         action_meta = normalize_maint_action_meta(action_meta, a)
@@ -3115,7 +3311,7 @@ def train_one_mode(
                             pf_dn,
                             dn_imminent_breakdown,
                             cfg,
-                            maint_mode=cfg.MAINT_MODE,
+                            maint_mode=cfg.MAINT_VARIANT,
                             enforce_region=enforce_region_train,
                             history_score=history_score,
                             im_since_cm_norm=im_since_cm_norm,
@@ -3143,7 +3339,7 @@ def train_one_mode(
                                 env=env,
                                 mid=mid,
                                 baseline_rul=m.maint_rul_baseline,
-                                maint_mode=cfg.MAINT_MODE,
+                                maint_mode=cfg.MAINT_VARIANT,
                                 im_since_cm_norm=im_since_cm_norm,
                                 im_damage_norm=im_damage_norm,
                                 dn_imminent_breakdown=dn_imminent_breakdown,
@@ -3217,7 +3413,7 @@ def train_one_mode(
                                     env=env,
                                     mid=mid,
                                     baseline_rul=env.machines[mid].maint_rul_baseline,
-                                    maint_mode=cfg.MAINT_MODE,
+                                    maint_mode=cfg.MAINT_VARIANT,
                                     im_since_cm_norm=float(rec.get("im_since_cm_norm", 0.0)),
                                     im_damage_norm=float(rec.get("im_damage_norm", 0.0)),
                                     dn_imminent_breakdown=dn_imminent_breakdown,
@@ -3350,7 +3546,7 @@ def train_one_mode(
         ep_avg_im.append(np.mean([m.total_im_count for m in env.machines]))
         print(
             f"[seed {seed}][{train_policy_tag}][{build_scheduler_mode_tag(cfg.SCHEDULER_MODE)}]"
-            f"[{build_maint_mode_tag(mode)}] ep {ep_num}/{cfg.TRAIN_EPISODES} "
+            f"[{maint_mode_tag}] ep {ep_num}/{cfg.TRAIN_EPISODES} "
             f"tard={tard:.1f} maint={maint:.1f} events={len(env.timeline_ops)}"
         )
 
@@ -3359,7 +3555,7 @@ def train_one_mode(
                 qs = np.quantile(np.array(slack_samples, dtype=np.float64), [0.1, 0.5, 0.9])
                 ps = np.quantile(np.array(pressure_samples, dtype=np.float64), [0.1, 0.5, 0.9])
                 print(
-                    f"diag [{train_policy_tag}][{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: avg_slack_q10/50/90="
+                    f"diag [{train_policy_tag}][{maint_mode_tag}][seed {seed}] ep {ep_num}: avg_slack_q10/50/90="
                     f"{qs[0]:.1f}/{qs[1]:.1f}/{qs[2]:.1f} pressure_q10/50/90={ps[0]:.2f}/{ps[1]:.2f}/{ps[2]:.2f} "
                     f"maint DN/IM/CM={maint_counts.get(0,0)}/{maint_counts.get(1,0)}/{maint_counts.get(2,0)}"
                 )
@@ -3375,14 +3571,14 @@ def train_one_mode(
                         lo = bins[i]
                         hi = bins[i + 1]
                         rates = [c / total for c in counts[i]]
-                        print(f"diag [{train_policy_tag}][{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: {name}[{lo:.2f},{hi:.2f}) DN/IM/CM={rates[0]:.2f}/{rates[1]:.2f}/{rates[2]:.2f}")
+                        print(f"diag [{train_policy_tag}][{maint_mode_tag}][seed {seed}] ep {ep_num}: {name}[{lo:.2f},{hi:.2f}) DN/IM/CM={rates[0]:.2f}/{rates[1]:.2f}/{rates[2]:.2f}")
                 avg_gap = float(np.mean(maint_intervals)) if maint_intervals else 0.0
                 avg_urg = [float(np.mean(urgency_action_vals[a])) if urgency_action_vals[a] else 0.0 for a in (0, 1, 2)]
                 if maint_intervals:
-                    print(f"diag [{train_policy_tag}][{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: avg_time_between_maint={avg_gap:.1f}")
-                print(f"diag [{train_policy_tag}][{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: avg_local_urgency DN/IM/CM={avg_urg[0]:.2f}/{avg_urg[1]:.2f}/{avg_urg[2]:.2f}")
+                    print(f"diag [{train_policy_tag}][{maint_mode_tag}][seed {seed}] ep {ep_num}: avg_time_between_maint={avg_gap:.1f}")
+                print(f"diag [{train_policy_tag}][{maint_mode_tag}][seed {seed}] ep {ep_num}: avg_local_urgency DN/IM/CM={avg_urg[0]:.2f}/{avg_urg[1]:.2f}/{avg_urg[2]:.2f}")
             else:
-                print(f"diag [{train_policy_tag}][{build_maint_mode_tag(mode)}][seed {seed}] ep {ep_num}: no slack samples")
+                print(f"diag [{train_policy_tag}][{maint_mode_tag}][seed {seed}] ep {ep_num}: no slack samples")
 
         saved_latest = False
         if cfg.EVAL_EVERY > 0 and ep_num in scenario_bank.periodic_eval_scenarios:
@@ -3392,26 +3588,26 @@ def train_one_mode(
             eval_scenario = scenario_bank.periodic_eval_scenarios[ep_num]
             eval_pomcp = (
                 POMCPPlanner(num_actions=3, gamma=cfg.GAMMA, c_ucb=cfg.POMCP_UCB_C,
-                             rng=make_rng(seed, train_policy_tag, mode, "periodic_eval", ep_num, "pomcp"))
+                             rng=make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "periodic_eval", ep_num, "pomcp"))
                 if cfg.MAINT_MODE == "POMCP" else None
             )
             eval_metrics, _, _ = evaluate_once(
                 eval_cfg,
-                make_rng(seed, train_policy_tag, mode, "periodic_eval", ep_num, "root"),
+                make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "periodic_eval", ep_num, "root"),
                 degr,
                 rul,
                 sched_agent,
                 maint_agent,
-                cfg.MAINT_MODE,
+                cfg.MAINT_VARIANT,
                 eval_pomcp,
                 eval_scenario.machine_curve_ids,
                 generate_outputs=False,
                 freeze_steps=True,
                 threshold_enforced=train_enforce_region,
                 scenario=eval_scenario,
-                env_rng=make_rng(seed, train_policy_tag, mode, "periodic_eval", ep_num, "env_breakdown"),
-                rul_obs_rng=make_rng(seed, train_policy_tag, mode, "periodic_eval", ep_num, "env_obs"),
-                belief_rng=make_rng(seed, train_policy_tag, mode, "periodic_eval", ep_num, "belief"),
+                env_rng=make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "periodic_eval", ep_num, "env_breakdown"),
+                rul_obs_rng=make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "periodic_eval", ep_num, "env_obs"),
+                belief_rng=make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "periodic_eval", ep_num, "belief"),
             )
             eval_metrics["episode"] = ep_num
             ckpt_mgr.append_metrics(eval_metrics, seed)
@@ -3456,33 +3652,32 @@ def train_one_mode(
                     stable_count = 0
                 if stable_count >= int(getattr(cfg, "EARLY_STOP_PATIENCE", 5)):
                     stop_ep = ep_num
-                    print(f"[seed {seed}][{train_policy_tag}][{build_maint_mode_tag(mode)}] early stop at ep {stop_ep}: rel_change={rel:.4f}, window={w}")
+                    print(f"[seed {seed}][{train_policy_tag}][{maint_mode_tag}] early stop at ep {stop_ep}: rel_change={rel:.4f}, window={w}")
                     break
 
     cfg.BASE_DEGRADATION_RATE = base_degrad
-    maint_mode_tag = build_maint_mode_tag(cfg.MAINT_MODE)
     final_scenario = scenario_bank.final_eval_scenario
     eval_cfg = copy.deepcopy(cfg)
     eval_cfg.BASE_DEGRADATION_RATE = float(final_scenario.degradation_rate)
     eval_cfg.ENFORCE_REGION_POLICY = bool(train_enforce_region)
-    policy_label = build_policy_context_label(eval_cfg, train_enforce_region, cfg.MAINT_MODE)
+    policy_label = build_policy_context_label(eval_cfg, train_enforce_region, cfg.MAINT_VARIANT)
     eval_pomcp = (
         POMCPPlanner(
             num_actions=3,
             gamma=cfg.GAMMA,
             c_ucb=cfg.POMCP_UCB_C,
-            rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", "official", "pomcp"),
+            rng=make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "final_eval", "official", "pomcp"),
         )
         if cfg.MAINT_MODE == "POMCP" else None
     )
     eval_metrics, eval_env, overdue_stats = evaluate_once(
         eval_cfg,
-        make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", "official", "root"),
+        make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "final_eval", "official", "root"),
         degr,
         rul,
         sched_agent,
         maint_agent,
-        cfg.MAINT_MODE,
+        cfg.MAINT_VARIANT,
         eval_pomcp,
         final_scenario.machine_curve_ids,
         generate_outputs=True,
@@ -3493,9 +3688,9 @@ def train_one_mode(
         policy_label=policy_label,
         threshold_enforced=train_enforce_region,
         scenario=final_scenario,
-        env_rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", "official", "env_breakdown"),
-        rul_obs_rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", "official", "env_obs"),
-        belief_rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", "official", "belief"),
+        env_rng=make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "final_eval", "official", "env_breakdown"),
+        rul_obs_rng=make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "final_eval", "official", "env_obs"),
+        belief_rng=make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "final_eval", "official", "belief"),
     )
     official_result = _make_eval_result(
         eval_metrics,
@@ -3520,7 +3715,7 @@ def train_one_mode(
         "seed": int(seed),
         **experiment_result_metadata(
             base_cfg,
-            maint_mode=cfg.MAINT_MODE,
+            maint_mode=cfg.MAINT_VARIANT,
             compare_type="full_system",
             scheduler_mode=cfg.SCHEDULER_MODE,
             train_policy_tag=train_policy_tag,
@@ -3532,6 +3727,7 @@ def train_one_mode(
         "policy_label": policy_label,
         "maint_mode_tag": maint_mode_tag,
         "maint_mode": str(cfg.MAINT_MODE),
+        "maint_variant": str(cfg.MAINT_VARIANT),
         "compare_type": "full_system",
         "scheduler_anchor": "none",
         "enforce_region_policy": int(train_enforce_region),
@@ -3597,6 +3793,8 @@ def train_one_mode(
         "flat_dqn_cm_remap_count": int(sum(1 for row in official_maint_rows if bool(row.get("flat_dqn_cm_remap")))),
         "pomcp_cm_block_count": int(sum(1 for row in official_maint_rows if bool(row.get("pomcp_cm_blocked")))),
         "pomcp_force_cm_count": int(sum(1 for row in official_maint_rows if bool(row.get("pomcp_force_cm")))),
+        "pomcp_dn_conservative_veto_count": int(sum(1 for row in official_maint_rows if bool(row.get("pomcp_dn_conservative_veto")))),
+        "sched_safe_block_count": int(sum(1 for row in official_decision_log if bool(row.get("sched_safe_blocked")))),
         "high_health_cm_count": int(sum(
             1 for row in official_maint_rows
             if str(row.get("kind", "")).upper() == "CM"
@@ -3619,24 +3817,24 @@ def train_one_mode(
         diag_cfg = copy.deepcopy(cfg)
         diag_cfg.BASE_DEGRADATION_RATE = float(final_scenario.degradation_rate)
         diag_cfg.ENFORCE_REGION_POLICY = diag_enforce
-        diag_label = f"{build_policy_context_label(diag_cfg, diag_enforce, cfg.MAINT_MODE)} | OOD diagnostic"
+        diag_label = f"{build_policy_context_label(diag_cfg, diag_enforce, cfg.MAINT_VARIANT)} | OOD diagnostic"
         diag_pomcp = (
             POMCPPlanner(
                 num_actions=3,
                 gamma=cfg.GAMMA,
                 c_ucb=cfg.POMCP_UCB_C,
-                rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", diag_policy_tag, "pomcp"),
+                rng=make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "final_eval", diag_policy_tag, "pomcp"),
             )
             if cfg.MAINT_MODE == "POMCP" else None
         )
         diag_metrics, diag_env, diag_overdue = evaluate_once(
             diag_cfg,
-            make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", diag_policy_tag, "root"),
+            make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "final_eval", diag_policy_tag, "root"),
             degr,
             rul,
             sched_agent,
             maint_agent,
-            cfg.MAINT_MODE,
+            cfg.MAINT_VARIANT,
             diag_pomcp,
             final_scenario.machine_curve_ids,
             generate_outputs=True,
@@ -3647,9 +3845,9 @@ def train_one_mode(
             policy_label=diag_label,
             threshold_enforced=diag_enforce,
             scenario=final_scenario,
-            env_rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", diag_policy_tag, "env_breakdown"),
-            rul_obs_rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", diag_policy_tag, "env_obs"),
-            belief_rng=make_rng(seed, train_policy_tag, cfg.MAINT_MODE, "final_eval", diag_policy_tag, "belief"),
+            env_rng=make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "final_eval", diag_policy_tag, "env_breakdown"),
+            rul_obs_rng=make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "final_eval", diag_policy_tag, "env_obs"),
+            belief_rng=make_rng(seed, train_policy_tag, cfg.MAINT_VARIANT, "final_eval", diag_policy_tag, "belief"),
         )
         diagnostic_results[diag_policy_tag] = _make_eval_result(
             diag_metrics,
@@ -3719,6 +3917,7 @@ def train_one_mode(
         "scheduler_mode": cfg.SCHEDULER_MODE,
         "scheduler_mode_tag": build_scheduler_mode_tag(cfg.SCHEDULER_MODE),
         "maint_mode": cfg.MAINT_MODE,
+        "maint_variant": cfg.MAINT_VARIANT,
         "maint_mode_tag": maint_mode_tag,
         "train_policy_tag": train_policy_tag,
         "train_enforce_region": bool(train_enforce_region),
@@ -3755,7 +3954,7 @@ def main(profile_override: Optional[str] = None):
     ckpt_root.mkdir(parents=True, exist_ok=True)
 
     experiment_seeds = [int(s) for s in getattr(cfg, "EXPERIMENT_SEEDS", (cfg.SEED,))]
-    maint_modes = [str(m).upper() for m in getattr(cfg, "TRAIN_MAINT_MODES", ("DQN", "POMCP"))]
+    maint_modes = [str(m).strip() for m in getattr(cfg, "TRAIN_MAINT_MODES", ("flat_ddqn", "hier_ddqn", "pomcp"))]
     scheduler_modes = [str(m).upper() for m in getattr(cfg, "TRAIN_SCHEDULER_MODES", ("THDQN",))]
     route_specs = [resolve_train_policy_route(route_name, cfg) for route_name in getattr(cfg, "TRAIN_POLICY_ROUTES", ("region_on", "region_off"))]
     all_result_rows: List[Dict[str, Any]] = []
@@ -3781,7 +3980,12 @@ def main(profile_override: Optional[str] = None):
                 scheduler_root = route_root / scheduler_tag
                 scheduler_root.mkdir(parents=True, exist_ok=True)
                 route_results[train_policy_tag][scheduler_mode] = {}
-                active_maint_modes = list(maint_modes)
+                active_maint_modes = resolve_active_maint_variants(
+                    cfg,
+                    maint_modes,
+                    scheduler_mode=scheduler_mode,
+                    enforce_region=train_enforce_region,
+                )
 
                 for mode in active_maint_modes:
                     mode_tag = build_maint_mode_tag(mode)
@@ -3819,50 +4023,56 @@ def main(profile_override: Optional[str] = None):
 
                 compare_dir = scheduler_root / "compare"
                 compare_dir.mkdir(parents=True, exist_ok=True)
-                if "DQN" in route_results[train_policy_tag][scheduler_mode] and "POMCP" in route_results[train_policy_tag][scheduler_mode]:
-                    full_compare_summary, full_compare_rows = compare_mode_results(
-                        route_results[train_policy_tag][scheduler_mode]["DQN"]["official_result"],
-                        route_results[train_policy_tag][scheduler_mode]["POMCP"]["official_result"],
-                        "DQN",
-                        "POMCP",
-                        compare_type="full_system",
-                        train_policy_tag=train_policy_tag,
-                        eval_policy_tag=train_policy_tag,
-                        scheduler_anchor=scheduler_mode,
-                    )
-                    full_compare_summary = _finalize_compare_summary(
-                        full_compare_summary,
-                        seed=int(seed),
-                        policy_tag=train_policy_tag,
-                        policy_label=train_policy_label,
-                        **experiment_result_metadata(
-                            cfg,
-                            maint_mode="DQN",
+                realized_modes = [mode for mode in active_maint_modes if mode in route_results[train_policy_tag][scheduler_mode]]
+                for idx, primary_mode in enumerate(realized_modes):
+                    for compare_mode in realized_modes[idx + 1:]:
+                        full_compare_summary, full_compare_rows = compare_mode_results(
+                            route_results[train_policy_tag][scheduler_mode][primary_mode]["official_result"],
+                            route_results[train_policy_tag][scheduler_mode][compare_mode]["official_result"],
+                            primary_mode,
+                            compare_mode,
                             compare_type="full_system",
-                            scheduler_mode=scheduler_mode,
                             train_policy_tag=train_policy_tag,
                             eval_policy_tag=train_policy_tag,
-                            include_maint_family=False,
-                        ),
-                        maint_family="mixed",
-                        primary_maint_family=maintenance_family_for_mode("DQN"),
-                        compare_maint_family=maintenance_family_for_mode("POMCP"),
-                        scheduler_mode=scheduler_mode,
-                        scheduler_mode_tag=scheduler_tag,
-                    )
-                    all_compare_rows.append(dict(full_compare_summary))
-                    write_mode_comparison_outputs(
-                        compare_dir,
-                        f"compare_full_system_dqn_vs_pomcp_{train_policy_tag}",
-                        full_compare_summary,
-                        full_compare_rows,
-                        policy_label=(
-                            f"{train_policy_label} | {build_scheduler_mode_label(scheduler_mode)} | "
-                            "Compare: full_system | Maintenance: DQN vs POMCP"
-                        ),
-                    )
+                            scheduler_anchor=scheduler_mode,
+                        )
+                        full_compare_summary = _finalize_compare_summary(
+                            full_compare_summary,
+                            seed=int(seed),
+                            policy_tag=train_policy_tag,
+                            policy_label=train_policy_label,
+                            **experiment_result_metadata(
+                                cfg,
+                                maint_mode=primary_mode,
+                                compare_type="full_system",
+                                scheduler_mode=scheduler_mode,
+                                train_policy_tag=train_policy_tag,
+                                eval_policy_tag=train_policy_tag,
+                                include_maint_family=False,
+                            ),
+                            maint_family="mixed",
+                            primary_maint_family=maintenance_family_for_mode(primary_mode),
+                            compare_maint_family=maintenance_family_for_mode(compare_mode),
+                            scheduler_mode=scheduler_mode,
+                            scheduler_mode_tag=scheduler_tag,
+                        )
+                        all_compare_rows.append(dict(full_compare_summary))
+                        write_mode_comparison_outputs(
+                            compare_dir,
+                            f"compare_full_system_{build_maint_mode_tag(primary_mode)}_vs_{build_maint_mode_tag(compare_mode)}_{train_policy_tag}",
+                            full_compare_summary,
+                            full_compare_rows,
+                            policy_label=(
+                                f"{train_policy_label} | {build_scheduler_mode_label(scheduler_mode)} | "
+                                f"Compare: full_system | maintenance: {primary_mode} vs {compare_mode}"
+                            ),
+                        )
 
-                    if enable_maint_only_compare and scheduler_mode == "THDQN":
+                if enable_maint_only_compare and scheduler_mode == "THDQN":
+                    anchor_mode = "hier_ddqn" if "hier_ddqn" in route_results[train_policy_tag][scheduler_mode] else None
+                    if anchor_mode is None and "flat_ddqn" in route_results[train_policy_tag][scheduler_mode]:
+                        anchor_mode = "flat_ddqn"
+                    if anchor_mode is not None:
                         maint_only_results = evaluate_maint_only_results(
                             cfg,
                             seed,
@@ -3871,8 +4081,8 @@ def main(profile_override: Optional[str] = None):
                             scenario_bank,
                             train_policy_tag,
                             train_enforce_region,
-                            route_results[train_policy_tag][scheduler_mode]["DQN"]["sched_agent"],
-                            route_results[train_policy_tag][scheduler_mode]["DQN"]["maint_agent"],
+                            route_results[train_policy_tag][scheduler_mode][anchor_mode]["sched_agent"],
+                            route_results[train_policy_tag][scheduler_mode][anchor_mode]["maint_agent"],
                         )
                         route_maint_only_results[train_policy_tag] = maint_only_results
                         for eval_mode, result in maint_only_results.items():
@@ -3884,55 +4094,59 @@ def main(profile_override: Optional[str] = None):
                                     train_policy_tag,
                                     result,
                                     compare_type="maint_only",
-                                    scheduler_anchor="DQN",
+                                    scheduler_anchor=anchor_mode,
                                 )
                             )
-                        if "DQN" in maint_only_results and "POMCP" in maint_only_results:
-                            maint_only_summary, maint_only_rows = compare_mode_results(
-                                maint_only_results["DQN"],
-                                maint_only_results["POMCP"],
-                                "DQN",
-                                "POMCP",
-                                compare_type="maint_only",
-                                train_policy_tag=train_policy_tag,
-                                eval_policy_tag=train_policy_tag,
-                                scheduler_anchor="DQN",
-                            )
-                            maint_only_summary = _finalize_compare_summary(
-                                maint_only_summary,
-                                seed=int(seed),
-                                policy_tag=train_policy_tag,
-                                policy_label=train_policy_label,
-                                **experiment_result_metadata(
-                                    cfg,
-                                    maint_mode="DQN",
+                        maint_only_modes = list(maint_only_results.keys())
+                        for idx, primary_mode in enumerate(maint_only_modes):
+                            for compare_mode in maint_only_modes[idx + 1:]:
+                                maint_only_summary, maint_only_rows = compare_mode_results(
+                                    maint_only_results[primary_mode],
+                                    maint_only_results[compare_mode],
+                                    primary_mode,
+                                    compare_mode,
                                     compare_type="maint_only",
-                                    scheduler_mode=scheduler_mode,
                                     train_policy_tag=train_policy_tag,
                                     eval_policy_tag=train_policy_tag,
-                                    include_maint_family=False,
-                                ),
-                                maint_family="mixed",
-                                primary_maint_family=maintenance_family_for_mode("DQN"),
-                                compare_maint_family=maintenance_family_for_mode("POMCP"),
-                                scheduler_mode=scheduler_mode,
-                                scheduler_mode_tag=scheduler_tag,
-                            )
-                            all_compare_rows.append(dict(maint_only_summary))
-                            write_mode_comparison_outputs(
-                                compare_dir,
-                                f"compare_maint_only_anchor_dqn_{train_policy_tag}",
-                                maint_only_summary,
-                                maint_only_rows,
-                                policy_label=f"{train_policy_label} | Compare: maint_only | Scheduler anchor: DQN | Maintenance: DQN vs POMCP",
-                            )
+                                    scheduler_anchor=anchor_mode,
+                                )
+                                maint_only_summary = _finalize_compare_summary(
+                                    maint_only_summary,
+                                    seed=int(seed),
+                                    policy_tag=train_policy_tag,
+                                    policy_label=train_policy_label,
+                                    **experiment_result_metadata(
+                                        cfg,
+                                        maint_mode=primary_mode,
+                                        compare_type="maint_only",
+                                        scheduler_mode=scheduler_mode,
+                                        train_policy_tag=train_policy_tag,
+                                        eval_policy_tag=train_policy_tag,
+                                        include_maint_family=False,
+                                    ),
+                                    maint_family="mixed",
+                                    primary_maint_family=maintenance_family_for_mode(primary_mode),
+                                    compare_maint_family=maintenance_family_for_mode(compare_mode),
+                                    scheduler_mode=scheduler_mode,
+                                    scheduler_mode_tag=scheduler_tag,
+                                )
+                                all_compare_rows.append(dict(maint_only_summary))
+                                write_mode_comparison_outputs(
+                                    compare_dir,
+                                    f"compare_maint_only_anchor_{anchor_mode}_{build_maint_mode_tag(primary_mode)}_vs_{build_maint_mode_tag(compare_mode)}_{train_policy_tag}",
+                                    maint_only_summary,
+                                    maint_only_rows,
+                                    policy_label=f"{train_policy_label} | Compare: maint_only | Scheduler anchor: {anchor_mode} | maintenance: {primary_mode} vs {compare_mode}",
+                                )
 
             if experiment_profile == "thesis_ppo_reward_ablation":
                 reward_compare_dir = route_root / "reward_compare"
                 reward_compare_dir.mkdir(parents=True, exist_ok=True)
-                legacy_run = route_results[train_policy_tag].get("PPO_LEGACY", {}).get("DQN")
-                efficiency_run = route_results[train_policy_tag].get("PPO_EFFICIENCY", {}).get("DQN")
-                if legacy_run is not None and efficiency_run is not None:
+                legacy_bucket = route_results[train_policy_tag].get("PPO_LEGACY", {})
+                efficiency_bucket = route_results[train_policy_tag].get("PPO_EFFICIENCY", {})
+                for reward_mode in [mode for mode in legacy_bucket.keys() if mode in efficiency_bucket]:
+                    legacy_run = legacy_bucket[reward_mode]
+                    efficiency_run = efficiency_bucket[reward_mode]
                     reward_summary, reward_rows = compare_mode_results(
                         legacy_run["official_result"],
                         efficiency_run["official_result"],
@@ -3941,7 +4155,7 @@ def main(profile_override: Optional[str] = None):
                         compare_type="scheduler_reward_ablation",
                         train_policy_tag=train_policy_tag,
                         eval_policy_tag=train_policy_tag,
-                        scheduler_anchor="DQN",
+                        scheduler_anchor=reward_mode,
                     )
                     reward_summary = _finalize_compare_summary(
                         reward_summary,
@@ -3950,14 +4164,15 @@ def main(profile_override: Optional[str] = None):
                         policy_label=train_policy_label,
                         **experiment_result_metadata(
                             cfg,
-                            maint_mode="DQN",
+                            maint_mode=reward_mode,
                             compare_type="scheduler_reward_ablation",
                             scheduler_mode="PPO",
                             train_policy_tag=train_policy_tag,
                             eval_policy_tag=train_policy_tag,
                         ),
-                        maint_mode="DQN",
-                        maint_mode_tag=build_maint_mode_tag("DQN"),
+                        maint_mode=maintenance_mode_family(reward_mode),
+                        maint_variant=reward_mode,
+                        maint_mode_tag=build_maint_mode_tag(reward_mode),
                         scheduler_mode="PPO",
                         scheduler_mode_tag=build_scheduler_mode_tag("PPO"),
                         primary_scheduler_mode="PPO_LEGACY",
@@ -3968,16 +4183,20 @@ def main(profile_override: Optional[str] = None):
                     all_compare_rows.append(dict(reward_summary))
                     write_mode_comparison_outputs(
                         reward_compare_dir,
-                        f"compare_scheduler_reward_ppo_legacy_vs_efficiency_{train_policy_tag}",
+                        f"compare_scheduler_reward_ppo_legacy_vs_efficiency_{build_maint_mode_tag(reward_mode)}_{train_policy_tag}",
                         reward_summary,
                         reward_rows,
-                        policy_label=f"{train_policy_label} | Compare: scheduler_reward_ablation | PPO + DQN | legacy vs efficiency",
+                        policy_label=f"{train_policy_label} | Compare: scheduler_reward_ablation | PPO + {reward_mode} | legacy vs efficiency",
                     )
 
             if "THDQN" in route_results[train_policy_tag] and "PPO" in route_results[train_policy_tag]:
                 scheduler_compare_dir = route_root / "scheduler_compare"
                 scheduler_compare_dir.mkdir(parents=True, exist_ok=True)
-                for mode in maint_modes:
+                shared_modes = [
+                    mode for mode in route_results[train_policy_tag]["THDQN"].keys()
+                    if mode in route_results[train_policy_tag]["PPO"]
+                ]
+                for mode in shared_modes:
                     thdqn_run = route_results[train_policy_tag]["THDQN"].get(mode)
                     ppo_run = route_results[train_policy_tag]["PPO"].get(mode)
                     if thdqn_run is None or ppo_run is None:
@@ -4005,7 +4224,8 @@ def main(profile_override: Optional[str] = None):
                             train_policy_tag=train_policy_tag,
                             eval_policy_tag=train_policy_tag,
                         ),
-                        maint_mode=str(mode),
+                        maint_mode=maintenance_mode_family(str(mode)),
+                        maint_variant=str(mode),
                         maint_mode_tag=build_maint_mode_tag(mode),
                         primary_scheduler_mode="THDQN",
                         compare_scheduler_mode="PPO",
@@ -4016,7 +4236,7 @@ def main(profile_override: Optional[str] = None):
                         f"compare_scheduler_thdqn_vs_ppo_{build_maint_mode_tag(mode)}_{train_policy_tag}",
                         scheduler_summary,
                         scheduler_rows,
-                        policy_label=f"{train_policy_label} | Compare: full_system | Scheduler: THDQN vs PPO | Maintenance: {mode}",
+                        policy_label=f"{train_policy_label} | Compare: full_system | Scheduler: THDQN vs PPO | maintenance: {mode}",
                     )
 
         if len(route_specs) >= 2:
@@ -4027,7 +4247,10 @@ def main(profile_override: Optional[str] = None):
 
             for scheduler_mode in scheduler_modes:
                 scheduler_tag = build_scheduler_mode_tag(scheduler_mode)
-                active_maint_modes = list(maint_modes)
+                active_maint_modes = [
+                    mode for mode in route_results.get(constrained_tag, {}).get(scheduler_mode, {}).keys()
+                    if mode in route_results.get(unrestricted_tag, {}).get(scheduler_mode, {})
+                ]
                 for mode in active_maint_modes:
                     constrained_run = route_results.get(constrained_tag, {}).get(scheduler_mode, {}).get(mode)
                     unrestricted_run = route_results.get(unrestricted_tag, {}).get(scheduler_mode, {}).get(mode)
@@ -4058,7 +4281,8 @@ def main(profile_override: Optional[str] = None):
                         ),
                         scheduler_mode=scheduler_mode,
                         scheduler_mode_tag=build_scheduler_mode_tag(scheduler_mode),
-                        maint_mode=str(mode),
+                        maint_mode=maintenance_mode_family(str(mode)),
+                        maint_variant=str(mode),
                         maint_mode_tag=build_maint_mode_tag(mode),
                         route_delta_direction="unrestricted_minus_constrained",
                     )
@@ -4068,11 +4292,15 @@ def main(profile_override: Optional[str] = None):
                         f"route_compare_full_system_{build_scheduler_mode_tag(scheduler_mode)}_{build_maint_mode_tag(mode)}",
                         route_summary,
                         route_rows,
-                        policy_label=f"Route compare | Full system | {build_scheduler_mode_label(scheduler_mode)} | Maintenance: {mode}",
+                        policy_label=f"Route compare | Full system | {build_scheduler_mode_label(scheduler_mode)} | maintenance: {mode}",
                     )
 
                 if enable_maint_only_compare and scheduler_mode == "THDQN":
-                    for mode in maint_modes:
+                    maint_only_modes = [
+                        mode for mode in route_maint_only_results.get(constrained_tag, {}).keys()
+                        if mode in route_maint_only_results.get(unrestricted_tag, {})
+                    ]
+                    for mode in maint_only_modes:
                         constrained_anchor = route_maint_only_results.get(constrained_tag, {}).get(mode)
                         unrestricted_anchor = route_maint_only_results.get(unrestricted_tag, {}).get(mode)
                         if constrained_anchor is None or unrestricted_anchor is None:
@@ -4102,7 +4330,8 @@ def main(profile_override: Optional[str] = None):
                             ),
                             scheduler_mode=scheduler_mode,
                             scheduler_mode_tag=build_scheduler_mode_tag(scheduler_mode),
-                            maint_mode=str(mode),
+                            maint_mode=maintenance_mode_family(str(mode)),
+                            maint_variant=str(mode),
                             maint_mode_tag=build_maint_mode_tag(mode),
                             route_delta_direction="unrestricted_minus_constrained",
                         )
@@ -4112,7 +4341,7 @@ def main(profile_override: Optional[str] = None):
                             f"route_compare_maint_only_anchor_dqn_{build_maint_mode_tag(mode)}",
                             route_summary,
                             route_rows,
-                            policy_label=f"Route compare | Maint-only anchor DQN | Maintenance: {mode}",
+                            policy_label=f"Route compare | Maint-only anchor DQN | maintenance: {mode}",
                         )
 
     paired_results_csv = output_root / "paired_eval_rows.csv"
