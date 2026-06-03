@@ -1,0 +1,16 @@
+flowchart LR
+    A["效率优先"] --> B["负荷均衡"] --> C["交期/风险优先"]
+
+    R4["短任务堆积<br/>SRPT + SPT Machine"]
+    R5["长任务滞留<br/>LRPT + Earliest Idle"]
+    R2["交期临近但仍重视效率<br/>EDD + SPT Machine"]
+    R1["交期压力开始上升<br/>EDD + Earliest Idle"]
+    R6["时间余量最紧<br/>Minimum Slack + Earliest Idle"]
+    R3["拖期损失最高<br/>Weighted Tardiness Risk + SPT"]
+
+    A --> R4
+    A --> R5
+    B --> R2
+    B --> R1
+    C --> R6
+    C --> R3

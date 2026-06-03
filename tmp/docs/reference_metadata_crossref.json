@@ -1,0 +1,5415 @@
+{
+  "1": {
+    "ref": "Kagermann H, Helbig J, Wahlster W. Recommendations for implementing the strategic initiative INDUSTRIE 4.0: final report of the Industrie 4.0 Working Group[R]. Frankfurt: Forschungsunion, 2013",
+    "query": "Kagermann H, Helbig J, Wahlster W. Recommendations for implementing the strategic initiative INDUSTRIE 4.0: final report of the Industrie 4.0 Working Group. Frankfurt: Forschungsunion, 2013",
+    "items": [
+      {
+        "title": [
+          "Ten Years of Industrie 4.0"
+        ],
+        "container-title": [
+          "Sci"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022,
+              6,
+              28
+            ]
+          ]
+        },
+        "DOI": "10.3390/sci4030026",
+        "URL": "https://doi.org/10.3390/sci4030026",
+        "type": "journal-article",
+        "score": 54.870426,
+        "abstract": "<jats:p>A decade after its introduction, Industrie 4.0 has been established globally as the dominant paradigm for the digital transformation of the manufacturing industry. Amalgamating research-based results and practical experience from the German industry, this contribution reviews the progress made in implementing Industrie 4.0 and identifies future fields of action from a technological and application-oriented perspective. Putting the human in the center, Industrie 4.0 is the basis for data-based value creation, innovative business models, and agile forms of organization. Today, in the German manufacturing industry, the Internet of Things and cyber–physical production systems are a reality in newly built factories, and the connectivity of machinery has been significantly increased in existing factories. Now, the trends of industrial AI, edge computing up to the edge cloud, 5G in the factory, team robotics, autonomous intralogistics systems, and trustworthy data infrastructures must be leveraged to strengthen resilience, sovereignty, semantic interoperability, and sustainability. This enables the creation of digital innovation ecosystems that ensure long-term adaptability in a volatile economic and geopolitical environment. In sum, this review represents a comprehensive assessment of the status quo and identifies what is needed in the future to reap the rewards of the groundwork done in the first ten years of Industrie 4.0.</jats:p>",
+        "author": [
+          {
+            "given": "Henning",
+            "family": "Kagermann"
+          },
+          {
+            "given": "Wolfgang",
+            "family": "Wahlster"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Chancen von Industrie 4.0 nutzen"
+        ],
+        "container-title": [
+          "Handbuch Industrie 4.0 Bd.4"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2017
+            ]
+          ]
+        },
+        "DOI": "10.1007/978-3-662-53254-6_12",
+        "URL": "https://doi.org/10.1007/978-3-662-53254-6_12",
+        "type": "book-chapter",
+        "score": 44.601448,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Henning",
+            "family": "Kagermann"
+          }
+        ]
+      },
+      {
+        "title": [
+          "5 NETZWERK INDUSTRIE"
+        ],
+        "container-title": [
+          "Industriestudie Frankfurt am Main 2013"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              null
+            ]
+          ]
+        },
+        "DOI": "10.3726/978-3-653-04704-2/18",
+        "URL": "https://doi.org/10.3726/978-3-653-04704-2/18",
+        "type": "book-chapter",
+        "score": 44.42835,
+        "abstract": null,
+        "author": []
+      }
+    ]
+  },
+  "2": {
+    "ref": "Luo S. Dynamic scheduling for flexible job shop with new job insertions by deep reinforcement learning[J]. Applied Soft Computing, 2020, 91: 106208",
+    "query": "Luo S. Dynamic scheduling for flexible job shop with new job insertions by deep reinforcement learning. Applied Soft Computing, 2020, 91: 106208",
+    "items": [
+      {
+        "title": [
+          "Dynamic scheduling for flexible job shop with new job insertions by deep reinforcement learning"
+        ],
+        "container-title": [
+          "Applied Soft Computing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2020,
+              6
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.asoc.2020.106208",
+        "URL": "https://doi.org/10.1016/j.asoc.2020.106208",
+        "type": "journal-article",
+        "score": 134.19955,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Shu",
+            "family": "Luo"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Dynamic scheduling for distributed flexible job shop using deep reinforcement learning"
+        ],
+        "container-title": [
+          "Applied Soft Computing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2026,
+              3
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.asoc.2025.114549",
+        "URL": "https://doi.org/10.1016/j.asoc.2025.114549",
+        "type": "journal-article",
+        "score": 82.80385,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Yong",
+            "family": "Lei"
+          },
+          {
+            "given": "Qianwang",
+            "family": "Deng"
+          },
+          {
+            "given": "Shuocheng",
+            "family": "Gao"
+          },
+          {
+            "given": "Kaidan",
+            "family": "Deng"
+          },
+          {
+            "given": "Mengqi",
+            "family": "Liao"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Dynamic scheduling for multi-objective flexible job shop via deep reinforcement learning"
+        ],
+        "container-title": [
+          "Applied Soft Computing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2025,
+              3
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.asoc.2025.112787",
+        "URL": "https://doi.org/10.1016/j.asoc.2025.112787",
+        "type": "journal-article",
+        "score": 78.14344,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Erdong",
+            "family": "Yuan"
+          },
+          {
+            "given": "Liejun",
+            "family": "Wang"
+          },
+          {
+            "given": "Shiji",
+            "family": "Song"
+          },
+          {
+            "given": "Shuli",
+            "family": "Cheng"
+          },
+          {
+            "given": "Wei",
+            "family": "Fan"
+          }
+        ]
+      }
+    ]
+  },
+  "3": {
+    "ref": "Luo S, Zhang L, Fan Y. Dynamic multi-objective scheduling for flexible job shop by deep reinforcement learning[J]. Computers & Industrial Engineering, 2021, 159: 107489",
+    "query": "Luo S, Zhang L, Fan Y. Dynamic multi-objective scheduling for flexible job shop by deep reinforcement learning. Computers & Industrial Engineering, 2021, 159: 107489",
+    "items": [
+      {
+        "title": [
+          "Dynamic multi-objective scheduling for flexible job shop by deep reinforcement learning"
+        ],
+        "container-title": [
+          "Computers &amp; Industrial Engineering"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2021,
+              9
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cie.2021.107489",
+        "URL": "https://doi.org/10.1016/j.cie.2021.107489",
+        "type": "journal-article",
+        "score": 123.60148,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Shu",
+            "family": "Luo"
+          },
+          {
+            "given": "Linxuan",
+            "family": "Zhang"
+          },
+          {
+            "given": "Yushun",
+            "family": "Fan"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Dynamic green multi-objective scheduling for flexible job shop by deep reinforcement learning"
+        ],
+        "container-title": [
+          "Computers &amp; Industrial Engineering"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2025,
+              12
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cie.2025.111530",
+        "URL": "https://doi.org/10.1016/j.cie.2025.111530",
+        "type": "journal-article",
+        "score": 91.89993,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Chengshuai",
+            "family": "Fan"
+          },
+          {
+            "given": "Jun",
+            "family": "Tian"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Dynamic Scheduling for Multi-Objective Flexible Job Shop Via Deep Reinforcement Learning"
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "DOI": "10.2139/ssrn.4696880",
+        "URL": "https://doi.org/10.2139/ssrn.4696880",
+        "type": "posted-content",
+        "score": 77.620674,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Erdong",
+            "family": "Yuan"
+          },
+          {
+            "given": "Liejun",
+            "family": "Wang"
+          },
+          {
+            "given": "Shiji",
+            "family": "Song"
+          },
+          {
+            "given": "Shuli",
+            "family": "Cheng"
+          },
+          {
+            "given": "Wei",
+            "family": "Fan"
+          }
+        ]
+      }
+    ]
+  },
+  "4": {
+    "ref": "Ren F, Liu H. Dynamic scheduling for flexible job shop based on MachineRank algorithm and reinforcement learning[J]. Scientific Reports, 2024, 14: 29741",
+    "query": "Ren F, Liu H. Dynamic scheduling for flexible job shop based on MachineRank algorithm and reinforcement learning. Scientific Reports, 2024, 14: 29741",
+    "items": [
+      {
+        "title": [
+          "Dynamic scheduling for flexible job shop based on MachineRank algorithm and reinforcement learning"
+        ],
+        "container-title": [
+          "Scientific Reports"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              11,
+              29
+            ]
+          ]
+        },
+        "DOI": "10.1038/s41598-024-79593-8",
+        "URL": "https://doi.org/10.1038/s41598-024-79593-8",
+        "type": "journal-article",
+        "score": 104.43815,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Fujie",
+            "family": "Ren"
+          },
+          {
+            "given": "Haibin",
+            "family": "Liu"
+          }
+        ]
+      },
+      {
+        "title": [
+          "A reinforcement learning based memetic algorithm for energy-efficient distributed two-stage flexible job shop scheduling problem"
+        ],
+        "container-title": [
+          "Scientific Reports"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              12,
+              28
+            ]
+          ]
+        },
+        "DOI": "10.1038/s41598-024-81064-z",
+        "URL": "https://doi.org/10.1038/s41598-024-81064-z",
+        "type": "journal-article",
+        "score": 70.55056,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Kaifeng",
+            "family": "Geng"
+          },
+          {
+            "given": "Li",
+            "family": "Liu"
+          },
+          {
+            "given": "Shaoxing",
+            "family": "Wu"
+          }
+        ]
+      },
+      {
+        "title": [
+          "A multi objective collaborative reinforcement learning algorithm for flexible job shop scheduling"
+        ],
+        "container-title": [
+          "Scientific Reports"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2025,
+              7,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1038/s41598-025-03681-6",
+        "URL": "https://doi.org/10.1038/s41598-025-03681-6",
+        "type": "journal-article",
+        "score": 58.610302,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Jian",
+            "family": "Li"
+          },
+          {
+            "given": "Shifa",
+            "family": "Li"
+          },
+          {
+            "given": "Pengbo",
+            "family": "He"
+          },
+          {
+            "given": "Huankun",
+            "family": "Li"
+          }
+        ]
+      }
+    ]
+  },
+  "5": {
+    "ref": "Zhang Y, Zhu H, Tang D, et al. Dynamic job shop scheduling based on deep reinforcement learning for multi-agent manufacturing systems[J]. Robotics and Computer-Integrated Manufacturing, 2022, 78: 102412",
+    "query": "Zhang Y, Zhu H, Tang D, et al. Dynamic job shop scheduling based on deep reinforcement learning for multi-agent manufacturing systems. Robotics and Computer-Integrated Manufacturing, 2022, 78: 102412",
+    "items": [
+      {
+        "title": [
+          "Dynamic job shop scheduling based on deep reinforcement learning for multi-agent manufacturing systems"
+        ],
+        "container-title": [
+          "Robotics and Computer-Integrated Manufacturing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022,
+              12
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.rcim.2022.102412",
+        "URL": "https://doi.org/10.1016/j.rcim.2022.102412",
+        "type": "journal-article",
+        "score": 130.34698,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Yi",
+            "family": "Zhang"
+          },
+          {
+            "given": "Haihua",
+            "family": "Zhu"
+          },
+          {
+            "given": "Dunbing",
+            "family": "Tang"
+          },
+          {
+            "given": "Tong",
+            "family": "Zhou"
+          },
+          {
+            "given": "Yong",
+            "family": "Gui"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Integrated dynamic scheduling method for hybrid flow shop with machine preventive maintenance based on cooperative multi-agent deep reinforcement learning"
+        ],
+        "container-title": [
+          "Robotics and Computer-Integrated Manufacturing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2026,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.rcim.2025.103085",
+        "URL": "https://doi.org/10.1016/j.rcim.2025.103085",
+        "type": "journal-article",
+        "score": 88.99668,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Siqi",
+            "family": "Liu"
+          },
+          {
+            "given": "Haiping",
+            "family": "Zhu"
+          },
+          {
+            "given": "LieZheng",
+            "family": "Sheng"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Multi-agent deep reinforcement learning for low-carbon flexible job shop scheduling with variable sublots"
+        ],
+        "container-title": [
+          "Robotics and Computer-Integrated Manufacturing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2026,
+              4
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.rcim.2025.103180",
+        "URL": "https://doi.org/10.1016/j.rcim.2025.103180",
+        "type": "journal-article",
+        "score": 87.68774,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Chuanzhao",
+            "family": "Yu"
+          },
+          {
+            "given": "Youshan",
+            "family": "Liu"
+          },
+          {
+            "given": "Chunjiang",
+            "family": "Zhang"
+          },
+          {
+            "given": "Weiming",
+            "family": "Shen"
+          }
+        ]
+      }
+    ]
+  },
+  "6": {
+    "ref": "Ding C, Qiao F, Wang D, et al. Adaptive real-time scheduling for production and maintenance: integrating RUL prediction with multi-agent deep reinforcement learning[J]. Reliability Engineering & System Safety, 2025, 264: 111394",
+    "query": "Ding C, Qiao F, Wang D, et al. Adaptive real-time scheduling for production and maintenance: integrating RUL prediction with multi-agent deep reinforcement learning. Reliability Engineering & System Safety, 2025, 264: 111394",
+    "items": [
+      {
+        "title": [
+          "Adaptive real-time scheduling for production and maintenance: Integrating RUL prediction with multi-agent deep reinforcement learning"
+        ],
+        "container-title": [
+          "Reliability Engineering &amp; System Safety"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2025,
+              12
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ress.2025.111394",
+        "URL": "https://doi.org/10.1016/j.ress.2025.111394",
+        "type": "journal-article",
+        "score": 141.17436,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Chen",
+            "family": "Ding"
+          },
+          {
+            "given": "Fei",
+            "family": "Qiao"
+          },
+          {
+            "given": "Dongyuan",
+            "family": "Wang"
+          },
+          {
+            "given": "Juan",
+            "family": "Liu"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Safe multi-agent deep reinforcement learning for joint bidding and maintenance scheduling of generation units"
+        ],
+        "container-title": [
+          "Reliability Engineering &amp; System Safety"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2023,
+              4
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ress.2022.109081",
+        "URL": "https://doi.org/10.1016/j.ress.2022.109081",
+        "type": "journal-article",
+        "score": 65.20222,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Pegah",
+            "family": "Rokhforoz"
+          },
+          {
+            "given": "Mina",
+            "family": "Montazeri"
+          },
+          {
+            "given": "Olga",
+            "family": "Fink"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Joint optimization of preventive maintenance and production scheduling for multi-state production systems based on reinforcement learning"
+        ],
+        "container-title": [
+          "Reliability Engineering &amp; System Safety"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2021,
+              10
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ress.2021.107713",
+        "URL": "https://doi.org/10.1016/j.ress.2021.107713",
+        "type": "journal-article",
+        "score": 62.416313,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Hongbing",
+            "family": "Yang"
+          },
+          {
+            "given": "Wenchao",
+            "family": "Li"
+          },
+          {
+            "given": "Bin",
+            "family": "Wang"
+          }
+        ]
+      }
+    ]
+  },
+  "7": {
+    "ref": "Mallioris P, Aivazidou E, Bechtsis D. Predictive maintenance in Industry 4.0: a systematic multi-sector mapping[J]. CIRP Journal of Manufacturing Science and Technology, 2024, 50: 80-103",
+    "query": "Mallioris P, Aivazidou E, Bechtsis D. Predictive maintenance in Industry 4.0: a systematic multi-sector mapping. CIRP Journal of Manufacturing Science and Technology, 2024, 50: 80-103",
+    "items": [
+      {
+        "title": [
+          "Predictive maintenance in Industry 4.0: A systematic multi-sector mapping"
+        ],
+        "container-title": [
+          "CIRP Journal of Manufacturing Science and Technology"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              6
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cirpj.2024.02.003",
+        "URL": "https://doi.org/10.1016/j.cirpj.2024.02.003",
+        "type": "journal-article",
+        "score": 126.4284,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Panagiotis",
+            "family": "Mallioris"
+          },
+          {
+            "given": "Eirini",
+            "family": "Aivazidou"
+          },
+          {
+            "given": "Dimitrios",
+            "family": "Bechtsis"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Corrigendum to “Predictive maintenance in Industry 4.0: A systematic multi-sector mapping” [CIRP J Manuf Sci Technol (2024) 80-103]"
+        ],
+        "container-title": [
+          "CIRP Journal of Manufacturing Science and Technology"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              12
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cirpj.2024.10.013",
+        "URL": "https://doi.org/10.1016/j.cirpj.2024.10.013",
+        "type": "journal-article",
+        "score": 114.42672,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Panagiotis",
+            "family": "Mallioris"
+          },
+          {
+            "given": "Eirini",
+            "family": "Aivazidou"
+          },
+          {
+            "given": "Dimitrios",
+            "family": "Bechtsis"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Holistic Maintenance Framework for Predictive and Prescriptive Maintenance in Industry 4.0 Using Artificial Intelligence and Natural Language Processing"
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              2025
+            ]
+          ]
+        },
+        "DOI": "10.2139/ssrn.5216697",
+        "URL": "https://doi.org/10.2139/ssrn.5216697",
+        "type": "posted-content",
+        "score": 51.96046,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Panagiotis",
+            "family": "Mallioris"
+          },
+          {
+            "given": "Charalampos",
+            "family": "Polychroniadis"
+          },
+          {
+            "given": "Antonios",
+            "family": "Moustakas"
+          },
+          {
+            "given": "Nikolaos",
+            "family": "Mitakidis"
+          },
+          {
+            "given": "Dimitrios",
+            "family": "Bechtsis"
+          }
+        ]
+      }
+    ]
+  },
+  "8": {
+    "ref": "Sutton R S, Barto A G. Reinforcement learning: an introduction[M]. 2nd ed. Cambridge: MIT Press, 2018",
+    "query": "Sutton R S, Barto A G. Reinforcement learning: an introduction. 2nd ed. Cambridge: MIT Press, 2018",
+    "items": [
+      {
+        "title": [
+          "Reinforcement Learning: An Introduction; R.S. Sutton, A.G. Barto (Eds.); MIT Press, Cambridge, MA, 1998, 380 pages, ISBN 0-262-19398-1, $42.00"
+        ],
+        "container-title": [
+          "Neural Networks"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2000,
+              1
+            ]
+          ]
+        },
+        "DOI": "10.1016/s0893-6080(99)00098-2",
+        "URL": "https://doi.org/10.1016/s0893-6080(99)00098-2",
+        "type": "journal-article",
+        "score": 53.53685,
+        "abstract": null,
+        "author": [
+          {
+            "given": "R.P.N",
+            "family": "Rao"
+          }
+        ]
+      },
+      {
+        "title": [
+          "<b>REINFORCEMENT LEARNING: AN INTRODUCTION </b>by Richard S. Sutton and \nAndrew G. Barto, Adaptive Computation and Machine Learning series, MIT Press (Bradford Book), Cambridge, Mass., 1998, xviii + 322 pp, ISBN 0-262-19398-1, (hardback, £31.95)."
+        ],
+        "container-title": [
+          "Robotica"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1999,
+              3
+            ]
+          ]
+        },
+        "DOI": "10.1017/s0263574799211174",
+        "URL": "https://doi.org/10.1017/s0263574799211174",
+        "type": "journal-article",
+        "score": 46.326958,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Alex M.",
+            "family": "Andrew"
+          }
+        ]
+      },
+      {
+        "title": [
+          "<b>Reinforcement learning</b>\n                    by AG Barto and RS Sutton, MIT Press, Cambridge, MA 1998, ISBN  0-262-19398-1"
+        ],
+        "container-title": [
+          "The Knowledge Engineering Review"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1999,
+              12
+            ]
+          ]
+        },
+        "DOI": "10.1017/s0269888999003082",
+        "URL": "https://doi.org/10.1017/s0269888999003082",
+        "type": "journal-article",
+        "score": 46.070694,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Miroslav",
+            "family": "Kubat"
+          }
+        ]
+      }
+    ]
+  },
+  "9": {
+    "ref": "Mnih V, Kavukcuoglu K, Silver D, et al. Human-level control through deep reinforcement learning[J]. Nature, 2015, 518(7540): 529-533",
+    "query": "Mnih V, Kavukcuoglu K, Silver D, et al. Human-level control through deep reinforcement learning. Nature, 2015, 518(7540): 529-533",
+    "items": [
+      {
+        "title": [
+          "Human-level control through deep reinforcement learning"
+        ],
+        "container-title": [
+          "Nature"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2015,
+              2,
+              26
+            ]
+          ]
+        },
+        "DOI": "10.1038/nature14236",
+        "URL": "https://doi.org/10.1038/nature14236",
+        "type": "journal-article",
+        "score": 85.00399,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Volodymyr",
+            "family": "Mnih"
+          },
+          {
+            "given": "Koray",
+            "family": "Kavukcuoglu"
+          },
+          {
+            "given": "David",
+            "family": "Silver"
+          },
+          {
+            "given": "Andrei A.",
+            "family": "Rusu"
+          },
+          {
+            "given": "Joel",
+            "family": "Veness"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Faculty Opinions recommendation of Human-level control through deep reinforcement learning."
+        ],
+        "container-title": [
+          "Faculty Opinions – Post-Publication Peer Review of the Biomedical Literature"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2015,
+              5,
+              26
+            ]
+          ]
+        },
+        "DOI": "10.3410/f.725368782.793506817",
+        "URL": "https://doi.org/10.3410/f.725368782.793506817",
+        "type": "dataset",
+        "score": 43.29432,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Geoffrey",
+            "family": "Goodhill"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Faculty Opinions recommendation of Human-level control through deep reinforcement learning."
+        ],
+        "container-title": [
+          "Faculty Opinions – Post-Publication Peer Review of the Biomedical Literature"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2015,
+              9,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.3410/f.725368782.793509339",
+        "URL": "https://doi.org/10.3410/f.725368782.793509339",
+        "type": "dataset",
+        "score": 42.159344,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Gonzalo G",
+            "family": "de Polavieja"
+          }
+        ]
+      }
+    ]
+  },
+  "10": {
+    "ref": "Schulman J, Wolski F, Dhariwal P, et al. Proximal policy optimization algorithms[EB/OL]. arXiv:1707.06347, 2017[2026-05-11]. https://arxiv.org/abs/1707.06347",
+    "query": "Schulman J, Wolski F, Dhariwal P, et al. Proximal policy optimization algorithms. arXiv:1707.06347, 2017. https://arxiv.org/abs/1707.06347",
+    "items": [
+      {
+        "title": [
+          "arXiv Update September 2017"
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              2017,
+              9,
+              5
+            ]
+          ]
+        },
+        "DOI": "10.65527/8bz0w-yw892",
+        "URL": "https://doi.org/10.65527/8bz0w-yw892",
+        "type": "posted-content",
+        "score": 44.718967,
+        "abstract": "<jats:p>In einem Monat, am 5. Oktober 2017 wird das diesjährige Meeting des arXiv Member Advisory Boards (MAB) in New York stattfinden. Wie im letzten Jahr wird in diesem Jahr wieder Martin Köhler für für das Konsortium arXiv-DH und HGF teilnehmen. Wie immer bitten wir um Rückmeldungen und Input der deutschen arXiv-Nutzerinnen und Nutzer: Gibt es Themen, Fragen, Positionen, die wir für die deutsche Community mit in das Meeting einbringen können?</jats:p>",
+        "author": [
+          {
+            "given": "Esther",
+            "family": "Tobschall"
+          }
+        ]
+      },
+      {
+        "title": [
+          "arXiv Update März 2017"
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              2017,
+              3,
+              6
+            ]
+          ]
+        },
+        "DOI": "10.65527/0jwqb-gdw75",
+        "URL": "https://doi.org/10.65527/0jwqb-gdw75",
+        "type": "posted-content",
+        "score": 44.033688,
+        "abstract": "<jats:p>Kurz habe ich mich gefragt, ob ich überhaupt noch ein arXiv Update schreiben sollte, gibt es seit Anfang des Jahres doch das arXiv Public Wiki, in dem alle Informationen rund um den aktuellen Stand und die Weiterentwicklung von arXiv wunderbar zusammengestellt sind und durch aktuelle Meldungen, auch bei Twitter @arXiv ergänzt werden.</jats:p>",
+        "author": [
+          {
+            "given": "Esther",
+            "family": "Tobschall"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Videos in arXiv"
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              2017,
+              4,
+              11
+            ]
+          ]
+        },
+        "DOI": "10.65527/ygnvk-vxp27",
+        "URL": "https://doi.org/10.65527/ygnvk-vxp27",
+        "type": "posted-content",
+        "score": 43.38642,
+        "abstract": "<jats:p>Für das TIB-Blog haben mein Kollege Bastian Drees und ich analysiert, wie arXiv-Autorinnen und -Autoren ergänzende Videos zu ihren arXiv-Papern bereitstellen: Faktisch nutzen sie dafür viele Alternativen, die nicht immer nachhaltig zu sein scheinen.</jats:p>",
+        "author": [
+          {
+            "given": "Esther",
+            "family": "Tobschall"
+          }
+        ]
+      }
+    ]
+  },
+  "11": {
+    "ref": "Silver D, Veness J. Monte-Carlo planning in large POMDPs[C]//Lafferty J, Williams C, Shawe-Taylor J, et al. Advances in Neural Information Processing Systems 23. Red Hook: Curran Associates, 2010: 2164-2172",
+    "query": "Silver D, Veness J. Monte-Carlo planning in large POMDPs//Lafferty J, Williams C, Shawe-Taylor J, et al. Advances in Neural Information Processing Systems 23. Red Hook: Curran Associates, 2010: 2164-2172",
+    "items": [
+      {
+        "title": [
+          "Langevin Quasi-Monte Carlo"
+        ],
+        "container-title": [
+          "Advances in Neural Information Processing Systems 36"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2023
+            ]
+          ]
+        },
+        "DOI": "10.52202/075280-3292",
+        "URL": "https://doi.org/10.52202/075280-3292",
+        "type": "proceedings-article",
+        "score": 47.500412,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Sifan",
+            "family": "Liu"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Quadratic Quantum Variational Monte Carlo"
+        ],
+        "container-title": [
+          "Advances in Neural Information Processing Systems 37"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "DOI": "10.52202/079017-0698",
+        "URL": "https://doi.org/10.52202/079017-0698",
+        "type": "proceedings-article",
+        "score": 45.455605,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Qiang",
+            "family": "Liu"
+          },
+          {
+            "given": "Baiyu",
+            "family": "Su"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Trustworthy Monte Carlo"
+        ],
+        "container-title": [
+          "Advances in Neural Information Processing Systems 35"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022
+            ]
+          ]
+        },
+        "DOI": "10.52202/068431-1387",
+        "URL": "https://doi.org/10.52202/068431-1387",
+        "type": "proceedings-article",
+        "score": 45.393734,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Juha",
+            "family": "Harviainen"
+          },
+          {
+            "given": "Petteri",
+            "family": "Kaski"
+          },
+          {
+            "given": "Mikko",
+            "family": "Koivisto"
+          }
+        ]
+      }
+    ]
+  },
+  "12": {
+    "ref": "Hagmeyer S, Mauthe F, Zeiler P. Creation of publicly available data sets for prognostics and diagnostics addressing data scenarios relevant to industrial applications[J]. International Journal of Prognostics and Health Management, 2021, 12(2). DOI: 10.36001/ijphm.2021.v12i2.3087",
+    "query": "Hagmeyer S, Mauthe F, Zeiler P. Creation of publicly available data sets for prognostics and diagnostics addressing data scenarios relevant to industrial applications. International Journal of Prognostics and Health Management, 2021, 12(2).",
+    "items": [
+      {
+        "title": [
+          "Creation of Publicly Available Data Sets for Prognostics and Diagnostics Addressing Data Scenarios Relevant to Industrial Applications"
+        ],
+        "container-title": [
+          "International Journal of Prognostics and Health Management"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2021,
+              11,
+              10
+            ]
+          ]
+        },
+        "DOI": "10.36001/ijphm.2021.v12i2.3087",
+        "URL": "https://doi.org/10.36001/ijphm.2021.v12i2.3087",
+        "type": "journal-article",
+        "score": 155.09901,
+        "abstract": "<jats:p>For a successful realization of prognostics and health management (PHM), the availability of sufficient run-to-failure data sets is a crucial factor. The sheer number of given data points holds less importance than the full coverage of the potential state space. However, full coverage is a major challenge in most industrial applications. Among other things, high investment and operating costs as well as the long service life of many technical systems make it difficult to acquire complete run-to-failure data sets. Consequently, in industrial applications data sets with specific deficiencies are frequently encountered. The development of appropriate methods to address such data scenarios is a fundamental research issue. Therefore, the purpose of this paper is to provide facilitation for this research. Accordingly, the paper starts by specifying the value and availability of data in PHM. Subsequently, criteria for characterizing data sets are defined independent of the actual PHM application. The criteria are used to identify typical data scenarios with specific deficiencies that possess significant relevance for industrial applications. Thereafter, the most comprehensive overview of data sets suitable for PHM and currently publicly accessible is provided. Thereby, not all previously identified data scenarios with their specific deficiencies are addressed by at least one data set. A program is established for the aforementioned facilitation of further research. One objective of the program is to create data sets reflecting these data scenarios using a test bench. First, possible applications and their degradation processes to be studied on the test bench are briefly characterized. Thereby, the final decision to select filtration as a test bench application is argued. Subsequently, the test bench created is introduced, including a description of the functional concept, pneumatic layout and components involved, as well as the filter media and test dusts employed. Typical run-to-failure trajectories are illustrated. Thereafter, the data set published under the name Preventive to Predictive Maintenance is presented. Additionally, a schedule for future releases of data sets on further industry-relevant data scenarios is sketched.</jats:p>",
+        "author": [
+          {
+            "given": "Fabian",
+            "family": "Mauthe"
+          },
+          {
+            "given": "Simon",
+            "family": "Hagmeyer"
+          },
+          {
+            "given": "Peter",
+            "family": "Zeiler"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Overview and Analysis of Publicly Available Degradation Data Sets for Tasks within Prognostics and Health Management"
+        ],
+        "container-title": [
+          "35th European Safety and Reliability Conference (ESREL 2025) and the 33rd Society for Risk Analysis Europe Conference (SRA-E 2025)"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2025
+            ]
+          ]
+        },
+        "DOI": "10.3850/978-981-94-3281-3_esrel-sra-e2025-p7412-cd",
+        "URL": "https://doi.org/10.3850/978-981-94-3281-3_esrel-sra-e2025-p7412-cd",
+        "type": "proceedings-article",
+        "score": 72.843636,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Fabian",
+            "family": "Mauthe"
+          },
+          {
+            "given": "Luca",
+            "family": "Steinmann"
+          },
+          {
+            "given": "Moritz",
+            "family": "Neu"
+          },
+          {
+            "given": "Peter",
+            "family": "Zeiler"
+          }
+        ]
+      },
+      {
+        "title": [
+          "On the Integration of Fundamental Knowledge about Degradation Processes into Data-Driven Diagnostics and Prognostics Using Theory-Guided Data Science"
+        ],
+        "container-title": [
+          "PHM Society European Conference"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022,
+              6,
+              29
+            ]
+          ]
+        },
+        "DOI": "10.36001/phme.2022.v7i1.3352",
+        "URL": "https://doi.org/10.36001/phme.2022.v7i1.3352",
+        "type": "journal-article",
+        "score": 58.176014,
+        "abstract": "<jats:p>In Prognostics and Health Management, there are three main approaches for implementing diagnostic and prognostic applications. These approaches are data-driven methods, physical model-based methods, and combinations of them, in the form of hybrid methods. Each of them has specific advantages but also limitations for their purposeful implementation. In the case of data-driven methods, one of the main limitations is the availability of sufficient training data that adequately cover the relevant state space. For model-based methods, on the other hand, it is often the case that the degradation process of the considered technical system is of significant complexity. In such a scenario physics-based modeling requires great effort or is not possible at all. Combinations of data-driven and model-based approaches in form of hybrid approaches offer the possibility to partially mitigate the shortcomings of the other two approaches, however, require a sufficiently detailed data-driven and physics-based model.\nThis paper addresses the transitional field between data-driven and hybrid approaches. Despite the issues of formulating a physics-based model that provides a representation of the degradation process, basic knowledge of the considered system and of the laws governing its degradation process is usually available. Integration of such knowledge into a machine learning process is part of a research field that is either called theory-guided data science, (physics) informed machine learning, physics-based learning or physics guided machine learning. First, the state of research in Prognostics and Health Management on methods of this field is presented and existing research gaps are outlined. Then, a concept is introduced for incorporating fundamental knowledge, such as monotonicity constraints, into data-driven diagnostic and prognostic applications using approaches from theory-guided data science. A special aspect of this concept is its cross-application usability through the consideration of knowledge that repeatedly occurs in diagnostics and prognostics. This is, for example, knowledge about physically justified boundaries whose compliance makes a prediction of the data-driven model plausible in the first place.</jats:p>",
+        "author": [
+          {
+            "given": "Simon",
+            "family": "Hagmeyer"
+          },
+          {
+            "given": "Peter",
+            "family": "Zeiler"
+          },
+          {
+            "given": "Marco F.",
+            "family": "Huber"
+          }
+        ]
+      }
+    ]
+  },
+  "13": {
+    "ref": "PrognosticsHSE. Preventive to predictive maintenance[DB/OL]. Kaggle, 2023[2026-05-1]. https://www.kaggle.com/datasets/prognosticshse/preventive-to-predicitve-maintenance",
+    "query": "PrognosticsHSE. Preventive to predictive maintenance. Kaggle, 2023. https://www.kaggle.com/datasets/prognosticshse/preventive-to-predicitve-maintenance",
+    "items": [
+      {
+        "title": [
+          "Preventive and Predictive Maintenance"
+        ],
+        "container-title": [
+          "Engineering Maintenance Management"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1994,
+              7,
+              7
+            ]
+          ]
+        },
+        "DOI": "10.1201/9781482293531-13",
+        "URL": "https://doi.org/10.1201/9781482293531-13",
+        "type": "book-chapter",
+        "score": 52.16371,
+        "abstract": null,
+        "author": []
+      },
+      {
+        "title": [
+          "PREDICTIVE AND PREVENTIVE DIAGNOSTIC MAINTENANCE OF HYDRAULIC SYSTEMS"
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              null
+            ]
+          ]
+        },
+        "DOI": "10.4271/j1655_199608",
+        "URL": "https://doi.org/10.4271/j1655_199608",
+        "type": "standard",
+        "score": 46.994514,
+        "abstract": "<jats:p>&lt;div class=\"section abstract\"&gt;\n\n\n&lt;div class=\"htmlview paragraph\"&gt;This SAE Information Report is intended to help promote the proper use of Predictive and Preventive Diagnostic Maintenance in hydraulic systems. This document can be used as a selection guide for the level of diagnostic equipment and methods to specify for a given application. Each application has its own particular requirements.&lt;/div&gt;&lt;/div&gt;</jats:p>",
+        "author": [
+          {
+            "given": null,
+            "family": null
+          }
+        ]
+      },
+      {
+        "title": [
+          "Table 4: Performance evaluation metrics for DIARETDB1 and KAGGLE datasets."
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              null
+            ]
+          ]
+        },
+        "DOI": "10.7717/peerj-cs.456/table-4",
+        "URL": "https://doi.org/10.7717/peerj-cs.456/table-4",
+        "type": "component",
+        "score": 45.48163,
+        "abstract": null,
+        "author": []
+      }
+    ]
+  },
+  "14": {
+    "ref": "Lasi H, Fettke P, Kemper H G, et al. Industry 4.0[J]. Business & Information Systems Engineering, 2014, 6(4): 239-242",
+    "query": "Lasi H, Fettke P, Kemper H G, et al. Industry 4.0. Business & Information Systems Engineering, 2014, 6(4): 239-242",
+    "items": [
+      {
+        "title": [
+          "Industry 4.0"
+        ],
+        "container-title": [
+          "Business &amp; Information Systems Engineering"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2014,
+              8
+            ]
+          ]
+        },
+        "DOI": "10.1007/s12599-014-0334-4",
+        "URL": "https://doi.org/10.1007/s12599-014-0334-4",
+        "type": "journal-article",
+        "score": 76.72526,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Heiner",
+            "family": "Lasi"
+          },
+          {
+            "given": "Peter",
+            "family": "Fettke"
+          },
+          {
+            "given": "Hans-Georg",
+            "family": "Kemper"
+          },
+          {
+            "given": "Thomas",
+            "family": "Feld"
+          },
+          {
+            "given": "Michael",
+            "family": "Hoffmann"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Industrie 4.0"
+        ],
+        "container-title": [
+          "WIRTSCHAFTSINFORMATIK"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2014,
+              8
+            ]
+          ]
+        },
+        "DOI": "10.1007/s11576-014-0424-4",
+        "URL": "https://doi.org/10.1007/s11576-014-0424-4",
+        "type": "journal-article",
+        "score": 44.973003,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Heiner",
+            "family": "Lasi"
+          },
+          {
+            "given": "Peter",
+            "family": "Fettke"
+          },
+          {
+            "given": "Hans-Georg",
+            "family": "Kemper"
+          },
+          {
+            "given": "Thomas",
+            "family": "Feld"
+          },
+          {
+            "given": "Michael",
+            "family": "Hoffmann"
+          }
+        ]
+      },
+      {
+        "title": [
+          "The Research Field “Modeling Business Information Systems”"
+        ],
+        "container-title": [
+          "Business &amp; Information Systems Engineering"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2014,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1007/s12599-013-0301-5",
+        "URL": "https://doi.org/10.1007/s12599-013-0301-5",
+        "type": "journal-article",
+        "score": 34.415916,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Ulrich",
+            "family": "Frank"
+          },
+          {
+            "given": "Stefan",
+            "family": "Strecker"
+          },
+          {
+            "given": "Peter",
+            "family": "Fettke"
+          },
+          {
+            "given": "Jan",
+            "family": "vom Brocke"
+          },
+          {
+            "given": "Jörg",
+            "family": "Becker"
+          }
+        ]
+      }
+    ]
+  },
+  "15": {
+    "ref": "Oks S J, Jalowski M, Lechner M, et al. Cyber-physical systems in the context of Industry 4.0: a review, categorization and outlook[J]. Information Systems Frontiers, 2024, 26: 1731-1772",
+    "query": "Oks S J, Jalowski M, Lechner M, et al. Cyber-physical systems in the context of Industry 4.0: a review, categorization and outlook. Information Systems Frontiers, 2024, 26: 1731-1772",
+    "items": [
+      {
+        "title": [
+          "Cyber-Physical Systems in the Context of Industry 4.0: A Review, Categorization and Outlook"
+        ],
+        "container-title": [
+          "Information Systems Frontiers"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              10
+            ]
+          ]
+        },
+        "DOI": "10.1007/s10796-022-10252-x",
+        "URL": "https://doi.org/10.1007/s10796-022-10252-x",
+        "type": "journal-article",
+        "score": 106.4278,
+        "abstract": "<jats:title>Abstract</jats:title><jats:p>Cyber-physical systems (CPS) offer great potential for the digital transformation of industrial value creation in the context of Industry 4.0. They unify and integrate several technological approaches, including big data analysis and artificial intelligence, enhancing real-time monitoring and control of manufacturing processes. An extensive knowledge base formed by various disciplines, including information systems, engineering, and computer science, already exists for CPS. However, this knowledge has not been holistically captured and structured to date. To address this research gap, this study conducts a large-scale literature review of 2365 papers representing the current state of the research and then develops a novel categorization on industrial CPS with 10 sections, 32 areas, and 246 fields. The categorization is presented in hierarchical graphical form and can also be utilized as a web tool. To conclude, a perspective on future research needs and potentials to enhance Industry 4.0 in both research and practice are offered.</jats:p>",
+        "author": [
+          {
+            "given": "Sascha Julian",
+            "family": "Oks"
+          },
+          {
+            "given": "Max",
+            "family": "Jalowski"
+          },
+          {
+            "given": "Michael",
+            "family": "Lechner"
+          },
+          {
+            "given": "Stefan",
+            "family": "Mirschberger"
+          },
+          {
+            "given": "Marion",
+            "family": "Merklein"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Cyber-physical modeling and simulation: A reference architecture for designing demonstrators for industrial cyber-physical systems"
+        ],
+        "container-title": [
+          "Procedia CIRP"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2019
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.procir.2019.04.239",
+        "URL": "https://doi.org/10.1016/j.procir.2019.04.239",
+        "type": "journal-article",
+        "score": 47.428307,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Sascha Julian",
+            "family": "Oks"
+          },
+          {
+            "given": "Max",
+            "family": "Jalowski"
+          },
+          {
+            "given": "Albrecht",
+            "family": "Fritzsche"
+          },
+          {
+            "given": "Kathrin M.",
+            "family": "Möslein"
+          }
+        ]
+      },
+      {
+        "title": [
+          "AN INVESTIGATION AND ANALYSIS OF CYBER SECURITY INFORMATION SYSTEMS: LATEST TRENDS AND FUTURE SUGGESTION"
+        ],
+        "container-title": [
+          "INFORMATION TECHNOLOGY IN INDUSTRY"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2021,
+              3,
+              25
+            ]
+          ]
+        },
+        "DOI": "10.17762/itii.v9i2.372",
+        "URL": "https://doi.org/10.17762/itii.v9i2.372",
+        "type": "journal-article",
+        "score": 44.9363,
+        "abstract": "<jats:p>Network protection includes of the strategies and procedures implemented in this paper to avoid and monitor intrusion attempts, infringement, manipulation or violation of a computer system and services accessed by the network. Network protection applies to the different countermeasures put in place to secure or flow through the network and data collected on or through it. Protection for web applications is the method of securing websites and internet resources from multiple security attacks that target weaknesses in an application. Security for web apps is a data management division that primarily deals with the security of websites, web applications and web services. Risks to cyber security include a broad range of allegedly criminal practices on the web. For years, computer security risks against utility assets were identified, cyber-attacks arising from the exploitation of data device weaknesses by unauthorized access users This study is a cyber infrastructure assault, vulnerability and vulnerabilities, including hardware and software devices, networks, business networks, intranets, and cyber intrusion usage. Only big organisations are at risk of cyber-attacks, a widespread misunderstanding. Even then, the targeting of small and medium sized enterprises has seen a large improvement. This is since less-sophisticated cyber defence mechanisms appear to be used by these smaller organisations. As many as 50% of all cyber-attacks hit small companies, wasting $200,000 on average, sufficient to get out of business for less-established entities. an enterprise-grade protection device and awareness of the various forms of cyber threats facing corporations in 2025 to safeguard company from hacking attacks. fight cyber threats successfully and decrease the exposure of enterprise.&#x0D;\n </jats:p>",
+        "author": [
+          {
+            "given": "Tarun Dhar Diwan,",
+            "family": "Et. al."
+          }
+        ]
+      }
+    ]
+  },
+  "16": {
+    "ref": "Kusiak A. Predictive models in digital manufacturing: research, applications, and future outlook[J]. International Journal of Production Research, 2023, 61(17): 6052-6062",
+    "query": "Kusiak A. Predictive models in digital manufacturing: research, applications, and future outlook. International Journal of Production Research, 2023, 61(17): 6052-6062",
+    "items": [
+      {
+        "title": [
+          "Predictive models in digital manufacturing: research, applications, and future outlook"
+        ],
+        "container-title": [
+          "International Journal of Production Research"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2023,
+              9,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1080/00207543.2022.2122620",
+        "URL": "https://doi.org/10.1080/00207543.2022.2122620",
+        "type": "journal-article",
+        "score": 103.23226,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Andrew",
+            "family": "Kusiak"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Federated explainable artificial intelligence (fXAI): a digital manufacturing perspective"
+        ],
+        "container-title": [
+          "International Journal of Production Research"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              1,
+              17
+            ]
+          ]
+        },
+        "DOI": "10.1080/00207543.2023.2238083",
+        "URL": "https://doi.org/10.1080/00207543.2023.2238083",
+        "type": "journal-article",
+        "score": 44.17324,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Andrew",
+            "family": "Kusiak"
+          }
+        ]
+      },
+      {
+        "title": [
+          "From digital to universal manufacturing"
+        ],
+        "container-title": [
+          "International Journal of Production Research"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022,
+              1,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1080/00207543.2021.1948137",
+        "URL": "https://doi.org/10.1080/00207543.2021.1948137",
+        "type": "journal-article",
+        "score": 43.667263,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Andrew",
+            "family": "Kusiak"
+          }
+        ]
+      }
+    ]
+  },
+  "17": {
+    "ref": "Huang C, Bu S, Lee H H, et al. Prognostics and health management for predictive maintenance: a review[J]. Journal of Manufacturing Systems, 2024, 75: 78-101",
+    "query": "Huang C, Bu S, Lee H H, et al. Prognostics and health management for predictive maintenance: a review. Journal of Manufacturing Systems, 2024, 75: 78-101",
+    "items": [
+      {
+        "title": [
+          "Prognostics and health management for predictive maintenance: A review"
+        ],
+        "container-title": [
+          "Journal of Manufacturing Systems"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              8
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.jmsy.2024.05.021",
+        "URL": "https://doi.org/10.1016/j.jmsy.2024.05.021",
+        "type": "journal-article",
+        "score": 78.157455,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Chao",
+            "family": "Huang"
+          },
+          {
+            "given": "Siqi",
+            "family": "Bu"
+          },
+          {
+            "given": "Hiu Hung",
+            "family": "Lee"
+          },
+          {
+            "given": "Chun Hung",
+            "family": "Chan"
+          },
+          {
+            "given": "Shu Wa",
+            "family": "Kong"
+          }
+        ]
+      },
+      {
+        "title": [
+          "PHM and Predictive Maintenance"
+        ],
+        "container-title": [
+          "From Prognostics and Health Systems Management to Predictive Maintenance 1"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2016,
+              10,
+              25
+            ]
+          ]
+        },
+        "DOI": "10.1002/9781119371052.ch1",
+        "URL": "https://doi.org/10.1002/9781119371052.ch1",
+        "type": "other",
+        "score": 47.92657,
+        "abstract": null,
+        "author": []
+      },
+      {
+        "title": [
+          "Front Matter"
+        ],
+        "container-title": [
+          "From Prognostics and Health Systems Management to Predictive Maintenance 1"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2016,
+              10,
+              25
+            ]
+          ]
+        },
+        "DOI": "10.1002/9781119371052.fmatter",
+        "URL": "https://doi.org/10.1002/9781119371052.fmatter",
+        "type": "other",
+        "score": 45.272404,
+        "abstract": null,
+        "author": []
+      }
+    ]
+  },
+  "18": {
+    "ref": "Benhanifia A, Ben Cheikh Z, Moura Oliveira P, et al. Systematic review of predictive maintenance practices in the manufacturing sector[J]. Intelligent Systems with Applications, 2025, 26: 200501",
+    "query": "Benhanifia A, Ben Cheikh Z, Moura Oliveira P, et al. Systematic review of predictive maintenance practices in the manufacturing sector. Intelligent Systems with Applications, 2025, 26: 200501",
+    "items": [
+      {
+        "title": [
+          "Systematic review of predictive maintenance practices in the manufacturing sector"
+        ],
+        "container-title": [
+          "Intelligent Systems with Applications"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2025,
+              6
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.iswa.2025.200501",
+        "URL": "https://doi.org/10.1016/j.iswa.2025.200501",
+        "type": "journal-article",
+        "score": 107.86102,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Abdeldjalil",
+            "family": "Benhanifia"
+          },
+          {
+            "given": "Zied Ben",
+            "family": "Cheikh"
+          },
+          {
+            "given": "Paulo Moura",
+            "family": "Oliveira"
+          },
+          {
+            "given": "Antonio",
+            "family": "Valente"
+          },
+          {
+            "given": "José",
+            "family": "Lima"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Evaluation of Predictive Maintenance in the Manufacturing Industry Sector Overview of a Systematic Literature Review"
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              2024
+            ]
+          ]
+        },
+        "DOI": "10.2139/ssrn.4997163",
+        "URL": "https://doi.org/10.2139/ssrn.4997163",
+        "type": "posted-content",
+        "score": 59.2361,
+        "abstract": null,
+        "author": [
+          {
+            "given": "abdeldjalil",
+            "family": "benhanifia"
+          },
+          {
+            "given": "Zied",
+            "family": "Benchikh"
+          },
+          {
+            "given": "Paulo  Moura",
+            "family": "Oliveira"
+          },
+          {
+            "given": "Antonio",
+            "family": "Valente"
+          },
+          {
+            "given": "José",
+            "family": "lima"
+          }
+        ]
+      },
+      {
+        "title": [
+          "A Systematic Review of Predictive Maintenance Practices in Automotive, Manufacturing and Aerospace Industries"
+        ],
+        "container-title": [
+          "Proceedings of the 1st International Conference on Intelligent Methods and Advanced Computer Scientific Innovations"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2025
+            ]
+          ]
+        },
+        "DOI": "10.5220/0014203900004932",
+        "URL": "https://doi.org/10.5220/0014203900004932",
+        "type": "proceedings-article",
+        "score": 46.66442,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Rohit",
+            "family": "Subhash"
+          },
+          {
+            "given": "Anjali",
+            "family": "Ashok"
+          },
+          {
+            "given": "Namrutha",
+            "family": "Bhasi"
+          },
+          {
+            "given": "Nived",
+            "family": "Sunil"
+          },
+          {
+            "given": "Divya",
+            "family": "K."
+          }
+        ]
+      }
+    ]
+  },
+  "19": {
+    "ref": "Zonta T, da Costa C A, da Rosa Righi R, et al. Predictive maintenance in the Industry 4.0: a systematic literature review[J]. Computers & Industrial Engineering, 2020, 150: 106889",
+    "query": "Zonta T, da Costa C A, da Rosa Righi R, et al. Predictive maintenance in the Industry 4.0: a systematic literature review. Computers & Industrial Engineering, 2020, 150: 106889",
+    "items": [
+      {
+        "title": [
+          "Predictive maintenance in the Industry 4.0: A systematic literature review"
+        ],
+        "container-title": [
+          "Computers &amp; Industrial Engineering"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2020,
+              12
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cie.2020.106889",
+        "URL": "https://doi.org/10.1016/j.cie.2020.106889",
+        "type": "journal-article",
+        "score": 113.351425,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Tiago",
+            "family": "Zonta"
+          },
+          {
+            "given": "Cristiano André",
+            "family": "da Costa"
+          },
+          {
+            "given": "Rodrigo",
+            "family": "da Rosa Righi"
+          },
+          {
+            "given": "Miromar José",
+            "family": "de Lima"
+          },
+          {
+            "given": "Eduardo Silveira",
+            "family": "da Trindade"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Looking at energy through the lens of Industry 4.0: A systematic literature review of concerns and challenges"
+        ],
+        "container-title": [
+          "Computers &amp; Industrial Engineering"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2020,
+              5
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cie.2020.106426",
+        "URL": "https://doi.org/10.1016/j.cie.2020.106426",
+        "type": "journal-article",
+        "score": 71.98617,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Fernanda Schafer",
+            "family": "Tesch da Silva"
+          },
+          {
+            "given": "Cristiano André",
+            "family": "da Costa"
+          },
+          {
+            "given": "Cesar David",
+            "family": "Paredes Crovato"
+          },
+          {
+            "given": "Rodrigo",
+            "family": "da Rosa Righi"
+          }
+        ]
+      },
+      {
+        "title": [
+          "A predictive maintenance model for optimizing production schedule using deep neural networks"
+        ],
+        "container-title": [
+          "Journal of Manufacturing Systems"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022,
+              1
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.jmsy.2021.12.013",
+        "URL": "https://doi.org/10.1016/j.jmsy.2021.12.013",
+        "type": "journal-article",
+        "score": 53.877357,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Tiago",
+            "family": "Zonta"
+          },
+          {
+            "given": "Cristiano André",
+            "family": "da Costa"
+          },
+          {
+            "given": "Felipe A.",
+            "family": "Zeiser"
+          },
+          {
+            "given": "Gabriel",
+            "family": "de Oliveira Ramos"
+          },
+          {
+            "given": "Rafael",
+            "family": "Kunst"
+          }
+        ]
+      }
+    ]
+  },
+  "20": {
+    "ref": "Carvalho T P, Soares F A A M N, Vita R, et al. A systematic literature review of machine learning methods applied to predictive maintenance[J]. Computers & Industrial Engineering, 2019, 137: 106024",
+    "query": "Carvalho T P, Soares F A A M N, Vita R, et al. A systematic literature review of machine learning methods applied to predictive maintenance. Computers & Industrial Engineering, 2019, 137: 106024",
+    "items": [
+      {
+        "title": [
+          "A systematic literature review of machine learning methods applied to predictive maintenance"
+        ],
+        "container-title": [
+          "Computers &amp; Industrial Engineering"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2019,
+              11
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cie.2019.106024",
+        "URL": "https://doi.org/10.1016/j.cie.2019.106024",
+        "type": "journal-article",
+        "score": 95.754944,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Thyago P.",
+            "family": "Carvalho"
+          },
+          {
+            "given": "Fabrízzio A. A. M. N.",
+            "family": "Soares"
+          },
+          {
+            "given": "Roberto",
+            "family": "Vita"
+          },
+          {
+            "given": "Roberto da P.",
+            "family": "Francisco"
+          },
+          {
+            "given": "João P.",
+            "family": "Basto"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Machine learning based concept drift detection for predictive maintenance"
+        ],
+        "container-title": [
+          "Computers &amp; Industrial Engineering"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2019,
+              11
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cie.2019.106031",
+        "URL": "https://doi.org/10.1016/j.cie.2019.106031",
+        "type": "journal-article",
+        "score": 55.948387,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Jan",
+            "family": "Zenisek"
+          },
+          {
+            "given": "Florian",
+            "family": "Holzinger"
+          },
+          {
+            "given": "Michael",
+            "family": "Affenzeller"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Discrete simulation-based optimization methods for industrial engineering problems: A systematic literature review"
+        ],
+        "container-title": [
+          "Computers &amp; Industrial Engineering"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2019,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cie.2018.12.073",
+        "URL": "https://doi.org/10.1016/j.cie.2018.12.073",
+        "type": "journal-article",
+        "score": 46.266544,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Wilson",
+            "family": "Trigueiro de Sousa Junior"
+          },
+          {
+            "given": "José Arnaldo",
+            "family": "Barra Montevechi"
+          },
+          {
+            "given": "Rafael",
+            "family": "de Carvalho Miranda"
+          },
+          {
+            "given": "Afonso",
+            "family": "Teberga Campos"
+          }
+        ]
+      }
+    ]
+  },
+  "21": {
+    "ref": "Ferreira C, Goncalves G. Remaining useful life prediction and challenges: a literature review on the use of machine learning methods[J]. Journal of Manufacturing Systems, 2022, 63: 550-562",
+    "query": "Ferreira C, Goncalves G. Remaining useful life prediction and challenges: a literature review on the use of machine learning methods. Journal of Manufacturing Systems, 2022, 63: 550-562",
+    "items": [
+      {
+        "title": [
+          "Remaining Useful Life prediction and challenges: A literature review on the use of Machine Learning Methods"
+        ],
+        "container-title": [
+          "Journal of Manufacturing Systems"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022,
+              4
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.jmsy.2022.05.010",
+        "URL": "https://doi.org/10.1016/j.jmsy.2022.05.010",
+        "type": "journal-article",
+        "score": 101.10623,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Carlos",
+            "family": "Ferreira"
+          },
+          {
+            "given": "Gil",
+            "family": "Gonçalves"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Remaining Useful Life Prediction of Industrial Components with Machine Learning Methods"
+        ],
+        "container-title": [
+          "Filter-Based Fault Diagnosis and Remaining Useful Life Prediction"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2023,
+              1,
+              5
+            ]
+          ]
+        },
+        "DOI": "10.1201/9781003330998-7",
+        "URL": "https://doi.org/10.1201/9781003330998-7",
+        "type": "book-chapter",
+        "score": 52.895622,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Yong",
+            "family": "Zhang"
+          },
+          {
+            "given": "Zidong",
+            "family": "Wang"
+          },
+          {
+            "given": "Ye",
+            "family": "Yuan"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Review of Machine Learning Based Remaining Useful Life Prediction Methods for Equipment"
+        ],
+        "container-title": [
+          "Journal of Mechanical Engineering"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2019
+            ]
+          ]
+        },
+        "DOI": "10.3901/jme.2019.08.001",
+        "URL": "https://doi.org/10.3901/jme.2019.08.001",
+        "type": "journal-article",
+        "score": 48.613186,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Hong",
+            "family": "PEI"
+          }
+        ]
+      }
+    ]
+  },
+  "22": {
+    "ref": "Li H, Zhang Z, Li T, et al. A review on physics-informed data-driven remaining useful life prediction: challenges and opportunities[J]. Mechanical Systems and Signal Processing, 2024, 209: 111120",
+    "query": "Li H, Zhang Z, Li T, et al. A review on physics-informed data-driven remaining useful life prediction: challenges and opportunities. Mechanical Systems and Signal Processing, 2024, 209: 111120",
+    "items": [
+      {
+        "title": [
+          "A review on physics-informed data-driven remaining useful life prediction: Challenges and opportunities"
+        ],
+        "container-title": [
+          "Mechanical Systems and Signal Processing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              3
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ymssp.2024.111120",
+        "URL": "https://doi.org/10.1016/j.ymssp.2024.111120",
+        "type": "journal-article",
+        "score": 119.895584,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Huiqin",
+            "family": "Li"
+          },
+          {
+            "given": "Zhengxin",
+            "family": "Zhang"
+          },
+          {
+            "given": "Tianmei",
+            "family": "Li"
+          },
+          {
+            "given": "Xiaosheng",
+            "family": "Si"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Controlled physics-informed data generation for deep learning-based remaining useful life prediction under unseen operation conditions"
+        ],
+        "container-title": [
+          "Mechanical Systems and Signal Processing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2023,
+              8
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ymssp.2023.110359",
+        "URL": "https://doi.org/10.1016/j.ymssp.2023.110359",
+        "type": "journal-article",
+        "score": 64.49173,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Jiawei",
+            "family": "Xiong"
+          },
+          {
+            "given": "Olga",
+            "family": "Fink"
+          },
+          {
+            "given": "Jian",
+            "family": "Zhou"
+          },
+          {
+            "given": "Yizhong",
+            "family": "Ma"
+          }
+        ]
+      },
+      {
+        "title": [
+          "A self-data-driven method for remaining useful life prediction of wind turbines considering continuously varying speeds"
+        ],
+        "container-title": [
+          "Mechanical Systems and Signal Processing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ymssp.2021.108315",
+        "URL": "https://doi.org/10.1016/j.ymssp.2021.108315",
+        "type": "journal-article",
+        "score": 64.2888,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Naipeng",
+            "family": "Li"
+          },
+          {
+            "given": "Pengcheng",
+            "family": "Xu"
+          },
+          {
+            "given": "Yaguo",
+            "family": "Lei"
+          },
+          {
+            "given": "Xiao",
+            "family": "Cai"
+          },
+          {
+            "given": "Detong",
+            "family": "Kong"
+          }
+        ]
+      }
+    ]
+  },
+  "23": {
+    "ref": "Lei Y, Li N, Guo L, et al. Machinery health prognostics: a systematic review from data acquisition to RUL prediction[J]. Mechanical Systems and Signal Processing, 2018, 104: 799-834",
+    "query": "Lei Y, Li N, Guo L, et al. Machinery health prognostics: a systematic review from data acquisition to RUL prediction. Mechanical Systems and Signal Processing, 2018, 104: 799-834",
+    "items": [
+      {
+        "title": [
+          "Machinery health prognostics: A systematic review from data acquisition to RUL prediction"
+        ],
+        "container-title": [
+          "Mechanical Systems and Signal Processing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2018,
+              5
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ymssp.2017.11.016",
+        "URL": "https://doi.org/10.1016/j.ymssp.2017.11.016",
+        "type": "journal-article",
+        "score": 120.941826,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Yaguo",
+            "family": "Lei"
+          },
+          {
+            "given": "Naipeng",
+            "family": "Li"
+          },
+          {
+            "given": "Liang",
+            "family": "Guo"
+          },
+          {
+            "given": "Ningbo",
+            "family": "Li"
+          },
+          {
+            "given": "Tao",
+            "family": "Yan"
+          }
+        ]
+      },
+      {
+        "title": [
+          "RUL prediction of machinery using convolutional-vector fusion network through multi-feature dynamic weighting"
+        ],
+        "container-title": [
+          "Mechanical Systems and Signal Processing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2023,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ymssp.2022.109788",
+        "URL": "https://doi.org/10.1016/j.ymssp.2022.109788",
+        "type": "journal-article",
+        "score": 58.92191,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Xiaofei",
+            "family": "Liu"
+          },
+          {
+            "given": "Yaguo",
+            "family": "Lei"
+          },
+          {
+            "given": "Naipeng",
+            "family": "Li"
+          },
+          {
+            "given": "Xiaosheng",
+            "family": "Si"
+          },
+          {
+            "given": "Xiang",
+            "family": "Li"
+          }
+        ]
+      },
+      {
+        "title": [
+          "A novel machinery RUL prediction method based on exponential model and cross-domain health indicator considering first-to-end prediction time"
+        ],
+        "container-title": [
+          "Mechanical Systems and Signal Processing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              3
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ymssp.2024.111122",
+        "URL": "https://doi.org/10.1016/j.ymssp.2024.111122",
+        "type": "journal-article",
+        "score": 55.73391,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Xuewu",
+            "family": "Pei"
+          },
+          {
+            "given": "Xinyu",
+            "family": "Li"
+          },
+          {
+            "given": "Liang",
+            "family": "Gao"
+          }
+        ]
+      }
+    ]
+  },
+  "24": {
+    "ref": "Hochreiter S, Schmidhuber J. Long short-term memory[J]. Neural Computation, 1997, 9(8): 1735-1780",
+    "query": "Hochreiter S, Schmidhuber J. Long short-term memory. Neural Computation, 1997, 9(8): 1735-1780",
+    "items": [
+      {
+        "title": [
+          "Long Short-Term Memory"
+        ],
+        "container-title": [
+          "Neural Computation"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1997,
+              11,
+              1
+            ]
+          ]
+        },
+        "DOI": "10.1162/neco.1997.9.8.1735",
+        "URL": "https://doi.org/10.1162/neco.1997.9.8.1735",
+        "type": "journal-article",
+        "score": 97.13992,
+        "abstract": "<jats:p>Learning to store information over extended time intervals by recurrent backpropagation takes a very long time, mostly because of insufficient, decaying error backflow. We briefly review Hochreiter's (1991) analysis of this problem, then address it by introducing a novel, efficient, gradient based method called long short-term memory (LSTM). Truncating the gradient where this does not do harm, LSTM can learn to bridge minimal time lags in excess of 1000 discrete-time steps by enforcing constant error flow through constant error carousels within special units. Multiplicative gate units learn to open and close access to the constant error flow. LSTM is local in space and time; its computational complexity per time step and weight is O. 1. Our experiments with artificial data involve local, distributed, real-valued, and noisy pattern representations. In comparisons with real-time recurrent learning, back propagation through time, recurrent cascade correlation, Elman nets, and neural sequence chunking, LSTM leads to many more successful runs, and learns much faster. LSTM also solves complex, artificial long-time-lag tasks that have never been solved by previous recurrent network algorithms.</jats:p>",
+        "author": [
+          {
+            "given": "Sepp",
+            "family": "Hochreiter"
+          },
+          {
+            "given": "Jürgen",
+            "family": "Schmidhuber"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Flat Minima"
+        ],
+        "container-title": [
+          "Neural Computation"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1997,
+              1,
+              1
+            ]
+          ]
+        },
+        "DOI": "10.1162/neco.1997.9.1.1",
+        "URL": "https://doi.org/10.1162/neco.1997.9.1.1",
+        "type": "journal-article",
+        "score": 54.37257,
+        "abstract": "<jats:p>We present a new algorithm for finding low-complexity neural networks with high generalization capability. The algorithm searches for a “flat” minimum of the error function. A flat minimum is a large connected region in weight space where the error remains approximately constant. An MDL-based, Bayesian argument suggests that flat minima correspond to “simple” networks and low expected overfitting. The argument is based on a Gibbs algorithm variant and a novel way of splitting generalization error into underfitting and overfitting error. Unlike many previous approaches, ours does not require gaussian assumptions and does not depend on a “good” weight prior. Instead we have a prior over input output functions, thus taking into account net architecture and training set. Although our algorithm requires the computation of second-order derivatives, it has backpropagation's order of complexity. Automatically, it effectively prunes units, weights, and input lines. Various experiments with feedforward and recurrent nets are described. In an application to stock market prediction, flat minimum search outperforms conventional backprop, weight decay, and “optimal brain surgeon/optimal brain damage.”</jats:p>",
+        "author": [
+          {
+            "given": "Sepp",
+            "family": "Hochreiter"
+          },
+          {
+            "given": "Jürgen",
+            "family": "Schmidhuber"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Feature Extraction Through LOCOCODE"
+        ],
+        "container-title": [
+          "Neural Computation"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1999,
+              4,
+              1
+            ]
+          ]
+        },
+        "DOI": "10.1162/089976699300016629",
+        "URL": "https://doi.org/10.1162/089976699300016629",
+        "type": "journal-article",
+        "score": 45.59517,
+        "abstract": "<jats:p> Low-complexity coding and decoding (LOCOCODE) is a novel approach to sensory coding and unsupervised learning. Unlike previous methods, it explicitly takes into account the information-theoretic complexity of the code generator. It computes lococodes that convey information about the input data and can be computed and decoded by low-complexity mappings. We implement LOCOCODE by training autoassociators with flat minimum search, a recent, general method for discovering low-complexity neural nets. It turns out that this approach can unmix an unknown number of independent data sources by extracting a minimal number of low-complexity features necessary for representing the data. Experiments show that unlike codes obtained with standard autoencoders, lococodes are based on feature detectors, never unstructured, usually sparse, and sometimes factorial or local (depending on statistical properties of the data). Although LOCOCODE is not explicitly designed to enforce sparse or factorial codes, it extracts optimal codes for difficult versions of the “bars” benchmark problem, whereas independent component analysis (ICA) and principal component analysis (PCA) do not. It produces familiar, biologically plausible feature detectors when applied to real-world images and codes with fewer bits per pixel than ICA and PCA. Unlike ICA, it does not need to know the number of independent sources. As a preprocessor for a vowel recognition benchmark problem, it sets the stage for excellent classification performance. Our results reveal an interesting, previously ignored connection between two important fields: regularizer research and ICA-related research. They may represent a first step toward unification of regularization and unsupervised learning. </jats:p>",
+        "author": [
+          {
+            "given": "Sepp",
+            "family": "Hochreiter"
+          },
+          {
+            "given": "Jürgen",
+            "family": "Schmidhuber"
+          }
+        ]
+      }
+    ]
+  },
+  "25": {
+    "ref": "Cho K, van Merrienboer B, Gulcehre C, et al. Learning phrase representations using RNN encoder-decoder for statistical machine translation[C]//Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing. Doha: Association for Computational Linguistics, 2014: 1724-1734",
+    "query": "Cho K, van Merrienboer B, Gulcehre C, et al. Learning phrase representations using RNN encoder-decoder for statistical machine translation//Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing. Doha: Association for Computational Linguistics, 2014: 1724-1734",
+    "items": [
+      {
+        "title": [
+          "Learning Phrase Representations using RNN Encoder–Decoder for Statistical Machine Translation"
+        ],
+        "container-title": [
+          "Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2014
+            ]
+          ]
+        },
+        "DOI": "10.3115/v1/d14-1179",
+        "URL": "https://doi.org/10.3115/v1/d14-1179",
+        "type": "proceedings-article",
+        "score": 148.14005,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Kyunghyun",
+            "family": "Cho"
+          },
+          {
+            "given": "Bart",
+            "family": "van Merrienboer"
+          },
+          {
+            "given": "Caglar",
+            "family": "Gulcehre"
+          },
+          {
+            "given": "Dzmitry",
+            "family": "Bahdanau"
+          },
+          {
+            "given": "Fethi",
+            "family": "Bougares"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Exact Decoding for Phrase-Based Statistical Machine Translation"
+        ],
+        "container-title": [
+          "Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2014
+            ]
+          ]
+        },
+        "DOI": "10.3115/v1/d14-1131",
+        "URL": "https://doi.org/10.3115/v1/d14-1131",
+        "type": "proceedings-article",
+        "score": 69.311775,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Wilker",
+            "family": "Aziz"
+          },
+          {
+            "given": "Marc",
+            "family": "Dymetman"
+          },
+          {
+            "given": "Lucia",
+            "family": "Specia"
+          }
+        ]
+      },
+      {
+        "title": [
+          "On the Properties of Neural Machine Translation: Encoder–Decoder Approaches"
+        ],
+        "container-title": [
+          "Proceedings of SSST-8, Eighth Workshop on Syntax, Semantics and Structure in Statistical Translation"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2014
+            ]
+          ]
+        },
+        "DOI": "10.3115/v1/w14-4012",
+        "URL": "https://doi.org/10.3115/v1/w14-4012",
+        "type": "proceedings-article",
+        "score": 68.62477,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Kyunghyun",
+            "family": "Cho"
+          },
+          {
+            "given": "Bart",
+            "family": "van Merrienboer"
+          },
+          {
+            "given": "Dzmitry",
+            "family": "Bahdanau"
+          },
+          {
+            "given": "Yoshua",
+            "family": "Bengio"
+          }
+        ]
+      }
+    ]
+  },
+  "26": {
+    "ref": "Chung J, Gulcehre C, Cho K, et al. Empirical evaluation of gated recurrent neural networks on sequence modeling[EB/OL]. arXiv:1412.3555, 2014[2026-05-1]. https://arxiv.org/abs/1412.3555",
+    "query": "Chung J, Gulcehre C, Cho K, et al. Empirical evaluation of gated recurrent neural networks on sequence modeling. arXiv:1412.3555, 2014. https://arxiv.org/abs/1412.3555",
+    "items": [
+      {
+        "title": [
+          "Influence Prediction in Collaboration Networks: An Empirical Study on arXiv"
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              2025,
+              9,
+              17
+            ]
+          ]
+        },
+        "DOI": "10.21203/rs.3.rs-7401473/v1",
+        "URL": "https://doi.org/10.21203/rs.3.rs-7401473/v1",
+        "type": "posted-content",
+        "score": 46.036957,
+        "abstract": "<title>Abstract</title>\n                <p>This paper provides an empirical study of the Social Sphere Model for influence prediction, previously introduced by the authors, combining link prediction with top‑k centrality-based selection. We apply the model to the temporal arXiv General Relativity and Quantum Cosmology collaboration network, evaluating its performance under varying edge sampling rates and prediction horizons to reflect different levels of initial data completeness and network evolution. Accuracy is assessed using mean squared error in both link prediction and influence maximization tasks. The results show that the model effectively identifies latent influencers - nodes that are not initially central but later influential - and performs best with denser initial graphs. Among the similarity measures tested, the newly introduced RA-2 metric consistently yields the lowest prediction errors. These findings support the practical applicability of the model to predict real-world influence in evolving networks.</p>",
+        "author": [
+          {
+            "given": "Marina",
+            "family": "Lin"
+          },
+          {
+            "given": "Laura P.",
+            "family": "Schaposnik"
+          },
+          {
+            "given": "Raina",
+            "family": "Wu"
+          }
+        ]
+      },
+      {
+        "title": [
+          "A class of discrete-time recurrent neural networks with multivalued neurons"
+        ],
+        "container-title": [
+          "2009 International Joint Conference on Neural Networks"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2009,
+              6
+            ]
+          ]
+        },
+        "DOI": "10.1109/ijcnn.2009.5178721",
+        "URL": "https://doi.org/10.1109/ijcnn.2009.5178721",
+        "type": "proceedings-article",
+        "score": 42.4777,
+        "abstract": null,
+        "author": [
+          {
+            "given": null,
+            "family": "Wei Zhou"
+          },
+          {
+            "given": "Jacek M.",
+            "family": "Zurada"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Hierarchically Gated Recurrent Neural Network for Sequence Modeling"
+        ],
+        "container-title": [
+          "Advances in Neural Information Processing Systems 36"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2023
+            ]
+          ]
+        },
+        "DOI": "10.52202/075280-1442",
+        "URL": "https://doi.org/10.52202/075280-1442",
+        "type": "proceedings-article",
+        "score": 38.150696,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Zhen",
+            "family": "Qin"
+          },
+          {
+            "given": "Songlin",
+            "family": "Yang"
+          },
+          {
+            "given": "Yiran",
+            "family": "Zhong"
+          }
+        ]
+      }
+    ]
+  },
+  "27": {
+    "ref": "Lin R, Wang H, Xiong M, et al. Attention-based gate recurrent unit for remaining useful life prediction in prognostics[J]. Applied Soft Computing, 2023, 143: 110419",
+    "query": "Lin R, Wang H, Xiong M, et al. Attention-based gate recurrent unit for remaining useful life prediction in prognostics. Applied Soft Computing, 2023, 143: 110419",
+    "items": [
+      {
+        "title": [
+          "Attention-based Gate Recurrent Unit for remaining useful life prediction in prognostics"
+        ],
+        "container-title": [
+          "Applied Soft Computing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2023,
+              8
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.asoc.2023.110419",
+        "URL": "https://doi.org/10.1016/j.asoc.2023.110419",
+        "type": "journal-article",
+        "score": 125.1244,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Ruiguan",
+            "family": "Lin"
+          },
+          {
+            "given": "Huawei",
+            "family": "Wang"
+          },
+          {
+            "given": "Minglan",
+            "family": "Xiong"
+          },
+          {
+            "given": "Zhaoguo",
+            "family": "Hou"
+          },
+          {
+            "given": "Changchang",
+            "family": "Che"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Prediction of Bearing Remaining Useful Life Based on CNN and Gated Recurrent Unit"
+        ],
+        "container-title": [
+          "2023 Global Reliability and Prognostics and Health Management Conference (PHM-Hangzhou)"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2023,
+              10,
+              12
+            ]
+          ]
+        },
+        "DOI": "10.1109/phm-hangzhou58797.2023.10482701",
+        "URL": "https://doi.org/10.1109/phm-hangzhou58797.2023.10482701",
+        "type": "proceedings-article",
+        "score": 57.649082,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Xiaolan",
+            "family": "Gao"
+          },
+          {
+            "given": "Honghai",
+            "family": "Wang"
+          },
+          {
+            "given": "Ziqi",
+            "family": "Zhao"
+          },
+          {
+            "given": "Jing",
+            "family": "Tian"
+          },
+          {
+            "given": "Fengling",
+            "family": "Zhang"
+          }
+        ]
+      },
+      {
+        "title": [
+          "A novel deep learning method based on attention mechanism for bearing remaining useful life prediction"
+        ],
+        "container-title": [
+          "Applied Soft Computing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2020,
+              1
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.asoc.2019.105919",
+        "URL": "https://doi.org/10.1016/j.asoc.2019.105919",
+        "type": "journal-article",
+        "score": 56.851524,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Yuanhang",
+            "family": "Chen"
+          },
+          {
+            "given": "Gaoliang",
+            "family": "Peng"
+          },
+          {
+            "given": "Zhiyu",
+            "family": "Zhu"
+          },
+          {
+            "given": "Sijue",
+            "family": "Li"
+          }
+        ]
+      }
+    ]
+  },
+  "28": {
+    "ref": "Sahu P K, Rai R N. LSTM-based deep learning approach for remaining useful life prediction of rolling bearing using proposed C-MMPE feature[J]. Journal of Mechanical Science and Technology, 2024, 38: 2197-2209",
+    "query": "Sahu P K, Rai R N. LSTM-based deep learning approach for remaining useful life prediction of rolling bearing using proposed C-MMPE feature. Journal of Mechanical Science and Technology, 2024, 38: 2197-2209",
+    "items": [
+      {
+        "title": [
+          "LSTM-based deep learning approach for remaining useful life prediction of rolling bearing using proposed C-MMPE feature"
+        ],
+        "container-title": [
+          "Journal of Mechanical Science and Technology"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              5
+            ]
+          ]
+        },
+        "DOI": "10.1007/s12206-024-0402-8",
+        "URL": "https://doi.org/10.1007/s12206-024-0402-8",
+        "type": "journal-article",
+        "score": 134.64088,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Prashant Kumar",
+            "family": "Sahu"
+          },
+          {
+            "given": "Rajiv Nandan",
+            "family": "Rai"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Degradation Monitoring and RUL Prediction of Rolling Element Bearing Using Proposed C-MMPE Feature"
+        ],
+        "container-title": [
+          "2022 11th International Conference on Power Science and Engineering (ICPSE)"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022,
+              9,
+              23
+            ]
+          ]
+        },
+        "DOI": "10.1109/icpse56329.2022.9935431",
+        "URL": "https://doi.org/10.1109/icpse56329.2022.9935431",
+        "type": "proceedings-article",
+        "score": 72.63818,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Prashant Kumar",
+            "family": "Sahu"
+          },
+          {
+            "given": "Rajiv Nandan",
+            "family": "Rai"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Multi-feature based LSTM rolling bearing remaining useful life prediction"
+        ],
+        "container-title": [
+          "IET Conference Proceedings"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022,
+              10,
+              14
+            ]
+          ]
+        },
+        "DOI": "10.1049/icp.2022.1623",
+        "URL": "https://doi.org/10.1049/icp.2022.1623",
+        "type": "journal-article",
+        "score": 61.126404,
+        "abstract": null,
+        "author": [
+          {
+            "given": "M.",
+            "family": "Jiang"
+          },
+          {
+            "given": "Y.",
+            "family": "Xiang"
+          },
+          {
+            "given": "L.",
+            "family": "Zheng"
+          },
+          {
+            "given": "R.",
+            "family": "Zhu"
+          }
+        ]
+      }
+    ]
+  },
+  "29": {
+    "ref": "Peng C, Chen Y, Gui W, et al. Remaining useful life prognosis of turbofan engines based on deep feature extraction and fusion[J]. Scientific Reports, 2022, 12: 6491",
+    "query": "Peng C, Chen Y, Gui W, et al. Remaining useful life prognosis of turbofan engines based on deep feature extraction and fusion. Scientific Reports, 2022, 12: 6491",
+    "items": [
+      {
+        "title": [
+          "Remaining useful life prognosis of turbofan engines based on deep feature extraction and fusion"
+        ],
+        "container-title": [
+          "Scientific Reports"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022,
+              4,
+              20
+            ]
+          ]
+        },
+        "DOI": "10.1038/s41598-022-10191-2",
+        "URL": "https://doi.org/10.1038/s41598-022-10191-2",
+        "type": "journal-article",
+        "score": 109.854744,
+        "abstract": "<jats:title>Abstract</jats:title><jats:p>In turbofan engine datasets, to address problems, such as noise interference, diverse data types, large data volumes, complex feature extraction, inability to effectively describe degradation trends, and poor remaining useful life (RUL) prognosis effects, a remaining useful life prognosis model combining an improved stack sparse autoencoder (imSSAE) and an improved echo state network (imESN) is proposed in this paper. First, the 3-sigma criterion is adopted to remove the noise and reconstruct the data, and then the deep features of the engine are extracted by using an imSSAE and fused into health indicator (HI) curves describing the engine degradation trend. Finally, an attention mechanism is introduced into an imESN to adaptively process different types of data and obtain the RUL. The experimental results based on the Commercial Modular Aero-Propulsion System Simulation (C-MAPSS) dataset show that compared with the other popular RUL prediction models, the combined model proposed in this paper has higher prediction accuracy, and the evaluation indices also show the effectiveness and superiority of the model.</jats:p>",
+        "author": [
+          {
+            "given": "Cheng",
+            "family": "Peng"
+          },
+          {
+            "given": "Yufeng",
+            "family": "Chen"
+          },
+          {
+            "given": "Weihua",
+            "family": "Gui"
+          },
+          {
+            "given": "Zhaohui",
+            "family": "Tang"
+          },
+          {
+            "given": "Changyun",
+            "family": "Li"
+          }
+        ]
+      },
+      {
+        "title": [
+          "A Remaining Useful Life Prognosis of Turbofan Engine Using Temporal and Spatial Feature Fusion"
+        ],
+        "container-title": [
+          "Sensors"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2021,
+              1,
+              8
+            ]
+          ]
+        },
+        "DOI": "10.3390/s21020418",
+        "URL": "https://doi.org/10.3390/s21020418",
+        "type": "journal-article",
+        "score": 71.50816,
+        "abstract": "<jats:p>The prognosis of the remaining useful life (RUL) of turbofan engine provides an important basis for predictive maintenance and remanufacturing, and plays a major role in reducing failure rate and maintenance costs. The main problem of traditional methods based on the single neural network of shallow machine learning is the RUL prognosis based on single feature extraction, and the prediction accuracy is generally not high, a method for predicting RUL based on the combination of one-dimensional convolutional neural networks with full convolutional layer (1-FCLCNN) and long short-term memory (LSTM) is proposed. In this method, LSTM and 1- FCLCNN are adopted to extract temporal and spatial features of FD001 andFD003 datasets generated by turbofan engine respectively. The fusion of these two kinds of features is for the input of the next convolutional neural networks (CNN) to obtain the target RUL. Compared with the currently popular RUL prediction models, the results show that the model proposed has higher prediction accuracy than other models in RUL prediction. The final evaluation index also shows the effectiveness and superiority of the model.</jats:p>",
+        "author": [
+          {
+            "given": "Cheng",
+            "family": "Peng"
+          },
+          {
+            "given": "Yufeng",
+            "family": "Chen"
+          },
+          {
+            "given": "Qing",
+            "family": "Chen"
+          },
+          {
+            "given": "Zhaohui",
+            "family": "Tang"
+          },
+          {
+            "given": "Lingling",
+            "family": "Li"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Predicting Remaining Useful Life of Turbofan Engines on CMAPSS and N-CMAPSS using Deep Recurrent Neural Networks"
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              null
+            ]
+          ]
+        },
+        "DOI": "10.31979/etd.cyfe-z4sj",
+        "URL": "https://doi.org/10.31979/etd.cyfe-z4sj",
+        "type": "dissertation",
+        "score": 56.147865,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Samaikya",
+            "family": "Tippareddy"
+          }
+        ]
+      }
+    ]
+  },
+  "30": {
+    "ref": "Zhang X, Guo Y, Shangguan H, et al. Predicting remaining useful life of a machine based on embedded attention parallel networks[J]. Mechanical Systems and Signal Processing, 2023, 192: 110221",
+    "query": "Zhang X, Guo Y, Shangguan H, et al. Predicting remaining useful life of a machine based on embedded attention parallel networks. Mechanical Systems and Signal Processing, 2023, 192: 110221",
+    "items": [
+      {
+        "title": [
+          "Predicting remaining useful life of a machine based on embedded attention parallel networks"
+        ],
+        "container-title": [
+          "Mechanical Systems and Signal Processing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2023,
+              6
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ymssp.2023.110221",
+        "URL": "https://doi.org/10.1016/j.ymssp.2023.110221",
+        "type": "journal-article",
+        "score": 120.47325,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Xiong",
+            "family": "Zhang"
+          },
+          {
+            "given": "Yunfei",
+            "family": "Guo"
+          },
+          {
+            "given": "Hong",
+            "family": "Shangguan"
+          },
+          {
+            "given": "Ranran",
+            "family": "Li"
+          },
+          {
+            "given": "Xiaojia",
+            "family": "Wu"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Bearing remaining useful life prediction using self-adaptive graph convolutional networks with self-attention mechanism"
+        ],
+        "container-title": [
+          "Mechanical Systems and Signal Processing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2023,
+              4
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ymssp.2022.110010",
+        "URL": "https://doi.org/10.1016/j.ymssp.2022.110010",
+        "type": "journal-article",
+        "score": 60.924366,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Yupeng",
+            "family": "Wei"
+          },
+          {
+            "given": "Dazhong",
+            "family": "Wu"
+          },
+          {
+            "given": "Janis",
+            "family": "Terpenny"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Predicting remaining useful life based on a generalized degradation with fractional Brownian motion"
+        ],
+        "container-title": [
+          "Mechanical Systems and Signal Processing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2019,
+              1
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ymssp.2018.06.029",
+        "URL": "https://doi.org/10.1016/j.ymssp.2018.06.029",
+        "type": "journal-article",
+        "score": 58.269638,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Hanwen",
+            "family": "Zhang"
+          },
+          {
+            "given": "Donghua",
+            "family": "Zhou"
+          },
+          {
+            "given": "Maoyin",
+            "family": "Chen"
+          },
+          {
+            "given": "Xiaopeng",
+            "family": "Xi"
+          }
+        ]
+      }
+    ]
+  },
+  "31": {
+    "ref": "Pinedo M L. Scheduling: theory, algorithms, and systems[M]. 5th ed. Cham: Springer, 2016",
+    "query": "Pinedo M L. Scheduling: theory, algorithms, and systems. 5th ed. Cham: Springer, 2016",
+    "items": [
+      {
+        "title": [
+          "Selected Scheduling Systems"
+        ],
+        "container-title": [
+          "Scheduling"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2012
+            ]
+          ]
+        },
+        "DOI": "10.1007/978-1-4614-2361-4_27",
+        "URL": "https://doi.org/10.1007/978-1-4614-2361-4_27",
+        "type": "book-chapter",
+        "score": 43.375416,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Michael L.",
+            "family": "Pinedo"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Scheduling"
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              2012
+            ]
+          ]
+        },
+        "DOI": "10.1007/978-1-4614-2361-4",
+        "URL": "https://doi.org/10.1007/978-1-4614-2361-4",
+        "type": "book",
+        "score": 42.916527,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Michael L.",
+            "family": "Pinedo"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Scheduling"
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              2022
+            ]
+          ]
+        },
+        "DOI": "10.1007/978-3-031-05921-6",
+        "URL": "https://doi.org/10.1007/978-3-031-05921-6",
+        "type": "book",
+        "score": 42.793404,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Michael L.",
+            "family": "Pinedo"
+          }
+        ]
+      }
+    ]
+  },
+  "32": {
+    "ref": "Panwalkar S S, Iskander W. A survey of scheduling rules[J]. Operations Research, 1977, 25(1): 45-61",
+    "query": "Panwalkar S S, Iskander W. A survey of scheduling rules. Operations Research, 1977, 25(1): 45-61",
+    "items": [
+      {
+        "title": [
+          "A Survey of Scheduling Rules"
+        ],
+        "container-title": [
+          "Operations Research"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1977,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1287/opre.25.1.45",
+        "URL": "https://doi.org/10.1287/opre.25.1.45",
+        "type": "journal-article",
+        "score": 86.99105,
+        "abstract": "<jats:p> In the past two decades researchers in the field of sequencing and scheduling have analyzed several priority dispatching rules through simulation techniques. This paper presents a summary of over 100 such rules, a list of many references that analyze them, and a classification scheme. </jats:p>",
+        "author": [
+          {
+            "given": "S. S.",
+            "family": "Panwalkar"
+          },
+          {
+            "given": "Wafik",
+            "family": "Iskander"
+          }
+        ]
+      },
+      {
+        "title": [
+          "The Lessons of Flowshop Scheduling Research"
+        ],
+        "container-title": [
+          "Operations Research"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1992,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1287/opre.40.1.7",
+        "URL": "https://doi.org/10.1287/opre.40.1.7",
+        "type": "journal-article",
+        "score": 34.25932,
+        "abstract": "<jats:p> This paper reviews the flowshop-sequencing research since 1954 that has been devoted to the static deterministic case in which n jobs are to be processed through a shop in which the processing times at each stage are fixed. The paper then comments on NP-completeness, the selection of criteria for optimization, and the lack of applications of this work in industry. Finally, it draws some conclusions about the possible future of sequencing research and the lessons that this area's work has to teach the rest of operations research. </jats:p>",
+        "author": [
+          {
+            "given": "R. A.",
+            "family": "Dudek"
+          },
+          {
+            "given": "S. S.",
+            "family": "Panwalkar"
+          },
+          {
+            "given": "M. L.",
+            "family": "Smith"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Optimal Single-Machine Scheduling with Earliness and Tardiness Penalties"
+        ],
+        "container-title": [
+          "Operations Research"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1977,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1287/opre.25.1.62",
+        "URL": "https://doi.org/10.1287/opre.25.1.62",
+        "type": "journal-article",
+        "score": 34.144047,
+        "abstract": "<jats:p> We consider a single-machine job shop scheduling problem in which penalties occur for jobs that either commence before their target start times or are completed after their due dates. The objective is to minimize the maximum penalty, subject to restrictive assumptions on the target start times, the due dates, and the penalty functions. We present an algorithm for solving this problem, along with a method for generating alternative optima. The algorithm is generalized to cover the case in which the machine is available for only a limited time span. </jats:p>",
+        "author": [
+          {
+            "given": "Jeffrey B.",
+            "family": "Sidney"
+          }
+        ]
+      }
+    ]
+  },
+  "33": {
+    "ref": "Vepsalainen A P J, Morton T E. Priority rules for job shops with weighted tardiness costs[J]. Management Science, 1987, 33(8): 1035-1047",
+    "query": "Vepsalainen A P J, Morton T E. Priority rules for job shops with weighted tardiness costs. Management Science, 1987, 33(8): 1035-1047",
+    "items": [
+      {
+        "title": [
+          "Priority Rules for Job Shops with Weighted Tardiness Costs"
+        ],
+        "container-title": [
+          "Management Science"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1987,
+              8
+            ]
+          ]
+        },
+        "DOI": "10.1287/mnsc.33.8.1035",
+        "URL": "https://doi.org/10.1287/mnsc.33.8.1035",
+        "type": "journal-article",
+        "score": 121.429695,
+        "abstract": "<jats:p> Mainstream research in priority dispatching has considered jobs with equal delay penalties, thereby ruling out strategic differentiation of customer orders. We develop and test efficient dispatching rules for the weighted tardiness problem with job-specific due dates and delay penalties. Our approach builds on previous greedy heuristics which assign the priority on the basis of the expected tardiness cost per immediate processing requirements. In multi-machine applications, estimates of the remaining leadtime are needed to determine local operation due dates and to evaluate the adequacy of the job's slack. Two slightly different “look-ahead” features are identified, and the corresponding priority rules are tested in job shop experiments with a variety of load conditions. The results indicate that the new rules are not only superior to competing rules for minimizing weighted tardiness penalties but are also robust for several other criteria, such as the number of tardy jobs and the costs of in-process inventories. </jats:p>",
+        "author": [
+          {
+            "given": "Ari P. J.",
+            "family": "Vepsalainen"
+          },
+          {
+            "given": "Thomas E.",
+            "family": "Morton"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Setting Planned Leadtimes in Serial Production Systems with Tardiness Costs"
+        ],
+        "container-title": [
+          "Management Science"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1987,
+              1
+            ]
+          ]
+        },
+        "DOI": "10.1287/mnsc.33.1.95",
+        "URL": "https://doi.org/10.1287/mnsc.33.1.95",
+        "type": "journal-article",
+        "score": 42.44544,
+        "abstract": "<jats:p> We investigate the problem of determining optimal planned leadtimes in serial production systems in which the actual procurement and processing times may be stochastic. The objective is to minimize the sum of inventory holding costs and job tardiness costs given a customer specified due-date. We present a general solution procedure for two stage serial systems, which for most cost structures and leadtime distributions is a single-pass algorithm. We also indicate how the procedure can be extended to N-stage systems. We present computational results which provide some insight into the characteristics of optimal safety time policies. </jats:p>",
+        "author": [
+          {
+            "given": "Candace Arai",
+            "family": "Yano"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Priority Rules for the Single Machine Total Weighted Tardiness Scheduling with Maximum Allowable Tardiness"
+        ],
+        "container-title": [
+          "Advanced Science and Technology Letters"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2016,
+              12,
+              23
+            ]
+          ]
+        },
+        "DOI": "10.14257/astl.2016.141.07",
+        "URL": "https://doi.org/10.14257/astl.2016.141.07",
+        "type": "proceedings-article",
+        "score": 40.172646,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Jae-Gon",
+            "family": "Kim"
+          },
+          {
+            "given": "June-Young",
+            "family": "Bang"
+          },
+          {
+            "given": "Seung-Kil",
+            "family": "Lim"
+          },
+          {
+            "given": "Joung-Yun",
+            "family": "Lee"
+          }
+        ]
+      }
+    ]
+  },
+  "34": {
+    "ref": "Brucker P, Schlie R. Job-shop scheduling with multi-purpose machines[J]. Computing, 1990, 45(4): 369-375",
+    "query": "Brucker P, Schlie R. Job-shop scheduling with multi-purpose machines. Computing, 1990, 45(4): 369-375",
+    "items": [
+      {
+        "title": [
+          "Job-shop scheduling with multi-purpose machines",
+          "Scheduling-Probleme in Jop-Shops mit Mehrzweckmaschinen"
+        ],
+        "container-title": [
+          "Computing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1990,
+              12
+            ]
+          ]
+        },
+        "DOI": "10.1007/bf02238804",
+        "URL": "https://doi.org/10.1007/bf02238804",
+        "type": "journal-article",
+        "score": 104.02553,
+        "abstract": null,
+        "author": [
+          {
+            "given": "P.",
+            "family": "Brucker"
+          },
+          {
+            "given": "R.",
+            "family": "Schlie"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Multi-Purpose Machines"
+        ],
+        "container-title": [
+          "Scheduling Algorithms"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1995
+            ]
+          ]
+        },
+        "DOI": "10.1007/978-3-662-03088-2_11",
+        "URL": "https://doi.org/10.1007/978-3-662-03088-2_11",
+        "type": "book-chapter",
+        "score": 50.037033,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Peter",
+            "family": "Brucker"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Multi-Purpose Machines"
+        ],
+        "container-title": [
+          "Scheduling Algorithms"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2004
+            ]
+          ]
+        },
+        "DOI": "10.1007/978-3-540-24804-0_10",
+        "URL": "https://doi.org/10.1007/978-3-540-24804-0_10",
+        "type": "book-chapter",
+        "score": 49.99958,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Peter",
+            "family": "Brucker"
+          }
+        ]
+      }
+    ]
+  },
+  "35": {
+    "ref": "Brandimarte P. Routing and scheduling in a flexible job shop by tabu search[J]. Annals of Operations Research, 1993, 41(3): 157-183",
+    "query": "Brandimarte P. Routing and scheduling in a flexible job shop by tabu search. Annals of Operations Research, 1993, 41(3): 157-183",
+    "items": [
+      {
+        "title": [
+          "Routing and scheduling in a flexible job shop by tabu search"
+        ],
+        "container-title": [
+          "Annals of Operations Research"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1993,
+              9
+            ]
+          ]
+        },
+        "DOI": "10.1007/bf02023073",
+        "URL": "https://doi.org/10.1007/bf02023073",
+        "type": "journal-article",
+        "score": 106.30243,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Paolo",
+            "family": "Brandimarte"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Applying tabu search to the job-shop scheduling problem"
+        ],
+        "container-title": [
+          "Annals of Operations Research"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1993,
+              9
+            ]
+          ]
+        },
+        "DOI": "10.1007/bf02023076",
+        "URL": "https://doi.org/10.1007/bf02023076",
+        "type": "journal-article",
+        "score": 67.568825,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Mauro",
+            "family": "Dell'Amico"
+          },
+          {
+            "given": "Marco",
+            "family": "Trubian"
+          }
+        ]
+      },
+      {
+        "title": [
+          "A tabu-search heuristic for the flexible-resource flow shop scheduling problem"
+        ],
+        "container-title": [
+          "Annals of Operations Research"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1993,
+              9
+            ]
+          ]
+        },
+        "DOI": "10.1007/bf02023075",
+        "URL": "https://doi.org/10.1007/bf02023075",
+        "type": "journal-article",
+        "score": 63.254948,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Richard L.",
+            "family": "Daniels"
+          },
+          {
+            "given": "Joseph B.",
+            "family": "Mazzola"
+          }
+        ]
+      }
+    ]
+  },
+  "36": {
+    "ref": "Mastrolilli M, Gambardella L M. Effective neighbourhood functions for the flexible job shop problem[J]. Journal of Scheduling, 2000, 3(1): 3-20",
+    "query": "Mastrolilli M, Gambardella L M. Effective neighbourhood functions for the flexible job shop problem. Journal of Scheduling, 2000, 3(1): 3-20",
+    "items": [
+      {
+        "title": [
+          "Effective neighbourhood functions for the flexible job shop problem"
+        ],
+        "container-title": [
+          "Journal of Scheduling"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2000,
+              1
+            ]
+          ]
+        },
+        "DOI": "10.1002/(sici)1099-1425(200001/02)3:1<3::aid-jos32>3.0.co;2-y",
+        "URL": "https://doi.org/10.1002/(sici)1099-1425(200001/02)3:1<3::aid-jos32>3.0.co;2-y",
+        "type": "journal-article",
+        "score": 95.422966,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Monaldo",
+            "family": "Mastrolilli"
+          },
+          {
+            "given": "Luca Maria",
+            "family": "Gambardella"
+          }
+        ]
+      },
+      {
+        "title": [
+          "A MILP model for flexible job shop scheduling problem considering low flexibility"
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              null
+            ]
+          ]
+        },
+        "DOI": "10.32657/10356/175400",
+        "URL": "https://doi.org/10.32657/10356/175400",
+        "type": "dissertation",
+        "score": 45.572666,
+        "abstract": null,
+        "author": [
+          {
+            "given": null,
+            "family": null
+          },
+          {
+            "given": "Minzheng",
+            "family": "Liu"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Improved Bacteria Foraging Optimization Algorithm for Solving Flexible Job-Shop Scheduling Problem"
+        ],
+        "container-title": [
+          "ISME 2016 - Information Science and Management Engineering IV"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2016
+            ]
+          ]
+        },
+        "DOI": "10.5220/0006443800630067",
+        "URL": "https://doi.org/10.5220/0006443800630067",
+        "type": "proceedings-article",
+        "score": 45.568035,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Xingang",
+            "family": "Wang"
+          },
+          {
+            "given": "Pengfei",
+            "family": "Yi"
+          }
+        ]
+      }
+    ]
+  },
+  "37": {
+    "ref": "Kacem I, Hammadi S, Borne P. Approach by localization and multiobjective evolutionary optimization for flexible job-shop scheduling problems[J]. IEEE Transactions on Systems, Man, and Cybernetics, Part C, 2002, 32(1): 1-13",
+    "query": "Kacem I, Hammadi S, Borne P. Approach by localization and multiobjective evolutionary optimization for flexible job-shop scheduling problems. IEEE Transactions on Systems, Man, and Cybernetics, Part C, 2002, 32(1): 1-13",
+    "items": [
+      {
+        "title": [
+          "Approach by localization and multiobjective evolutionary optimization for flexible job-shop scheduling problems"
+        ],
+        "container-title": [
+          "IEEE Transactions on Systems, Man and Cybernetics, Part C (Applications and Reviews)"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2002,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1109/tsmcc.2002.1009117",
+        "URL": "https://doi.org/10.1109/tsmcc.2002.1009117",
+        "type": "journal-article",
+        "score": 128.55301,
+        "abstract": null,
+        "author": [
+          {
+            "given": "I.",
+            "family": "Kacem"
+          },
+          {
+            "given": "S.",
+            "family": "Hammadi"
+          },
+          {
+            "given": "P.",
+            "family": "Borne"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Correction to \"Approach by localization and multiobjective evolutionary optimization for flexible job-shop scheduling problems\""
+        ],
+        "container-title": [
+          "IEEE Transactions on Systems, Man, and Cybernetics, Part C (Applications and Reviews)"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2002,
+              5
+            ]
+          ]
+        },
+        "DOI": "10.1109/tsmcc.2002.804307",
+        "URL": "https://doi.org/10.1109/tsmcc.2002.804307",
+        "type": "journal-article",
+        "score": 118.72744,
+        "abstract": null,
+        "author": [
+          {
+            "given": "I.",
+            "family": "Kacem"
+          },
+          {
+            "given": "S.",
+            "family": "Hammadi"
+          },
+          {
+            "given": "P.",
+            "family": "Borne"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Pareto-optimality approach based on uniform design and fuzzy evolutionary algorithms for flexible job-shop scheduling problems (FJSPs)"
+        ],
+        "container-title": [
+          "IEEE International Conference on Systems, Man and Cybernetics"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              null
+            ]
+          ]
+        },
+        "DOI": "10.1109/icsmc.2002.1175713",
+        "URL": "https://doi.org/10.1109/icsmc.2002.1175713",
+        "type": "proceedings-article",
+        "score": 96.671326,
+        "abstract": null,
+        "author": [
+          {
+            "given": "I.",
+            "family": "Kacem"
+          },
+          {
+            "given": "S.",
+            "family": "Hammadi"
+          },
+          {
+            "given": "P.",
+            "family": "Borne"
+          }
+        ]
+      }
+    ]
+  },
+  "38": {
+    "ref": "Xue L, Zhao S, Mahmoudi A, et al. Flexible job-shop scheduling problem with parallel batch machines based on an enhanced multi-population genetic algorithm[J]. Complex & Intelligent Systems, 2024, 10: 4083-4101",
+    "query": "Xue L, Zhao S, Mahmoudi A, et al. Flexible job-shop scheduling problem with parallel batch machines based on an enhanced multi-population genetic algorithm. Complex & Intelligent Systems, 2024, 10: 4083-4101",
+    "items": [
+      {
+        "title": [
+          "Flexible job-shop scheduling problem with parallel batch machines based on an enhanced multi-population genetic algorithm"
+        ],
+        "container-title": [
+          "Complex &amp; Intelligent Systems"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              6
+            ]
+          ]
+        },
+        "DOI": "10.1007/s40747-024-01374-7",
+        "URL": "https://doi.org/10.1007/s40747-024-01374-7",
+        "type": "journal-article",
+        "score": 134.9398,
+        "abstract": "<jats:title>Abstract</jats:title><jats:p>The flexible job-shop scheduling problem (FJSP) with parallel batch processing machine (PBM) is one of those long-standing issues that needs cutting-edge approaches. It is a recent extension of standard flexible job shop scheduling problems. Despite their wide application and prevalence in practical production, it seems that current research on these types of combinatorial optimization problems remains limited and uninvestigated. More specifically, existing research mainly concentrates on the flow shop scenarios in parallel batch machines for job shop scheduling but few literature emphasis on the flexible job shop integration in these contexts. To directly address the above mentioned problems, this paper establishes an optimization model considering parallel batch processing machines, aiming to minimize the maximum completion time in operating and production environments. The proposed solution merges variable neighborhood search with multi-population genetic algorithms, conducting a neighborhood search on the elite population to reduce the likelihood of falling into local optima. Subsequently, its applicability was evaluated in computational experiments using real production scenarios from a partnering enterprise and extended datasets. The findings from the analyses indicate that the enhanced algorithm can decrease the objective value by as much as 15% compared to other standard algorithms. Importantly, the proposed approach effectively resolves flexible job shop scheduling problems involving parallel batch processing machines. The contribution of the research is providing substantial theoretical support for enterprise production scheduling.</jats:p>",
+        "author": [
+          {
+            "given": "Lirui",
+            "family": "Xue"
+          },
+          {
+            "given": "Shinan",
+            "family": "Zhao"
+          },
+          {
+            "given": "Amin",
+            "family": "Mahmoudi"
+          },
+          {
+            "given": "Mohammad Reza",
+            "family": "Feylizadeh"
+          }
+        ]
+      },
+      {
+        "title": [
+          "An Improved Genetic Algorithm Based on Game Theory for Multi-Objective Flexible Job Shop Scheduling Problem with Batch Processing Machines"
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              2025
+            ]
+          ]
+        },
+        "DOI": "10.2139/ssrn.5222273",
+        "URL": "https://doi.org/10.2139/ssrn.5222273",
+        "type": "posted-content",
+        "score": 70.43291,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Lixin",
+            "family": "Wei"
+          },
+          {
+            "given": "Qian",
+            "family": "Zhang"
+          },
+          {
+            "given": "Xin",
+            "family": "Li"
+          },
+          {
+            "given": "Zeyin",
+            "family": "Guo"
+          },
+          {
+            "given": "Jinxian",
+            "family": "He"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Improved Hybrid Genetic Algorithm for Solving Multi-Objective Flexible Job Shop Scheduling Problem"
+        ],
+        "container-title": [],
+        "published": {
+          "date-parts": [
+            [
+              2026,
+              5,
+              6
+            ]
+          ]
+        },
+        "DOI": "10.21203/rs.3.rs-9278058/v1",
+        "URL": "https://doi.org/10.21203/rs.3.rs-9278058/v1",
+        "type": "posted-content",
+        "score": 62.428017,
+        "abstract": "<title>Abstract</title>\n                <p>The flexible job shop scheduling problem (FJSP) represents a classic NP-hard combinatorial optimization challenge in modern intelligent manufacturing systems, where multi-objective optimization plays a pivotal role in enhancing production efficiency, cutting operational costs, and shortening order delivery cycles. Conventional genetic algorithms (GAs) often face notable limitations when addressing multi-objective FJSP, including compromised solution efficiency, uneven distribution of Pareto solution sets, and a pronounced tendency to converge prematurely to local optima. To mitigate these gaps, this paper proposes an improved hybrid genetic algorithm (IHGA) tailored for multi-objective FJSP.\nFirst, a double-layer coding strategy integrating machine assignment and process sequencing is developed to realize an accurate mapping between the algorithm’s solution space and the physical problem space. A multi-strategy initial population generation approach, which combines random initialization with heuristic rule-based population construction, is designed to elevate the quality of initial solutions while preserving population diversity. Second, adaptive crossover and mutation operators are formulated to dynamically adjust genetic parameters in response to the evolutionary state of the population, and a neighborhood search-based local optimization strategy is embedded into the algorithm framework to strengthen its local exploitation capability. Finally, an elite retention strategy based on Pareto dominance and crowding distance is adopted to maintain the diversity and convergence of the population throughout the evolutionary process.\nThe performance of the proposed IHGA is validated on the standard Kacem and Brandimarte FJSP test suites, with three optimization objectives: minimum makespan, minimum total machine load, and minimum total tardiness. Comparative experiments are conducted against three benchmark algorithms: the conventional GA, non-dominated sorting genetic algorithm II (NSGA-II), and multi-objective particle swarm optimization (MOPSO). Experimental results demonstrate that IHGA outperforms all comparative algorithms in terms of convergence, distribution uniformity, and comprehensive quality of the obtained Pareto solution sets.\nSpecifically, the makespan obtained by IHGA is reduced by an average of 8.2% and 5.7% compared with the conventional GA and NSGA-II, respectively. A parameter sensitivity analysis further confirms that the proposed adaptive operators and local search strategy significantly enhance the algorithm’s robustness across problem instances of varying scales. The IHGA developed in this study provides an effective and practical scheduling scheme for real-world flexible job shop production, with both theoretical significance and engineering application value for production scheduling optimization in intelligent manufacturing.</p>",
+        "author": [
+          {
+            "given": "Yuxuan",
+            "family": "Zheng"
+          }
+        ]
+      }
+    ]
+  },
+  "39": {
+    "ref": "Dauzère-Pérès S, Ding J, Shen L, et al. The flexible job shop scheduling problem: a review[J]. European Journal of Operational Research, 2024, 314(2): 409-432",
+    "query": "Dauzère-Pérès S, Ding J, Shen L, et al. The flexible job shop scheduling problem: a review. European Journal of Operational Research, 2024, 314(2): 409-432",
+    "items": [
+      {
+        "title": [
+          "The flexible job shop scheduling problem: A review"
+        ],
+        "container-title": [
+          "European Journal of Operational Research"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              4
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ejor.2023.05.017",
+        "URL": "https://doi.org/10.1016/j.ejor.2023.05.017",
+        "type": "journal-article",
+        "score": 115.69266,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Stéphane",
+            "family": "Dauzère-Pérès"
+          },
+          {
+            "given": "Junwen",
+            "family": "Ding"
+          },
+          {
+            "given": "Liji",
+            "family": "Shen"
+          },
+          {
+            "given": "Karim",
+            "family": "Tamssaouet"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Solving the flexible job shop scheduling problem with sequence-dependent setup times"
+        ],
+        "container-title": [
+          "European Journal of Operational Research"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2018,
+              3
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ejor.2017.08.021",
+        "URL": "https://doi.org/10.1016/j.ejor.2017.08.021",
+        "type": "journal-article",
+        "score": 82.09542,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Liji",
+            "family": "Shen"
+          },
+          {
+            "given": "Stéphane",
+            "family": "Dauzère-Pérès"
+          },
+          {
+            "given": "Janis S.",
+            "family": "Neufeld"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Flexible job-shop scheduling with transportation resources"
+        ],
+        "container-title": [
+          "European Journal of Operational Research"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ejor.2023.07.036",
+        "URL": "https://doi.org/10.1016/j.ejor.2023.07.036",
+        "type": "journal-article",
+        "score": 79.145226,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Lucas",
+            "family": "Berterottière"
+          },
+          {
+            "given": "Stéphane",
+            "family": "Dauzère-Pérès"
+          },
+          {
+            "given": "Claude",
+            "family": "Yugma"
+          }
+        ]
+      }
+    ]
+  },
+  "40": {
+    "ref": "Li X, Guo X, Tang H, et al. Survey of integrated flexible job shop scheduling problems[J]. Computers & Industrial Engineering, 2022, 174: 108786",
+    "query": "Li X, Guo X, Tang H, et al. Survey of integrated flexible job shop scheduling problems. Computers & Industrial Engineering, 2022, 174: 108786",
+    "items": [
+      {
+        "title": [
+          "Survey of integrated flexible job shop scheduling problems"
+        ],
+        "container-title": [
+          "Computers &amp; Industrial Engineering"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022,
+              12
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cie.2022.108786",
+        "URL": "https://doi.org/10.1016/j.cie.2022.108786",
+        "type": "journal-article",
+        "score": 96.93311,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Xixing",
+            "family": "Li"
+          },
+          {
+            "given": "Xing",
+            "family": "Guo"
+          },
+          {
+            "given": "Hongtao",
+            "family": "Tang"
+          },
+          {
+            "given": "Rui",
+            "family": "Wu"
+          },
+          {
+            "given": "Lei",
+            "family": "Wang"
+          }
+        ]
+      },
+      {
+        "title": [
+          "A hybrid imperialist competitive algorithm for energy-efficient flexible job shop scheduling problem with variable-size sublots"
+        ],
+        "container-title": [
+          "Computers &amp; Industrial Engineering"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022,
+              10
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cie.2022.108641",
+        "URL": "https://doi.org/10.1016/j.cie.2022.108641",
+        "type": "journal-article",
+        "score": 61.790806,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Yibing",
+            "family": "Li"
+          },
+          {
+            "given": "Zipeng",
+            "family": "Yang"
+          },
+          {
+            "given": "Lei",
+            "family": "Wang"
+          },
+          {
+            "given": "Hongtao",
+            "family": "Tang"
+          },
+          {
+            "given": "Libo",
+            "family": "Sun"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Hybrid artificial bee colony algorithm with a rescheduling strategy for solving flexible job shop scheduling problems"
+        ],
+        "container-title": [
+          "Computers &amp; Industrial Engineering"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2017,
+              11
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cie.2017.09.005",
+        "URL": "https://doi.org/10.1016/j.cie.2017.09.005",
+        "type": "journal-article",
+        "score": 57.78181,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Xixing",
+            "family": "Li"
+          },
+          {
+            "given": "Zhao",
+            "family": "Peng"
+          },
+          {
+            "given": "Baigang",
+            "family": "Du"
+          },
+          {
+            "given": "Jun",
+            "family": "Guo"
+          },
+          {
+            "given": "Wenxiang",
+            "family": "Xu"
+          }
+        ]
+      }
+    ]
+  },
+  "41": {
+    "ref": "Ngwu C, Liu Y, Wu R. Reinforcement learning in dynamic job shop scheduling: a comprehensive review of AI-driven approaches in modern manufacturing[J]. Journal of Intelligent Manufacturing, 2026, 37: 1093-1108. DOI: 10.1007/s10845-025-02585-6",
+    "query": "Ngwu C, Liu Y, Wu R. Reinforcement learning in dynamic job shop scheduling: a comprehensive review of AI-driven approaches in modern manufacturing. Journal of Intelligent Manufacturing, 2026, 37: 1093-1108.",
+    "items": [
+      {
+        "title": [
+          "Reinforcement learning in dynamic job shop scheduling: a comprehensive review of AI-driven approaches in modern manufacturing"
+        ],
+        "container-title": [
+          "Journal of Intelligent Manufacturing"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2026,
+              3
+            ]
+          ]
+        },
+        "DOI": "10.1007/s10845-025-02585-6",
+        "URL": "https://doi.org/10.1007/s10845-025-02585-6",
+        "type": "journal-article",
+        "score": 127.83734,
+        "abstract": "<jats:title>Abstract</jats:title>\n                  <jats:p>Dynamic job shop scheduling (DJSS) demands real-time adaptability under unpredictable conditions such as sudden job arrivals, equipment failures, and fluctuating demands. Traditional scheduling approaches—though foundational—often fall short when faced with rapid changes and high computational complexity. Recent developments in artificial intelligence (AI), especially reinforcement learning (RL), offer powerful alternatives by continuously refining scheduling policies through interaction with live shop-floor data. This review systematically examines AI-driven scheduling methods, highlighting how evolutionary heuristics, advanced machine learning, and RL-based algorithms each address the demands of modern manufacturing. Emphasis is placed on RL’s capacity to cope with large state spaces, handle continuous or discrete control, and integrate domain heuristics for more robust real-time decision-making. Despite these advances, challenges remain in algorithm scalability, interpretability, data availability, and standardization of performance metrics. Future directions point toward leveraging digital twins, quantum computing, hybrid models, and explainable RL to ensure more resilient, transparent, and scalable solutions. By illuminating both current achievements and persistent gaps, this review underscores the transformative potential of RL in dynamic scheduling and highlights actionable steps for broader industrial adoption.</jats:p>",
+        "author": [
+          {
+            "given": "Chinyere",
+            "family": "Ngwu"
+          },
+          {
+            "given": "Ying",
+            "family": "Liu"
+          },
+          {
+            "given": "Rui",
+            "family": "Wu"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Dynamic job-shop scheduling using graph reinforcement learning with auxiliary strategy"
+        ],
+        "container-title": [
+          "Journal of Manufacturing Systems"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              4
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.jmsy.2024.01.002",
+        "URL": "https://doi.org/10.1016/j.jmsy.2024.01.002",
+        "type": "journal-article",
+        "score": 58.709244,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Zhenyu",
+            "family": "Liu"
+          },
+          {
+            "given": "Haoyang",
+            "family": "Mao"
+          },
+          {
+            "given": "Guodong",
+            "family": "Sa"
+          },
+          {
+            "given": "Hui",
+            "family": "Liu"
+          },
+          {
+            "given": "Jianrong",
+            "family": "Tan"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Deep reinforcement learning for event-driven predictive–reactive multi-objective scheduling in dynamic flexible job shop"
+        ],
+        "container-title": [
+          "Journal of Manufacturing Systems"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2025,
+              12
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.jmsy.2025.11.014",
+        "URL": "https://doi.org/10.1016/j.jmsy.2025.11.014",
+        "type": "journal-article",
+        "score": 58.626717,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Chunyan",
+            "family": "Duan"
+          },
+          {
+            "given": "Yuxin",
+            "family": "Mo"
+          },
+          {
+            "given": "Zehao",
+            "family": "Zhang"
+          }
+        ]
+      }
+    ]
+  },
+  "42": {
+    "ref": "An Y, Chen X, Gao K, et al. Multiobjective flexible job-shop rescheduling with new job insertion and machine preventive maintenance[J]. IEEE Transactions on Cybernetics, 2023, 53(5): 3101-3113",
+    "query": "An Y, Chen X, Gao K, et al. Multiobjective flexible job-shop rescheduling with new job insertion and machine preventive maintenance. IEEE Transactions on Cybernetics, 2023, 53(5): 3101-3113",
+    "items": [
+      {
+        "title": [
+          "Multiobjective Flexible Job-Shop Rescheduling With New Job Insertion and Machine Preventive Maintenance"
+        ],
+        "container-title": [
+          "IEEE Transactions on Cybernetics"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2023,
+              5
+            ]
+          ]
+        },
+        "DOI": "10.1109/tcyb.2022.3151855",
+        "URL": "https://doi.org/10.1109/tcyb.2022.3151855",
+        "type": "journal-article",
+        "score": 130.04256,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Youjun",
+            "family": "An"
+          },
+          {
+            "given": "Xiaohui",
+            "family": "Chen"
+          },
+          {
+            "given": "Kaizhou",
+            "family": "Gao"
+          },
+          {
+            "given": "Yinghe",
+            "family": "Li"
+          },
+          {
+            "given": "Lin",
+            "family": "Zhang"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Flexible Job-Shop Rescheduling for New Job Insertion by Using Discrete Jaya Algorithm"
+        ],
+        "container-title": [
+          "IEEE Transactions on Cybernetics"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2019,
+              5
+            ]
+          ]
+        },
+        "DOI": "10.1109/tcyb.2018.2817240",
+        "URL": "https://doi.org/10.1109/tcyb.2018.2817240",
+        "type": "journal-article",
+        "score": 73.88013,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Kaizhou",
+            "family": "Gao"
+          },
+          {
+            "given": "Fajun",
+            "family": "Yang"
+          },
+          {
+            "given": "MengChu",
+            "family": "Zhou"
+          },
+          {
+            "given": "Quanke",
+            "family": "Pan"
+          },
+          {
+            "given": "Ponnuthurai Nagaratnam",
+            "family": "Suganthan"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Jaya Algorithm for Rescheduling Flexible Job Shop Problem with Machine Recovery"
+        ],
+        "container-title": [
+          "2019 IEEE International Conference on Systems, Man and Cybernetics (SMC)"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2019,
+              10
+            ]
+          ]
+        },
+        "DOI": "10.1109/smc.2019.8914026",
+        "URL": "https://doi.org/10.1109/smc.2019.8914026",
+        "type": "proceedings-article",
+        "score": 64.90703,
+        "abstract": null,
+        "author": [
+          {
+            "given": "K.Z.",
+            "family": "Gao"
+          },
+          {
+            "given": "M.C.",
+            "family": "Zhou"
+          },
+          {
+            "given": "Y.X.",
+            "family": "Pan"
+          }
+        ]
+      }
+    ]
+  },
+  "43": {
+    "ref": "Ghaleb M, Taghipour S, Zolfagharinia H. Real-time integrated production-scheduling and maintenance-planning in a flexible job shop with machine deterioration and condition-based maintenance[J]. Journal of Manufacturing Systems, 2021, 61: 423-449",
+    "query": "Ghaleb M, Taghipour S, Zolfagharinia H. Real-time integrated production-scheduling and maintenance-planning in a flexible job shop with machine deterioration and condition-based maintenance. Journal of Manufacturing Systems, 2021, 61: 423-449",
+    "items": [
+      {
+        "title": [
+          "Real-time integrated production-scheduling and maintenance-planning in a flexible job shop with machine deterioration and condition-based maintenance"
+        ],
+        "container-title": [
+          "Journal of Manufacturing Systems"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2021,
+              10
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.jmsy.2021.09.018",
+        "URL": "https://doi.org/10.1016/j.jmsy.2021.09.018",
+        "type": "journal-article",
+        "score": 158.75877,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Mageed",
+            "family": "Ghaleb"
+          },
+          {
+            "given": "Sharareh",
+            "family": "Taghipour"
+          },
+          {
+            "given": "Hossein",
+            "family": "Zolfagharinia"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Real-Time Optimization of Maintenance and Production Scheduling for an Industry 4.0-Based Manufacturing System"
+        ],
+        "container-title": [
+          "2020 Annual Reliability and Maintainability Symposium (RAMS)"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2020,
+              1
+            ]
+          ]
+        },
+        "DOI": "10.1109/rams48030.2020.9153721",
+        "URL": "https://doi.org/10.1109/rams48030.2020.9153721",
+        "type": "proceedings-article",
+        "score": 82.97657,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Mageed",
+            "family": "Ghaleb"
+          },
+          {
+            "given": "Sharareh",
+            "family": "Taghipour"
+          },
+          {
+            "given": "Hossein",
+            "family": "Zolfagharinia"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Integrated production and maintenance scheduling for a single degrading machine with deterioration-based failures"
+        ],
+        "container-title": [
+          "Computers &amp; Industrial Engineering"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2020,
+              5
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cie.2020.106432",
+        "URL": "https://doi.org/10.1016/j.cie.2020.106432",
+        "type": "journal-article",
+        "score": 81.65848,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Mageed",
+            "family": "Ghaleb"
+          },
+          {
+            "given": "Sharareh",
+            "family": "Taghipour"
+          },
+          {
+            "given": "Mani",
+            "family": "Sharifi"
+          },
+          {
+            "given": "Hossein",
+            "family": "Zolfagharinia"
+          }
+        ]
+      }
+    ]
+  },
+  "44": {
+    "ref": "Pal M, Mittal M L, Soni G, et al. A multi-agent system for integrated scheduling and maintenance planning of the flexible job shop[J]. Computers & Operations Research, 2023, 159: 106365",
+    "query": "Pal M, Mittal M L, Soni G, et al. A multi-agent system for integrated scheduling and maintenance planning of the flexible job shop. Computers & Operations Research, 2023, 159: 106365",
+    "items": [
+      {
+        "title": [
+          "A multi-agent system for integrated scheduling and maintenance planning of the flexible job shop"
+        ],
+        "container-title": [
+          "Computers &amp; Operations Research"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2023,
+              11
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cor.2023.106365",
+        "URL": "https://doi.org/10.1016/j.cor.2023.106365",
+        "type": "journal-article",
+        "score": 122.9783,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Manojkumar",
+            "family": "Pal"
+          },
+          {
+            "given": "Murari lal",
+            "family": "Mittal"
+          },
+          {
+            "given": "Gunjan",
+            "family": "Soni"
+          },
+          {
+            "given": "Satyendra S.",
+            "family": "Chouhan"
+          }
+        ]
+      },
+      {
+        "title": [
+          "A deep multi-agent reinforcement learning approach to solve dynamic job shop scheduling problem"
+        ],
+        "container-title": [
+          "Computers &amp; Operations Research"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2023,
+              11
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.cor.2023.106294",
+        "URL": "https://doi.org/10.1016/j.cor.2023.106294",
+        "type": "journal-article",
+        "score": 64.56592,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Renke",
+            "family": "Liu"
+          },
+          {
+            "given": "Rajesh",
+            "family": "Piplani"
+          },
+          {
+            "given": "Carlos",
+            "family": "Toro"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Decentralized Scheduling for Flexible Job Shop with Sequence-Dependent Setup Time"
+        ],
+        "container-title": [
+          "Proceedings of the International Conference on Industrial Engineering and Operations Management"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022,
+              8,
+              16
+            ]
+          ]
+        },
+        "DOI": "10.46254/in02.20220341",
+        "URL": "https://doi.org/10.46254/in02.20220341",
+        "type": "proceedings-article",
+        "score": 58.318832,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Manojkumar R.",
+            "family": "Pal"
+          },
+          {
+            "given": "Murari L.",
+            "family": "Mittal"
+          },
+          {
+            "given": "Gunjan",
+            "family": "Soni"
+          },
+          {
+            "given": "Satyendra S.",
+            "family": "Chouhan"
+          }
+        ]
+      }
+    ]
+  },
+  "45": {
+    "ref": "Zhang W, Gan J, He S, et al. An integrated framework of preventive maintenance and task scheduling for repairable multi-unit systems[J]. Reliability Engineering & System Safety, 2024, 247: 110129",
+    "query": "Zhang W, Gan J, He S, et al. An integrated framework of preventive maintenance and task scheduling for repairable multi-unit systems. Reliability Engineering & System Safety, 2024, 247: 110129",
+    "items": [
+      {
+        "title": [
+          "An integrated framework of preventive maintenance and task scheduling for repairable multi-unit systems"
+        ],
+        "container-title": [
+          "Reliability Engineering &amp; System Safety"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              7
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ress.2024.110129",
+        "URL": "https://doi.org/10.1016/j.ress.2024.110129",
+        "type": "journal-article",
+        "score": 122.49309,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Wenyu",
+            "family": "Zhang"
+          },
+          {
+            "given": "Jie",
+            "family": "Gan"
+          },
+          {
+            "given": "Shuguang",
+            "family": "He"
+          },
+          {
+            "given": "Ting",
+            "family": "Li"
+          },
+          {
+            "given": "Zhen",
+            "family": "He"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Optimal condition-based maintenance policy for multi-component repairable systems with economic dependence in a finite-horizon"
+        ],
+        "container-title": [
+          "Reliability Engineering &amp; System Safety"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2024,
+              1
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ress.2023.109612",
+        "URL": "https://doi.org/10.1016/j.ress.2023.109612",
+        "type": "journal-article",
+        "score": 62.551205,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Wenyu",
+            "family": "Zhang"
+          },
+          {
+            "given": "Xiaohong",
+            "family": "Zhang"
+          },
+          {
+            "given": "Shuguang",
+            "family": "He"
+          },
+          {
+            "given": "Xing",
+            "family": "Zhao"
+          },
+          {
+            "given": "Zhen",
+            "family": "He"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Maintenance gravity window based opportunistic maintenance scheduling for multi-unit serial systems with stochastic production waits"
+        ],
+        "container-title": [
+          "Reliability Engineering &amp; System Safety"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2021,
+              11
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.ress.2021.107828",
+        "URL": "https://doi.org/10.1016/j.ress.2021.107828",
+        "type": "journal-article",
+        "score": 55.926308,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Xiaojun",
+            "family": "Zhou"
+          },
+          {
+            "given": "Xiaohan",
+            "family": "Ning"
+          }
+        ]
+      }
+    ]
+  },
+  "46": {
+    "ref": "Wang Y, Xia T, Li Y, et al. Integrated coordination of production scheduling, preventive maintenance, and energy conservation in flexible manufacturing environments[J]. Journal of Cleaner Production, 2025, 518: 145856",
+    "query": "Wang Y, Xia T, Li Y, et al. Integrated coordination of production scheduling, preventive maintenance, and energy conservation in flexible manufacturing environments. Journal of Cleaner Production, 2025, 518: 145856",
+    "items": [
+      {
+        "title": [
+          "Integrated coordination of production scheduling, preventive maintenance, and energy conservation in flexible manufacturing environments"
+        ],
+        "container-title": [
+          "Journal of Cleaner Production"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2025,
+              8
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.jclepro.2025.145856",
+        "URL": "https://doi.org/10.1016/j.jclepro.2025.145856",
+        "type": "journal-article",
+        "score": 120.24396,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Yu",
+            "family": "Wang"
+          },
+          {
+            "given": "Tangbin",
+            "family": "Xia"
+          },
+          {
+            "given": "Yaping",
+            "family": "Li"
+          },
+          {
+            "given": "Shuo",
+            "family": "Gao"
+          },
+          {
+            "given": "Dong",
+            "family": "Wang"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Integrated optimization on production scheduling and imperfect preventive maintenance considering multi-degradation and learning-forgetting effects"
+        ],
+        "container-title": [
+          "Flexible Services and Manufacturing Journal"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2022,
+              6
+            ]
+          ]
+        },
+        "DOI": "10.1007/s10696-021-09410-1",
+        "URL": "https://doi.org/10.1007/s10696-021-09410-1",
+        "type": "journal-article",
+        "score": 52.906406,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Xiufang",
+            "family": "Zhang"
+          },
+          {
+            "given": "Tangbin",
+            "family": "Xia"
+          },
+          {
+            "given": "Ershun",
+            "family": "Pan"
+          },
+          {
+            "given": "Yuqing",
+            "family": "Li"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Energy-efficient multi-objective flexible manufacturing scheduling"
+        ],
+        "container-title": [
+          "Journal of Cleaner Production"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2021,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1016/j.jclepro.2020.124610",
+        "URL": "https://doi.org/10.1016/j.jclepro.2020.124610",
+        "type": "journal-article",
+        "score": 50.48793,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Sasan",
+            "family": "Barak"
+          },
+          {
+            "given": "Reza",
+            "family": "Moghdani"
+          },
+          {
+            "given": "Hamidreza",
+            "family": "Maghsoudlou"
+          }
+        ]
+      }
+    ]
+  },
+  "47": {
+    "ref": "Sutton R S, Precup D, Singh S. Between MDPs and semi-MDPs: a framework for temporal abstraction in reinforcement learning[J]. Artificial Intelligence, 1999, 112(1/2): 181-211",
+    "query": "Sutton R S, Precup D, Singh S. Between MDPs and semi-MDPs: a framework for temporal abstraction in reinforcement learning. Artificial Intelligence, 1999, 112(1/2): 181-211",
+    "items": [
+      {
+        "title": [
+          "Between MDPs and semi-MDPs: A framework for temporal abstraction in reinforcement learning"
+        ],
+        "container-title": [
+          "Artificial Intelligence"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1999,
+              8
+            ]
+          ]
+        },
+        "DOI": "10.1016/s0004-3702(99)00052-1",
+        "URL": "https://doi.org/10.1016/s0004-3702(99)00052-1",
+        "type": "journal-article",
+        "score": 141.82495,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Richard S.",
+            "family": "Sutton"
+          },
+          {
+            "given": "Doina",
+            "family": "Precup"
+          },
+          {
+            "given": "Satinder",
+            "family": "Singh"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Feature Reinforcement Learning: Part I. Unstructured MDPs"
+        ],
+        "container-title": [
+          "Journal of Artificial General Intelligence"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2009,
+              1,
+              1
+            ]
+          ]
+        },
+        "DOI": "10.2478/v10229-011-0002-8",
+        "URL": "https://doi.org/10.2478/v10229-011-0002-8",
+        "type": "journal-article",
+        "score": 57.199398,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Marcus",
+            "family": "Hutter"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Feature Reinforcement Learning: Part II. Structured MDPs"
+        ],
+        "container-title": [
+          "Journal of Artificial General Intelligence"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2021,
+              1,
+              1
+            ]
+          ]
+        },
+        "DOI": "10.2478/jagi-2021-0003",
+        "URL": "https://doi.org/10.2478/jagi-2021-0003",
+        "type": "journal-article",
+        "score": 54.601147,
+        "abstract": "<jats:title>Abstract</jats:title>\n                  <jats:p>The Feature Markov Decision Processes ( MDPs) model developed in Part I (Hutter, 2009b) is well-suited for learning agents in general environments. Nevertheless, unstructured (Φ)MDPs are limited to relatively simple environments. Structured MDPs like Dynamic Bayesian Networks (DBNs) are used for large-scale real-world problems. In this article I extend ΦMDP to ΦDBN. The primary contribution is to derive a cost criterion that allows to automatically extract the most relevant features from the environment, leading to the “best” DBN representation. I discuss all building blocks required for a complete general learning algorithm, and compare the novel ΦDBN model to the prevalent POMDP approach.</jats:p>",
+        "author": [
+          {
+            "given": "Marcus",
+            "family": "Hutter"
+          }
+        ]
+      }
+    ]
+  },
+  "48": {
+    "ref": "Watkins C J C H, Dayan P. Q-learning[J]. Machine Learning, 1992, 8(3/4): 279-292",
+    "query": "Watkins C J C H, Dayan P. Q-learning. Machine Learning, 1992, 8(3/4): 279-292",
+    "items": [
+      {
+        "title": [
+          "Technical Note: Q-Learning"
+        ],
+        "container-title": [
+          "Machine Learning"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1992,
+              5
+            ]
+          ]
+        },
+        "DOI": "10.1023/a:1022676722315",
+        "URL": "https://doi.org/10.1023/a:1022676722315",
+        "type": "journal-article",
+        "score": 64.3545,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Christopher J.C.H.",
+            "family": "Watkins"
+          },
+          {
+            "given": "Peter",
+            "family": "Dayan"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Q-learning"
+        ],
+        "container-title": [
+          "Machine Learning"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1992,
+              5
+            ]
+          ]
+        },
+        "DOI": "10.1007/bf00992698",
+        "URL": "https://doi.org/10.1007/bf00992698",
+        "type": "journal-article",
+        "score": 60.890842,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Christopher J. C. H.",
+            "family": "Watkins"
+          },
+          {
+            "given": "Peter",
+            "family": "Dayan"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Technical Note"
+        ],
+        "container-title": [
+          "Reinforcement Learning"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              1992
+            ]
+          ]
+        },
+        "DOI": "10.1007/978-1-4615-3618-5_4",
+        "URL": "https://doi.org/10.1007/978-1-4615-3618-5_4",
+        "type": "book-chapter",
+        "score": 41.199394,
+        "abstract": null,
+        "author": [
+          {
+            "given": "Christopher J. C. H.",
+            "family": "Watkins"
+          },
+          {
+            "given": "Peter",
+            "family": "Dayan"
+          }
+        ]
+      }
+    ]
+  },
+  "49": {
+    "ref": "van Hasselt H, Guez A, Silver D. Deep reinforcement learning with double Q-learning[C]//Proceedings of the AAAI Conference on Artificial Intelligence. Palo Alto: AAAI Press, 2016: 2094-2100",
+    "query": "van Hasselt H, Guez A, Silver D. Deep reinforcement learning with double Q-learning//Proceedings of the AAAI Conference on Artificial Intelligence. Palo Alto: AAAI Press, 2016: 2094-2100",
+    "items": [
+      {
+        "title": [
+          "Deep Reinforcement Learning with Double Q-Learning"
+        ],
+        "container-title": [
+          "Proceedings of the AAAI Conference on Artificial Intelligence"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2016,
+              3,
+              2
+            ]
+          ]
+        },
+        "DOI": "10.1609/aaai.v30i1.10295",
+        "URL": "https://doi.org/10.1609/aaai.v30i1.10295",
+        "type": "journal-article",
+        "score": 107.60925,
+        "abstract": "<jats:p>\n      \n        The popular Q-learning algorithm is known to overestimate action values under certain conditions. It was not previously known whether, in practice, such overestimations are common, whether they harm performance, and whether they can generally be prevented.  In this paper, we answer all these questions affirmatively.  In particular, we first show that the recent DQN algorithm, which combines Q-learning with a deep neural network, suffers from substantial overestimations in some games in the Atari 2600 domain.  We then show that the idea behind the Double Q-learning algorithm, which was introduced in a tabular setting, can be generalized to work with large-scale function approximation.  We propose a specific adaptation to the DQN algorithm and show that the resulting algorithm not only reduces the observed overestimations, as hypothesized, but that this also leads to much better performance on several games.\n      \n    </jats:p>",
+        "author": [
+          {
+            "given": "Hado",
+            "family": "Van Hasselt"
+          },
+          {
+            "given": "Arthur",
+            "family": "Guez"
+          },
+          {
+            "given": "David",
+            "family": "Silver"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Rainbow: Combining Improvements in Deep Reinforcement Learning"
+        ],
+        "container-title": [
+          "Proceedings of the AAAI Conference on Artificial Intelligence"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2018,
+              4,
+              29
+            ]
+          ]
+        },
+        "DOI": "10.1609/aaai.v32i1.11796",
+        "URL": "https://doi.org/10.1609/aaai.v32i1.11796",
+        "type": "journal-article",
+        "score": 72.07613,
+        "abstract": "<jats:p>\n      \n        The deep reinforcement learning community has made several independent improvements to the DQN algorithm. However, it is unclear which of these extensions are complementary and can be fruitfully combined. This paper examines six extensions to the DQN algorithm and empirically studies their combination. Our experiments show that the combination provides state-of-the-art performance on the Atari 2600 benchmark, both in terms of data efficiency and final performance. We also provide results from a detailed ablation study that shows the contribution of each component to overall performance.\n      \n    </jats:p>",
+        "author": [
+          {
+            "given": "Matteo",
+            "family": "Hessel"
+          },
+          {
+            "given": "Joseph",
+            "family": "Modayil"
+          },
+          {
+            "given": "Hado",
+            "family": "Van Hasselt"
+          },
+          {
+            "given": "Tom",
+            "family": "Schaul"
+          },
+          {
+            "given": "Georg",
+            "family": "Ostrovski"
+          }
+        ]
+      },
+      {
+        "title": [
+          "Multi-Task Deep Reinforcement Learning with PopArt"
+        ],
+        "container-title": [
+          "Proceedings of the AAAI Conference on Artificial Intelligence"
+        ],
+        "published": {
+          "date-parts": [
+            [
+              2019,
+              7,
+              17
+            ]
+          ]
+        },
+        "DOI": "10.1609/aaai.v33i01.33013796",
+        "URL": "https://doi.org/10.1609/aaai.v33i01.33013796",
+        "type": "journal-article",
+        "score": 70.083435,
+        "abstract": "<jats:p>The reinforcement learning (RL) community has made great strides in designing algorithms capable of exceeding human performance on specific tasks. These algorithms are mostly trained one task at the time, each new task requiring to train a brand new agent instance. This means the learning algorithm is general, but each solution is not; each agent can only solve the one task it was trained on. In this work, we study the problem of learning to master not one but multiple sequentialdecision tasks at once. A general issue in multi-task learning is that a balance must be found between the needs of multiple tasks competing for the limited resources of a single learning system. Many learning algorithms can get distracted by certain tasks in the set of tasks to solve. Such tasks appear more salient to the learning process, for instance because of the density or magnitude of the in-task rewards. This causes the algorithm to focus on those salient tasks at the expense of generality. We propose to automatically adapt the contribution of each task to the agent’s updates, so that all tasks have a similar impact on the learning dynamics. This resulted in state of the art performance on learning to play all games in a set of 57 diverse Atari games. Excitingly, our method learned a single trained policy - with a single set of weights - that exceeds median human performance. To our knowledge, this was the first time a single agent surpassed human-level performance on this multi-task domain. The same approach also demonstrated state of the art performance on a set of 30 tasks in the 3D reinforcement learning platform DeepMind Lab.</jats:p>",
+        "author": [
+          {
+            "given": "Matteo",
+            "family": "Hessel"
+          },
+          {
+            "given": "Hubert",
+            "family": "Soyer"
+          },
+          {
+            "given": "Lasse",
+            "family": "Espeholt"
+          },
+          {
+            "given": "Wojciech",
+            "family": "Czarnecki"
+          },
+          {
+            "given": "Simon",
+            "family": "Schmitt"
+          }
+        ]
+      }
+    ]
+  }
+}

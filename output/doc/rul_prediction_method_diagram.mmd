@@ -1,0 +1,43 @@
+flowchart LR
+    subgraph A["数据来源与预处理"]
+        A1["Test_Data_CSV.csv<br/>Data_No = 18"]
+        A2["按 Time 升序排列"]
+        A3["输入特征<br/>Differential_pressure"]
+        A4["时间顺序划分<br/>80% 训练 / 20% 验证"]
+        A5["标准化<br/>z = (x - mean_train) / std_train"]
+    end
+
+    subgraph B["监督样本构造"]
+        B1["滑动时间窗<br/>X_t ∈ R^(30×1)"]
+        B2["标签<br/>y_t = RUL_t / total_life"]
+        B3["回归目标<br/>归一化 RUL ∈ [0,1]"]
+    end
+
+    subgraph C["GRU RUL 预测模型"]
+        C1["GRU<br/>input_dim=1<br/>hidden_dim=40<br/>num_layers=1"]
+        C2["Dropout<br/>p=0.25"]
+        C3["MLP Head<br/>Linear 40→40<br/>ReLU<br/>Linear 40→1"]
+        C4["Sigmoid<br/>输出 RUL_hat ∈ [0,1]"]
+    end
+
+    subgraph D["训练策略"]
+        D1["Loss<br/>MSE(RUL_hat, y)"]
+        D2["Optimizer<br/>Adam, lr=1e-3"]
+        D3["batch_size=1024<br/>epochs=250"]
+        D4["验证集损失最优<br/>保存最佳模型"]
+    end
+
+    subgraph E["在线使用"]
+        E1["各机器退化轨迹<br/>Train_Data_CSV.csv 回放"]
+        E2["逐点生成 RUL 健康缓存"]
+        E3["单调修正<br/>避免预测噪声导致健康回升"]
+        E4["输出给维护与调度模块<br/>健康状态 / RUL 特征"]
+    end
+
+    A1 --> A2 --> A3 --> A4 --> A5 --> B1
+    B1 --> C1
+    B2 --> D1
+    C1 --> C2 --> C3 --> C4 --> D1
+    D1 --> D2 --> D3 --> D4
+    D4 --> E2
+    E1 --> E2 --> E3 --> E4

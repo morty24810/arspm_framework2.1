@@ -50,8 +50,8 @@ def parse_args():
     parser.add_argument("--randomize_combos", type=int, default=0) # randomize lambda/DDT combos
     parser.add_argument("--segment_jobs", type=int, default=None) # jobs per combo segment
     parser.add_argument("--combo_plan", type=str, default="") # lam:ddt[:segments],lam:ddt[:segments]
-    parser.add_argument("--maint_mode", type=str, default="pomcp", choices=["flat_ddqn", "hier_ddqn", "pomcp", "DQN", "POMCP", "OFF"]) # maintenance mode
-    parser.add_argument("--compare_maint_modes", type=int, default=0, choices=[0, 1]) # compare POMCP vs DQN
+    parser.add_argument("--maint_mode", type=str, default="pomcp", choices=["flat_ddqn", "hier_ddqn", "pomcp", "OFF"]) # maintenance mode
+    parser.add_argument("--compare_maint_modes", type=int, default=0, choices=[0, 1]) # compare pomcp vs explicit ddqn variant
     parser.add_argument("--dqn_ckpt", type=str, default="") # optional DQN maintenance checkpoint for compare mode
     parser.add_argument("--compare_unrestricted", type=int, default=1, choices=[0, 1]) # run constrained vs unrestricted side-by-side
     parser.add_argument("--outdir", type=str, default="outputs/demo_run_001") # output directory
@@ -407,7 +407,7 @@ def main():
         low_state_mode=thdqn_low_state_mode,
     )
 
-    allow_missing_maint = cfg.MAINT_MODE != "DQN" or compare_maint_modes
+    allow_missing_maint = cfg.MAINT_MODE != "DQN"
     ckpt = load_checkpoint(
         str(ckpt_path),
         sched_agent=sched_agent,

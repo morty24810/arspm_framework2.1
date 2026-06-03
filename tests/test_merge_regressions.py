@@ -550,7 +550,7 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertEqual(cfg.EXPERIMENT_PROFILE, "thesis_ppo_maint")
         self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("PPO",))
         self.assertEqual(cfg.TRAIN_POLICY_ROUTES, ("region_off",))
-        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN", "POMCP"))
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("flat_ddqn", "pomcp"))
         self.assertEqual(cfg.SCHED_REGIME_FEATURE_MODE, "oracle")
         self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
         self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
@@ -562,7 +562,7 @@ class MergeRegressionTests(unittest.TestCase):
         apply_experiment_profile(cfg, "thesis_ppo_maint_short")
 
         self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("PPO",))
-        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN", "POMCP"))
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("flat_ddqn", "pomcp"))
         self.assertEqual(cfg.TRAIN_JOBS_TARGET, 100)
         self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 9)
 
@@ -571,7 +571,7 @@ class MergeRegressionTests(unittest.TestCase):
         apply_experiment_profile(cfg, "thesis_ppo_reward_ablation")
 
         self.assertEqual(cfg.TRAIN_SCHEDULER_MODES, ("PPO_LEGACY", "PPO_EFFICIENCY"))
-        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("DQN",))
+        self.assertEqual(cfg.TRAIN_MAINT_MODES, ("flat_ddqn",))
         self.assertEqual(cfg.TRAIN_JOBS_TARGET, 200)
         self.assertEqual(cfg.COMBO_SEGMENT_JOBS, 18)
 

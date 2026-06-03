@@ -1,0 +1,11 @@
+flowchart LR
+    T["Data_No=18<br/>按Time升序<br/>80% Train / 20% Val"]
+    A["压差退化序列<br/>Differential_pressure<br/>最近30点窗口"]
+    B["GRU<br/>读取历史窗口<br/>提取退化趋势<br/>弱化单点噪声"]
+    C["归一化RUL<br/>健康状态 0-1"]
+    D["维护决策<br/>DN / IM / CM"]
+    E["调度决策<br/>选择派工规则"]
+
+    T --> A --> B --> C
+    C --> D
+    C --> E

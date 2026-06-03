@@ -1,0 +1,1257 @@
+{
+  "1": {
+    "id": "https://openalex.org/W4286276003",
+    "doi": "https://doi.org/10.3390/sci4030026",
+    "title": "Ten Years of Industrie 4.0",
+    "publication_year": 2022,
+    "source": "Sci",
+    "type": "article",
+    "abstract": "A decade after its introduction, Industrie 4.0 has been established globally as the dominant paradigm for the digital transformation of the manufacturing industry. Amalgamating research-based results and practical experience from the German industry, this contribution reviews the progress made in implementing Industrie 4.0 and identifies future fields of action from a technological and application-oriented perspective. Putting the human in the center, Industrie 4.0 is the basis for data-based value creation, innovative business models, and agile forms of organization. Today, in the German manufacturing industry, the Internet of Things and cyber–physical production systems are a reality in newly built factories, and the connectivity of machinery has been significantly increased in existing factories. Now, the trends of industrial AI, edge computing up to the edge cloud, 5G in the factory, team robotics, autonomous intralogistics systems, and trustworthy data infrastructures must be leveraged to strengthen resilience, sovereignty, semantic interoperability, and sustainability. This enables the creation of digital innovation ecosystems that ensure long-term adaptability in a volatile economic and geopolitical environment. In sum, this review represents a comprehensive assessment of the status quo and identifies what is needed in the future to reap the rewards of the groundwork done in the first ten years of Industrie 4.0.",
+    "concepts": [
+      "Industry 4.0",
+      "Digital transformation",
+      "Cyber-physical system",
+      "Interoperability",
+      "Cloud computing",
+      "Agile software development",
+      "Digitization",
+      "Business"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "gold",
+      "oa_url": "https://www.mdpi.com/2413-4155/4/3/26/pdf?version=1657277121",
+      "any_repository_has_fulltext": true
+    },
+    "url": "https://doi.org/10.3390/sci4030026"
+  },
+  "2": {
+    "id": "https://openalex.org/W3009389630",
+    "doi": "https://doi.org/10.1016/j.asoc.2020.106208",
+    "title": "Dynamic scheduling for flexible job shop with new job insertions by deep reinforcement learning",
+    "publication_year": 2020,
+    "source": "Applied Soft Computing",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Reinforcement learning",
+      "Computer science",
+      "Job shop scheduling",
+      "Artificial intelligence",
+      "Job shop",
+      "Reinforcement",
+      "Flow shop scheduling",
+      "Industrial engineering"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.asoc.2020.106208"
+  },
+  "3": {
+    "id": "https://openalex.org/W3176897893",
+    "doi": "https://doi.org/10.1016/j.cie.2021.107489",
+    "title": "Dynamic multi-objective scheduling for flexible job shop by deep reinforcement learning",
+    "publication_year": 2021,
+    "source": "Computers & Industrial Engineering",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Tardiness",
+      "Computer science",
+      "Reinforcement learning",
+      "Scheduling (production processes)",
+      "Job shop",
+      "Set (abstract data type)",
+      "Mathematical optimization",
+      "Job shop scheduling"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.cie.2021.107489"
+  },
+  "4": {
+    "id": "https://openalex.org/W4404853699",
+    "doi": "https://doi.org/10.1038/s41598-024-79593-8",
+    "title": "Dynamic scheduling for flexible job shop based on MachineRank algorithm and reinforcement learning",
+    "publication_year": 2024,
+    "source": "Scientific Reports",
+    "type": "article",
+    "abstract": "This paper investigates the Dynamic Flexible Job Shop Scheduling Problem (DFJSP), which is based on new job insertion, machine breakdowns, changes in processing time, and considering the state of Automated Guided Vehicles (AGVs). The objective is to minimize the maximum completion time and improve on-time completion rates. To address the continuous production status and learn the most suitable actions (scheduling rules) at each rescheduling point, a Dueling Double Deep Q Network (D3QN) is developed to solve this problem. To improve the quality of the model solutions, a MachineRank algorithm (MR) is proposed, and based on the MR algorithm, seven composite scheduling rules are introduced. These rules aim to select and execute the optimal operation each time an operation is completed or a new disturbance occurs. Additionally, eight general state features are proposed to represent the scheduling status at the rescheduling point. By using continuous state features as the input to the D3QN, state-action values (Q-values) for each scheduling rule can be obtained. Numerical experiments were conducted on a large number of instances with different production configurations, and the results demonstrated the superiority and generality of the D3QN compared to various composite rules, other advanced scheduling rules, and standard Q-learning agents. The effectiveness and rationality of the dynamic scheduling trigger rules were also validated.",
+    "concepts": [
+      "Computer science",
+      "Dynamic priority scheduling",
+      "Generality",
+      "Reinforcement learning",
+      "Scheduling (production processes)",
+      "Flow shop scheduling",
+      "Rate-monotonic scheduling",
+      "Fair-share scheduling"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "gold",
+      "oa_url": "https://www.nature.com/articles/s41598-024-79593-8.pdf",
+      "any_repository_has_fulltext": true
+    },
+    "url": "https://doi.org/10.1038/s41598-024-79593-8"
+  },
+  "5": {
+    "id": "https://openalex.org/W4284711157",
+    "doi": "https://doi.org/10.1016/j.rcim.2022.102412",
+    "title": "Dynamic job shop scheduling based on deep reinforcement learning for multi-agent manufacturing systems",
+    "publication_year": 2022,
+    "source": "Robotics and Computer-Integrated Manufacturing",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Reinforcement learning",
+      "Computer science",
+      "Testbed",
+      "Scheduling (production processes)",
+      "Artificial intelligence",
+      "Job shop",
+      "Job shop scheduling",
+      "Distributed computing"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.rcim.2022.102412"
+  },
+  "6": {
+    "id": "https://openalex.org/W4411678739",
+    "doi": "https://doi.org/10.1016/j.ress.2025.111394",
+    "title": "Adaptive real-time scheduling for production and maintenance: Integrating RUL prediction with multi-agent deep reinforcement learning",
+    "publication_year": 2025,
+    "source": "Reliability Engineering & System Safety",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Reinforcement learning",
+      "Scheduling (production processes)",
+      "Reinforcement",
+      "Computer science",
+      "Artificial intelligence",
+      "Production (economics)",
+      "Operations research",
+      "Machine learning"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.ress.2025.111394"
+  },
+  "7": {
+    "id": "https://openalex.org/W4392266914",
+    "doi": "https://doi.org/10.1016/j.cirpj.2024.02.003",
+    "title": "Predictive maintenance in Industry 4.0: A systematic multi-sector mapping",
+    "publication_year": 2024,
+    "source": "CIRP journal of manufacturing science and technology",
+    "type": "article",
+    "abstract": "Industry 4.0 is strongly intertwined with big data streaming flows from intelligent sensors and machinery installed in industrial facilities. Failures can disrupt production and lead the supply chain ecosystem to malfunction. Maintenance strategies are necessary to safeguard the continuous operation of production lines, minimize supply chain disruptions, and improve sustainability indicators. Within the context of smart manufacturing, predictive maintenance (PdM) approaches could decrease downtimes, reduce operational costs, and increase productivity, improving system performance and decision-making. The overarching aim of this research is to systematically review state-of-the-art predictive maintenance applications across diverse manufacturing sectors to provide customized insights from academic and operational perspectives, summarized into a comparative decision support map. The study classifies predictive maintenance solutions based on prevailing methodologies, input features, predicted variables, applied algorithms, evaluation metrics, and state-of-the-art software tools per industry sector. The outcomes highlight that data-driven predictive maintenance constitutes a cutting-edge solution with a growing interest in modern manufacturing. Moreover, this research provides insights into the technology readiness of each industrial sector, covering modern areas for PdM implementation, while raising the extant challenges. The proposed multi-sector framework is expected to act as a guiding light for researchers and practitioners towards the development of PdM driven applications in data driven industries.",
+    "concepts": [
+      "Supply chain",
+      "Predictive maintenance",
+      "Context (archaeology)",
+      "Industry 4.0",
+      "Productivity",
+      "Sustainability",
+      "Big data",
+      "Production (economics)"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "hybrid",
+      "oa_url": "https://doi.org/10.1016/j.cirpj.2024.02.003",
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.cirpj.2024.02.003"
+  },
+  "8": {
+    "id": "https://openalex.org/W2107726111",
+    "doi": "https://doi.org/10.1613/jair.301",
+    "title": "Reinforcement Learning: A Survey",
+    "publication_year": 1996,
+    "source": "Journal of Artificial Intelligence Research",
+    "type": "article",
+    "abstract": "This paper surveys the field of reinforcement learning from a computer-science perspective. It is written to be accessible to researchers familiar with machine learning. Both the historical basis of the field and a broad selection of current work are summarized. Reinforcement learning is the problem faced by an agent that learns behavior through trial-and-error interactions with a dynamic environment. The work described here has a resemblance to work in psychology, but differs considerably in the details and in the use of the word ``reinforcement.'' The paper discusses central issues of reinforcement learning, including trading off exploration and exploitation, establishing the foundations of the field via Markov decision theory, learning from delayed reinforcement, constructing empirical models to accelerate learning, making use of generalization and hierarchy, and coping with hidden state. It concludes with a survey of some implemented systems and an assessment of the practical utility of current methods for reinforcement learning.",
+    "concepts": [
+      "Reinforcement learning",
+      "Computer science",
+      "Reinforcement",
+      "Artificial intelligence",
+      "Markov decision process",
+      "Field (mathematics)",
+      "Perspective (graphical)",
+      "Machine learning"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "diamond",
+      "oa_url": "https://www.jair.org/index.php/jair/article/download/10166/24110",
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1613/jair.301"
+  },
+  "9": {
+    "id": "https://openalex.org/W2145339207",
+    "doi": "https://doi.org/10.1038/nature14236",
+    "title": "Human-level control through deep reinforcement learning",
+    "publication_year": 2015,
+    "source": "Nature",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Reinforcement learning",
+      "Computer science",
+      "Artificial intelligence",
+      "Variety (cybernetics)",
+      "Deep learning",
+      "Control (management)",
+      "Perception",
+      "Human–computer interaction"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1038/nature14236"
+  },
+  "10": {
+    "id": "https://openalex.org/W2736601468",
+    "doi": "https://doi.org/10.4230/oasics.dx.2024.16",
+    "title": "Diagnosing Non-Intermittent Anomalies in Reinforcement Learning Policy Executions (Short Paper)",
+    "publication_year": 2017,
+    "source": "arXiv (Cornell University)",
+    "type": "preprint",
+    "abstract": "Due to the safety risks and training sample inefficiency, it is often preferred to develop controllers in simulation. However, minor differences between the simulation and the real world can cause a significant sim-to-real gap. This gap can reduce the effectiveness of the developed controller. In this paper, we examine a case study of transferring an octorotor reinforcement learning controller from simulation to the real world. First, we quantify the effectiveness of the real-world transfer by examining safety metrics. We find that although there is a noticeable (around 100%) increase in deviation in real flights, this deviation may not be considered unsafe, as it will be within > 2m safety corridors. Then, we estimate the densities of the measurement distributions and compare the Jensen-Shannon divergences of simulated and real measurements. From this, we show that the vehicle’s orientation is significantly different between simulated and real flights. We attribute this to a different flight mode in real flights where the vehicle turns to face the next waypoint. We also find that the reinforcement learning controller actions appear to correctly counteract disturbance forces. Then, we analyze the errors of a measurement autoencoder and state transition model neural network applied to real data. We find that these models further reinforce the difference between the simulated and real attitude control, showing the errors directly on the flight paths. Finally, we discuss important lessons learned in the sim-to-real transfer of our controller.",
+    "concepts": [
+      "Computer science",
+      "Optimization algorithm",
+      "Algorithm",
+      "Mathematical optimization",
+      "Mathematics"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "green",
+      "oa_url": "https://arxiv.org/pdf/1707.06347",
+      "any_repository_has_fulltext": true
+    },
+    "url": "https://doi.org/10.4230/oasics.dx.2024.16"
+  },
+  "11": {
+    "id": "https://openalex.org/W3100366369",
+    "doi": "https://doi.org/10.1561/2200000071",
+    "title": "An Introduction to Deep Reinforcement Learning",
+    "publication_year": 2018,
+    "source": "Foundations and Trends® in Machine Learning",
+    "type": "article",
+    "abstract": "Deep reinforcement learning is the combination of reinforcement learning (RL) and deep learning. This field of research has been able to solve a wide range of complex decision making tasks that were previously out of reach for a machine. Thus, deep RL opens up many new applications in domains such as healthcare, robotics, smart grids, finance, and many more. This manuscript provides an introduction to deep reinforcement learning models, algorithms and techniques. Particular focus is on the aspects related to generalization and how deep RL can be used for practical applications. We assume the reader is familiar with basic machine learning concepts.",
+    "concepts": [
+      "Reinforcement learning",
+      "Artificial intelligence",
+      "Computer science",
+      "Deep learning",
+      "Generalization",
+      "Field (mathematics)",
+      "Robotics",
+      "Machine learning"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "green",
+      "oa_url": "https://arxiv.org/pdf/1811.12560",
+      "any_repository_has_fulltext": true
+    },
+    "url": "https://doi.org/10.1561/2200000071"
+  },
+  "12": {
+    "id": "https://openalex.org/W3213952596",
+    "doi": "https://doi.org/10.36001/ijphm.2021.v12i2.3087",
+    "title": "Creation of Publicly Available Data Sets for Prognostics and Diagnostics Addressing Data Scenarios Relevant to Industrial Applications",
+    "publication_year": 2021,
+    "source": "International Journal of Prognostics and Health Management",
+    "type": "article",
+    "abstract": "For a successful realization of prognostics and health management (PHM), the availability of sufficient run-to-failure data sets is a crucial factor. The sheer number of given data points holds less importance than the full coverage of the potential state space. However, full coverage is a major challenge in most industrial applications. Among other things, high investment and operating costs as well as the long service life of many technical systems make it difficult to acquire complete run-to-failure data sets. Consequently, in industrial applications data sets with specific deficiencies are frequently encountered. The development of appropriate methods to address such data scenarios is a fundamental research issue. Therefore, the purpose of this paper is to provide facilitation for this research. Accordingly, the paper starts by specifying the value and availability of data in PHM. Subsequently, criteria for characterizing data sets are defined independent of the actual PHM application. The criteria are used to identify typical data scenarios with specific deficiencies that possess significant relevance for industrial applications. Thereafter, the most comprehensive overview of data sets suitable for PHM and currently publicly accessible is provided. Thereby, not all previously identified data scenarios with their specific deficiencies are addressed by at least one data set. A program is established for the aforementioned facilitation of further research. One objective of the program is to create data sets reflecting these data scenarios using a test bench. First, possible applications and their degradation processes to be studied on the test bench are briefly characterized. Thereby, the final decision to select filtration as a test bench application is argued. Subsequently, the test bench created is introduced, including a description of the functional concept, pneumatic layout and components involved, as well as the filter media and test dusts employed. Typical run-to-failure trajectories are illustrated. Thereafter, the data set published under the name Preventive to Predictive Maintenance is presented. Additionally, a schedule for future releases of data sets on further industry-relevant data scenarios is sketched.",
+    "concepts": [
+      "Prognostics",
+      "Computer science",
+      "Relevance (law)",
+      "Set (abstract data type)",
+      "Data mining",
+      "Data quality",
+      "Risk analysis (engineering)",
+      "Reliability engineering"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "diamond",
+      "oa_url": "https://papers.phmsociety.org/index.php/ijphm/article/download/3087/1835",
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.36001/ijphm.2021.v12i2.3087"
+  },
+  "13": {
+    "id": "https://openalex.org/W4364302107",
+    "doi": "https://doi.org/10.1109/access.2023.3265722",
+    "title": "A Comparative Study on Methods for Fusing Data-Driven and Physics-Based Models for Hybrid Remaining Useful Life Prediction of Air Filters",
+    "publication_year": 2023,
+    "source": "IEEE Access",
+    "type": "article",
+    "abstract": "Approaches for diagnosis and prognosis of the health of engineering systems are divided into data-driven, model-based, and hybrid methods. Data-driven methods depend on the availability of data. Model-based methods require knowledge of the degradation process. A great effort for data generation along with the high complexity of degradation processes often limits both approaches. To mitigate these limitations, the combination of data and knowledge through hybrid methods is examined in this paper. This approach is compared to the alternative approach of reducing the effort for generating training data, as both are gaining importance in diagnostics and prognostics. A new categorization of hybrid prognostic methods for combining data-driven and physics-based models is presented, along with references to existing realizations of these methods. Based on the categorization, a case study on the hybrid remaining useful life prediction of a filtration process is conducted. Several hybrid methods are implemented and tested in this study. Through the combination of models, an improvement in predictive accuracy is achieved. In addition, the paper examines systematic attributes of the individual hybrid methods. Statements on the influence of data scarcity on the predictive accuracy, data-driven models with high variance, and the computational efficiency of the hybrid methods are made. It is shown that these statements are supported by the case study’s results.",
+    "concepts": [
+      "Computer science",
+      "Artificial intelligence"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "gold",
+      "oa_url": "https://ieeexplore.ieee.org/ielx7/6287639/6514899/10097731.pdf",
+      "any_repository_has_fulltext": true
+    },
+    "url": "https://doi.org/10.1109/access.2023.3265722"
+  },
+  "14": {
+    "id": "https://openalex.org/W2070665593",
+    "doi": "https://doi.org/10.1007/s12599-014-0334-4",
+    "title": "Industry 4.0",
+    "publication_year": 2014,
+    "source": "Business & Information Systems Engineering",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Computer science"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1007/s12599-014-0334-4"
+  },
+  "15": {
+    "id": "https://openalex.org/W4226256344",
+    "doi": "https://doi.org/10.1007/s10796-022-10252-x",
+    "title": "Cyber-Physical Systems in the Context of Industry 4.0: A Review, Categorization and Outlook",
+    "publication_year": 2022,
+    "source": "Information Systems Frontiers",
+    "type": "article",
+    "abstract": "Abstract Cyber-physical systems (CPS) offer great potential for the digital transformation of industrial value creation in the context of Industry 4.0. They unify and integrate several technological approaches, including big data analysis and artificial intelligence, enhancing real-time monitoring and control of manufacturing processes. An extensive knowledge base formed by various disciplines, including information systems, engineering, and computer science, already exists for CPS. However, this knowledge has not been holistically captured and structured to date. To address this research gap, this study conducts a large-scale literature review of 2365 papers representing the current state of the research and then develops a novel categorization on industrial CPS with 10 sections, 32 areas, and 246 fields. The categorization is presented in hierarchical graphical form and can also be utilized as a web tool. To conclude, a perspective on future research needs and potentials to enhance Industry 4.0 in both research and practice are offered.",
+    "concepts": [
+      "Categorization",
+      "Data science",
+      "Computer science",
+      "Cyber-physical system",
+      "Context (archaeology)",
+      "Digital transformation",
+      "Knowledge management",
+      "Industry 4.0"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "hybrid",
+      "oa_url": "https://link.springer.com/content/pdf/10.1007/s10796-022-10252-x.pdf",
+      "any_repository_has_fulltext": true
+    },
+    "url": "https://doi.org/10.1007/s10796-022-10252-x"
+  },
+  "16": {
+    "id": "https://openalex.org/W4297003446",
+    "doi": "https://doi.org/10.1080/00207543.2022.2122620",
+    "title": "Predictive models in digital manufacturing: research, applications, and future outlook",
+    "publication_year": 2022,
+    "source": "International Journal of Production Research",
+    "type": "article",
+    "abstract": "Data has become a high-value commodity in manufacturing. There is a growing realisation that the data-driven applications could become strong differentiators of manufacturing enterprises. To guide the developments in digitisation, a widely accepted framework is needed. In the absence of the universal framework, the components making a digital enterprise are captured in an example framework that is introduced in the paper. The adoption of new technology and software solutions has increased complexity of manufacturing systems. In addition, new product introductions have become more frequent and the demand more variable. A digital space enables optimisation and simulation of decisions before their realisation in the physical space. Predictive modelling with its time dimension is a valuable actor in the digital space. Three challenges of predictive modelling such as model complexity, model interpretability, and model reuse are identified in this paper. The coverage of each challenge in the literature is illustrated with the recently published papers. The main aspects of these challenges and the synthesis of the developments in digital manufacturing are articulated in the form of eight observations that could guide the future research.",
+    "concepts": [
+      "Realisation",
+      "Reuse",
+      "Interpretability",
+      "Computer science",
+      "Dimension (graph theory)",
+      "Industrial engineering",
+      "Product (mathematics)",
+      "Manufacturing engineering"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1080/00207543.2022.2122620"
+  },
+  "17": {
+    "id": "https://openalex.org/W4399467983",
+    "doi": "https://doi.org/10.1016/j.jmsy.2024.05.021",
+    "title": "Prognostics and health management for predictive maintenance: A review",
+    "publication_year": 2024,
+    "source": "Journal of Manufacturing Systems",
+    "type": "review",
+    "abstract": null,
+    "concepts": [
+      "Prognostics",
+      "Reliability engineering",
+      "Predictive maintenance",
+      "Health maintenance",
+      "Engineering",
+      "Computer science",
+      "Risk analysis (engineering)",
+      "Medicine"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.jmsy.2024.05.021"
+  },
+  "18": {
+    "id": "https://openalex.org/W4409150905",
+    "doi": "https://doi.org/10.1016/j.iswa.2025.200501",
+    "title": "Systematic review of predictive maintenance practices in the manufacturing sector",
+    "publication_year": 2025,
+    "source": "Intelligent Systems with Applications",
+    "type": "article",
+    "abstract": "Predictive maintenance (PDM) is emerging as a strong transformative tool within Industry 4.0, enabling significant improvements in the sustainability and efficiency of manufacturing processes. This in-depth literature review, which follows the PRISMA 2020 framework, examines how PDM is being implemented in several areas of the manufacturing industry, focusing on how it is taking advantage of technological advances such as artificial intelligence (AI) and the Internet of Things (IoT). The presented in-depth evaluation of the technological principles, implementation methods, economic consequences, and operational improvements based on academic and industrial sources and new innovations is performed. According to the studies, integrating CDM can significantly increase machine uptime and reliability while reducing maintenance costs. In addition, the transition to PDM systems that use real-time data to predict faults and plan maintenance more accurately holds out promising prospects. However, there are still gaps in the overall methodologies for measuring the return on investment of PDM implementations, suggesting an essential research direction. • A detailed review of predictive maintenance for the manufacturing industry. • Analysis of machine learning and IoT for real-time fault detection and prediction. • Key challenges include data gaps, low adoption, and ROI measurement issues. • Future research should optimize methods, costs, big data, and security.",
+    "concepts": [
+      "Manufacturing sector",
+      "Predictive maintenance",
+      "Business",
+      "Engineering",
+      "Reliability engineering",
+      "Economics",
+      "Labour economics"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "gold",
+      "oa_url": "https://doi.org/10.1016/j.iswa.2025.200501",
+      "any_repository_has_fulltext": true
+    },
+    "url": "https://doi.org/10.1016/j.iswa.2025.200501"
+  },
+  "19": {
+    "id": "https://openalex.org/W3092012490",
+    "doi": "https://doi.org/10.1016/j.cie.2020.106889",
+    "title": "Predictive maintenance in the Industry 4.0: A systematic literature review",
+    "publication_year": 2020,
+    "source": "Computers & Industrial Engineering",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Predictive maintenance",
+      "Industry 4.0",
+      "Predictive analytics",
+      "Context (archaeology)",
+      "Scope (computer science)",
+      "Multidisciplinary approach",
+      "Analytics",
+      "Computer science"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.cie.2020.106889"
+  },
+  "20": {
+    "id": "https://openalex.org/W2972137370",
+    "doi": "https://doi.org/10.1016/j.cie.2019.106024",
+    "title": "A systematic literature review of machine learning methods applied to predictive maintenance",
+    "publication_year": 2019,
+    "source": "Computers & Industrial Engineering",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Predictive maintenance",
+      "Field (mathematics)",
+      "Factory (object-oriented programming)",
+      "Production (economics)",
+      "Process (computing)",
+      "Key (lock)",
+      "Computer science",
+      "Reliability engineering"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.cie.2019.106024"
+  },
+  "21": {
+    "id": "https://openalex.org/W4281394637",
+    "doi": "https://doi.org/10.1016/j.jmsy.2022.05.010",
+    "title": "Remaining Useful Life prediction and challenges: A literature review on the use of Machine Learning Methods",
+    "publication_year": 2022,
+    "source": "Journal of Manufacturing Systems",
+    "type": "review",
+    "abstract": "Approaches such as Cyber-Physical Systems (CPS), Internet of Things (IoT), Internet of Services (IoS), and Data Analytics have built a new paradigm called Industry 4.0. It has improved manufacturing efficiency and helped industries to face economic, social, and environmental challenges successfully. Condition-Based Maintenance (CBM) performs machines and components' maintenance routines based on their needs, and Prognostics and Health Management (PHM) monitors components' wear evolution using indicators. PHM is a proactive way of implementing CBM by predicting the Remaining Useful Life (RUL), one of the most important indicators to detect a component's failure before it effectively occurs. RUL can be predicted by historical data or direct data extraction by adopting model-based, data-driven, or hybrid methodologies. Model-based methods are challenging, expensive, and time-consuming to develop in complex equipment due to the need for a lot of prior system knowledge. Data-driven methods have primarily used Machine Learning (ML) approaches. They require little historical data, are less complex and expensive, and are more applicable, providing a trade-off between complexity, cost, precision, and applicability. However, despite the increased use of data-driven methods, several studies have pointed out different challenges to RUL prediction. Some works have proposed solutions from individuals and unconnected work structures to overcome these challenges, and there is still a lack of an explicit framework for general process analysis. Moreover, none of them have correlated the different challenges with each micro-step of the RUL prediction process. This work describes the structures, systems and components approached, and datasets used. Next, it proposes a compact framework for the RUL prediction process. Also, it maps the main challenges of this process and the advantages and drawbacks of the most relevant ML methods. Further, it discusses the operational datasets, the accuracy concern, the use of file log systems in the RUL prediction, and approaches the ML Interpretability (MLI) issue. Finally, it concludes with some future research directions.",
+    "concepts": [
+      "Prognostics",
+      "Process (computing)",
+      "Component (thermodynamics)",
+      "Computer science",
+      "Predictive maintenance",
+      "Analytics",
+      "Predictive analytics",
+      "Engineering"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "hybrid",
+      "oa_url": "https://doi.org/10.1016/j.jmsy.2022.05.010",
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.jmsy.2022.05.010"
+  },
+  "22": {
+    "id": "https://openalex.org/W4390770102",
+    "doi": "https://doi.org/10.1016/j.ymssp.2024.111120",
+    "title": "A review on physics-informed data-driven remaining useful life prediction: Challenges and opportunities",
+    "publication_year": 2024,
+    "source": "Mechanical Systems and Signal Processing",
+    "type": "review",
+    "abstract": null,
+    "concepts": [
+      "Prognostics",
+      "Interpretability",
+      "Physics of failure",
+      "Context (archaeology)",
+      "Reliability (semiconductor)",
+      "Data-driven",
+      "Field (mathematics)",
+      "Data science"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.ymssp.2024.111120"
+  },
+  "23": {
+    "id": "https://openalex.org/W2773549135",
+    "doi": "https://doi.org/10.1016/j.ymssp.2017.11.016",
+    "title": "Machinery health prognostics: A systematic review from data acquisition to RUL prediction",
+    "publication_year": 2017,
+    "source": "Mechanical Systems and Signal Processing",
+    "type": "review",
+    "abstract": null,
+    "concepts": [
+      "Prognostics",
+      "Process (computing)",
+      "Field (mathematics)",
+      "Engineering",
+      "Data acquisition",
+      "Reliability engineering",
+      "Computer science",
+      "Data science"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.ymssp.2017.11.016"
+  },
+  "24": {
+    "id": "https://openalex.org/W2064675550",
+    "doi": "https://doi.org/10.1162/neco.1997.9.8.1735",
+    "title": "Long Short-Term Memory",
+    "publication_year": 1997,
+    "source": "Neural Computation",
+    "type": "article",
+    "abstract": "Learning to store information over extended time intervals by recurrent backpropagation takes a very long time, mostly because of insufficient, decaying error backflow. We briefly review Hochreiter's (1991) analysis of this problem, then address it by introducing a novel, efficient, gradient-based method called long short-term memory (LSTM). Truncating the gradient where this does not do harm, LSTM can learn to bridge minimal time lags in excess of 1000 discrete-time steps by enforcing constant error flow through constant error carousels within special units. Multiplicative gate units learn to open and close access to the constant error flow. LSTM is local in space and time; its computational complexity per time step and weight is O(1). Our experiments with artificial data involve local, distributed, real-valued, and noisy pattern representations. In comparisons with real-time recurrent learning, back propagation through time, recurrent cascade correlation, Elman nets, and neural sequence chunking, LSTM leads to many more successful runs, and learns much faster. LSTM also solves complex, artificial long-time-lag tasks that have never been solved by previous recurrent network algorithms.",
+    "concepts": [
+      "Term (time)",
+      "Short-term memory",
+      "Computer science",
+      "Mathematics",
+      "Psychology",
+      "Neuroscience",
+      "Cognition",
+      "Working memory"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1162/neco.1997.9.8.1735"
+  },
+  "25": {
+    "id": "https://openalex.org/W2157331557",
+    "doi": "https://doi.org/10.3115/v1/d14-1179",
+    "title": "Learning Phrase Representations using RNN Encoder–Decoder for Statistical Machine Translation",
+    "publication_year": 2014,
+    "source": null,
+    "type": "preprint",
+    "abstract": "Kyunghyun Cho, Bart van Merriënboer, Caglar Gulcehre, Dzmitry Bahdanau, Fethi Bougares, Holger Schwenk, Yoshua Bengio. Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP). 2014.",
+    "concepts": [
+      "Machine translation",
+      "Computer science",
+      "Phrase",
+      "Natural language processing",
+      "Artificial intelligence",
+      "Encoder",
+      "Translation (biology)",
+      "Statistical learning"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "gold",
+      "oa_url": "https://aclanthology.org/D14-1179.pdf",
+      "any_repository_has_fulltext": null
+    },
+    "url": "https://doi.org/10.3115/v1/d14-1179"
+  },
+  "26": {
+    "id": "https://openalex.org/W2903871660",
+    "doi": "https://doi.org/10.1609/aaai.v33i01.3301922",
+    "title": "Attention Based Spatial-Temporal Graph Convolutional Networks for Traffic Flow Forecasting",
+    "publication_year": 2019,
+    "source": "Proceedings of the AAAI Conference on Artificial Intelligence",
+    "type": "article",
+    "abstract": "Forecasting the traffic flows is a critical issue for researchers and practitioners in the field of transportation. However, it is very challenging since the traffic flows usually show high nonlinearities and complex patterns. Most existing traffic flow prediction methods, lacking abilities of modeling the dynamic spatial-temporal correlations of traffic data, thus cannot yield satisfactory prediction results. In this paper, we propose a novel attention based spatial-temporal graph convolutional network (ASTGCN) model to solve traffic flow forecasting problem. ASTGCN mainly consists of three independent components to respectively model three temporal properties of traffic flows, i.e., recent, daily-periodic and weekly-periodic dependencies. More specifically, each component contains two major parts: 1) the spatial-temporal attention mechanism to effectively capture the dynamic spatialtemporal correlations in traffic data; 2) the spatial-temporal convolution which simultaneously employs graph convolutions to capture the spatial patterns and common standard convolutions to describe the temporal features. The output of the three components are weighted fused to generate the final prediction results. Experiments on two real-world datasets from the Caltrans Performance Measurement System (PeMS) demonstrate that the proposed ASTGCN model outperforms the state-of-the-art baselines.",
+    "concepts": [
+      "Computer science",
+      "Graph",
+      "Convolution (computer science)",
+      "Data mining",
+      "Traffic flow (computer networking)",
+      "Field (mathematics)",
+      "Temporal database",
+      "Artificial intelligence"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "diamond",
+      "oa_url": "https://aaai.org/ojs/index.php/AAAI/article/download/3881/3759",
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1609/aaai.v33i01.3301922"
+  },
+  "27": {
+    "id": "https://openalex.org/W4377089044",
+    "doi": "https://doi.org/10.1016/j.asoc.2023.110419",
+    "title": "Attention-based Gate Recurrent Unit for remaining useful life prediction in prognostics",
+    "publication_year": 2023,
+    "source": "Applied Soft Computing",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Prognostics",
+      "Benchmark (surveying)",
+      "Computer science",
+      "Feature (linguistics)",
+      "Artificial intelligence",
+      "Data mining",
+      "Encoder",
+      "Process (computing)"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.asoc.2023.110419"
+  },
+  "28": {
+    "id": "https://openalex.org/W4396641152",
+    "doi": "https://doi.org/10.1007/s12206-024-0402-8",
+    "title": "LSTM-based deep learning approach for remaining useful life prediction of rolling bearing using proposed C-MMPE feature",
+    "publication_year": 2024,
+    "source": "Journal of Mechanical Science and Technology",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Prognostics",
+      "Bearing (navigation)",
+      "Artificial intelligence",
+      "Computer science",
+      "Entropy (arrow of time)",
+      "Deep learning",
+      "Feature (linguistics)",
+      "Machine learning"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1007/s12206-024-0402-8"
+  },
+  "29": {
+    "id": "https://openalex.org/W4224272085",
+    "doi": "https://doi.org/10.1038/s41598-022-10191-2",
+    "title": "Remaining useful life prognosis of turbofan engines based on deep feature extraction and fusion",
+    "publication_year": 2022,
+    "source": "Scientific Reports",
+    "type": "article",
+    "abstract": "In turbofan engine datasets, to address problems, such as noise interference, diverse data types, large data volumes, complex feature extraction, inability to effectively describe degradation trends, and poor remaining useful life (RUL) prognosis effects, a remaining useful life prognosis model combining an improved stack sparse autoencoder (imSSAE) and an improved echo state network (imESN) is proposed in this paper. First, the 3-sigma criterion is adopted to remove the noise and reconstruct the data, and then the deep features of the engine are extracted by using an imSSAE and fused into health indicator (HI) curves describing the engine degradation trend. Finally, an attention mechanism is introduced into an imESN to adaptively process different types of data and obtain the RUL. The experimental results based on the Commercial Modular Aero-Propulsion System Simulation (C-MAPSS) dataset show that compared with the other popular RUL prediction models, the combined model proposed in this paper has higher prediction accuracy, and the evaluation indices also show the effectiveness and superiority of the model.",
+    "concepts": [
+      "Turbofan",
+      "Computer science",
+      "Autoencoder",
+      "Feature extraction",
+      "Noise (video)",
+      "Artificial intelligence",
+      "Feature (linguistics)",
+      "Propulsion"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "gold",
+      "oa_url": "https://www.nature.com/articles/s41598-022-10191-2.pdf",
+      "any_repository_has_fulltext": true
+    },
+    "url": "https://doi.org/10.1038/s41598-022-10191-2"
+  },
+  "30": {
+    "id": "https://openalex.org/W4323108654",
+    "doi": "https://doi.org/10.1016/j.ymssp.2023.110221",
+    "title": "Predicting remaining useful life of a machine based on embedded attention parallel networks",
+    "publication_year": 2023,
+    "source": "Mechanical Systems and Signal Processing",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Computer science",
+      "Feature extraction",
+      "Feature (linguistics)",
+      "Artificial intelligence",
+      "Big data",
+      "Attention network",
+      "Task (project management)",
+      "Data mining"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.ymssp.2023.110221"
+  },
+  "31": {
+    "id": "https://openalex.org/W2893933380",
+    "doi": "https://doi.org/10.1016/j.iot.2018.09.005",
+    "title": "The Internet of Things, Fog and Cloud continuum: Integration and challenges",
+    "publication_year": 2018,
+    "source": "Internet of Things",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Cloud computing",
+      "Computer science",
+      "Edge computing",
+      "Internet of Things",
+      "Fog computing",
+      "Enhanced Data Rates for GSM Evolution",
+      "Edge device",
+      "Distributed computing"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "green",
+      "oa_url": "https://arxiv.org/pdf/1809.09972",
+      "any_repository_has_fulltext": true
+    },
+    "url": "https://doi.org/10.1016/j.iot.2018.09.005"
+  },
+  "32": {
+    "id": "https://openalex.org/W2014034914",
+    "doi": "https://doi.org/10.1287/opre.25.1.45",
+    "title": "A Survey of Scheduling Rules",
+    "publication_year": 1977,
+    "source": "Operations Research",
+    "type": "article",
+    "abstract": "In the past two decades researchers in the field of sequencing and scheduling have analyzed several priority dispatching rules through simulation techniques. This paper presents a summary of over 100 such rules, a list of many references that analyze them, and a classification scheme.",
+    "concepts": [
+      "Computer science",
+      "Scheduling (production processes)",
+      "Operations research",
+      "Data mining",
+      "Mathematical optimization",
+      "Mathematics"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1287/opre.25.1.45"
+  },
+  "33": {
+    "id": "https://openalex.org/W1972928373",
+    "doi": "https://doi.org/10.1287/mnsc.33.8.1035",
+    "title": "Priority Rules for Job Shops with Weighted Tardiness Costs",
+    "publication_year": 1987,
+    "source": "Management Science",
+    "type": "article",
+    "abstract": "Mainstream research in priority dispatching has considered jobs with equal delay penalties, thereby ruling out strategic differentiation of customer orders. We develop and test efficient dispatching rules for the weighted tardiness problem with job-specific due dates and delay penalties. Our approach builds on previous greedy heuristics which assign the priority on the basis of the expected tardiness cost per immediate processing requirements. In multi-machine applications, estimates of the remaining leadtime are needed to determine local operation due dates and to evaluate the adequacy of the job's slack. Two slightly different “look-ahead” features are identified, and the corresponding priority rules are tested in job shop experiments with a variety of load conditions. The results indicate that the new rules are not only superior to competing rules for minimizing weighted tardiness penalties but are also robust for several other criteria, such as the number of tardy jobs and the costs of in-process inventories.",
+    "concepts": [
+      "Tardiness",
+      "Heuristics",
+      "Due date",
+      "Computer science",
+      "Job shop",
+      "Operations research",
+      "Holding cost",
+      "Mathematical optimization"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1287/mnsc.33.8.1035"
+  },
+  "34": {
+    "id": "https://openalex.org/W1588382077",
+    "doi": "https://doi.org/10.1007/bf02238804",
+    "title": "Job-shop scheduling with multi-purpose machines",
+    "publication_year": 1990,
+    "source": "Computing",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Job shop scheduling",
+      "Computer science",
+      "Scheduling (production processes)",
+      "Job shop",
+      "Mathematical optimization",
+      "Flow shop scheduling",
+      "Generalization",
+      "Set (abstract data type)"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1007/bf02238804"
+  },
+  "35": {
+    "id": "https://openalex.org/W2046437335",
+    "doi": "https://doi.org/10.1007/bf02023073",
+    "title": "Routing and scheduling in a flexible job shop by tabu search",
+    "publication_year": 1993,
+    "source": "Annals of Operations Research",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Tabu search",
+      "Guided Local Search",
+      "Job shop scheduling",
+      "Flow shop scheduling",
+      "Metaheuristic",
+      "Computer science",
+      "Mathematical optimization",
+      "Theory of computation"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1007/bf02023073"
+  },
+  "36": {
+    "id": "https://openalex.org/W2000099188",
+    "doi": "https://doi.org/10.1002/(sici)1099-1425(200001/02)3:1<3::aid-jos32>3.0.co;2-y",
+    "title": "Effective neighbourhood functions for the flexible job shop problem",
+    "publication_year": 2000,
+    "source": "Journal of Scheduling",
+    "type": "article",
+    "abstract": "The flexible job shop problem is an extension of the classical job shop scheduling problem which allows an operation to be performed by one machine out of a set of machines. The problem is to assign each operation to a machine (routing problem) and to order the operations on the machines (sequencing problem), such that the maximal completion time (makespan) of all operations is minimized. To solve the flexible job shop problem approximately, we use local search techniques and present two neighbourhood functions (Nopt1, Nopt2). Nopt2 is proved to be optimum connected. Nopt1 does not distinguish between routing or sequencing an operation. In both cases, a neighbour of a solution is obtained by moving an operation which affects the makespan. Our main contribution is a reduction of the set of possible neighbours to a subset for which can be proved that it always contains the neighbour with the lowest makespan. An efficient approach to compute such a subset of feasible neighbours is presented. A tabu search procedure is proposed and an extensive computational study is provided. We show that our procedure outperforms previous approaches. Copyright © 2000 John Wiley & Sons, Ltd.",
+    "concepts": [
+      "Job shop scheduling",
+      "Tabu search",
+      "Mathematical optimization",
+      "Vehicle routing problem",
+      "Job shop",
+      "Computer science",
+      "Scheduling (production processes)",
+      "Flow shop scheduling"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1002/(sici)1099-1425(200001/02)3:1<3::aid-jos32>3.0.co;2-y"
+  },
+  "37": {
+    "id": "https://openalex.org/W2166900052",
+    "doi": "https://doi.org/10.1109/tsmcc.2002.1009117",
+    "title": "Approach by localization and multiobjective evolutionary optimization for flexible job-shop scheduling problems",
+    "publication_year": 2002,
+    "source": "IEEE Transactions on Systems Man and Cybernetics Part C (Applications and Reviews)",
+    "type": "article",
+    "abstract": "Traditionally, assignment and scheduling decisions are made separately at different levels of the production management framework. The combining of such decisions presents additional complexity and new problems. We present two new approaches to solve jointly the assignment and job-shop scheduling problems (with total or partial flexibility). The first one is the approach by localization (AL). It makes it possible to solve the problem of resource allocation and build an ideal assignment model (assignments schemata). The second one is an evolutionary approach controlled by the assignment model (generated by the first approach). In such an approach, we apply advanced genetic manipulations in order to enhance the solution quality. We also explain some of the practical and theoretical considerations in the construction of a more robust encoding that will enable us to solve the flexible job-shop problem by applying the genetic algorithms (GAs). Two examples are presented to show the efficiency of the two suggested methodologies.",
+    "concepts": [
+      "Computer science",
+      "Job shop scheduling",
+      "Mathematical optimization",
+      "Job shop",
+      "Scheduling (production processes)",
+      "Flexibility (engineering)",
+      "Evolutionary algorithm",
+      "Multi-objective optimization"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1109/tsmcc.2002.1009117"
+  },
+  "38": {
+    "id": "https://openalex.org/W4392346451",
+    "doi": "https://doi.org/10.1007/s40747-024-01374-7",
+    "title": "Flexible job-shop scheduling problem with parallel batch machines based on an enhanced multi-population genetic algorithm",
+    "publication_year": 2024,
+    "source": "Complex & Intelligent Systems",
+    "type": "article",
+    "abstract": "Abstract The flexible job-shop scheduling problem (FJSP) with parallel batch processing machine (PBM) is one of those long-standing issues that needs cutting-edge approaches. It is a recent extension of standard flexible job shop scheduling problems. Despite their wide application and prevalence in practical production, it seems that current research on these types of combinatorial optimization problems remains limited and uninvestigated. More specifically, existing research mainly concentrates on the flow shop scenarios in parallel batch machines for job shop scheduling but few literature emphasis on the flexible job shop integration in these contexts. To directly address the above mentioned problems, this paper establishes an optimization model considering parallel batch processing machines, aiming to minimize the maximum completion time in operating and production environments. The proposed solution merges variable neighborhood search with multi-population genetic algorithms, conducting a neighborhood search on the elite population to reduce the likelihood of falling into local optima. Subsequently, its applicability was evaluated in computational experiments using real production scenarios from a partnering enterprise and extended datasets. The findings from the analyses indicate that the enhanced algorithm can decrease the objective value by as much as 15% compared to other standard algorithms. Importantly, the proposed approach effectively resolves flexible job shop scheduling problems involving parallel batch processing machines. The contribution of the research is providing substantial theoretical support for enterprise production scheduling.",
+    "concepts": [
+      "Flow shop scheduling",
+      "Job shop scheduling",
+      "Computer science",
+      "Job scheduler",
+      "Population",
+      "Scheduling (production processes)",
+      "Mathematical optimization",
+      "Job shop"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "gold",
+      "oa_url": "https://link.springer.com/content/pdf/10.1007/s40747-024-01374-7.pdf",
+      "any_repository_has_fulltext": true
+    },
+    "url": "https://doi.org/10.1007/s40747-024-01374-7"
+  },
+  "39": {
+    "id": "https://openalex.org/W4377695412",
+    "doi": "https://doi.org/10.1016/j.ejor.2023.05.017",
+    "title": "The flexible job shop scheduling problem: A review",
+    "publication_year": 2023,
+    "source": "European Journal of Operational Research",
+    "type": "review",
+    "abstract": "The flexible job shop scheduling problem (FJSP) is an NP-hard combinatorial optimization problem, which has wide applications in the real world. The complexity and relevance of the FJSP have led to numerous research works on its modeling and resolution. This paper reviews some of the research of the past 30 years on the problem, by presenting and classifying the different criteria, constraints, configurations and solution approaches that have been considered. Recent emerging topics on complex shop scheduling, multi-criteria optimization and uncertain and dynamic environments are discussed. Finally, future research opportunities are proposed.",
+    "concepts": [
+      "Job shop scheduling",
+      "Computer science",
+      "Scheduling (production processes)",
+      "Job shop",
+      "Flow shop scheduling",
+      "Mathematical optimization",
+      "Dynamic priority scheduling",
+      "Operations research"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "hybrid",
+      "oa_url": "https://doi.org/10.1016/j.ejor.2023.05.017",
+      "any_repository_has_fulltext": true
+    },
+    "url": "https://doi.org/10.1016/j.ejor.2023.05.017"
+  },
+  "40": {
+    "id": "https://openalex.org/W4307739672",
+    "doi": "https://doi.org/10.1016/j.cie.2022.108786",
+    "title": "Survey of integrated flexible job shop scheduling problems",
+    "publication_year": 2022,
+    "source": "Computers & Industrial Engineering",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Job shop",
+      "Job shop scheduling",
+      "Computer science",
+      "Flow shop scheduling",
+      "Industrial engineering",
+      "Operations research",
+      "Operations management",
+      "Engineering"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.cie.2022.108786"
+  },
+  "41": {
+    "id": "https://openalex.org/W4408249737",
+    "doi": "https://doi.org/10.1007/s10845-025-02585-6",
+    "title": "Reinforcement learning in dynamic job shop scheduling: a comprehensive review of AI-driven approaches in modern manufacturing",
+    "publication_year": 2025,
+    "source": "Journal of Intelligent Manufacturing",
+    "type": "review",
+    "abstract": "Abstract Dynamic job shop scheduling (DJSS) demands real-time adaptability under unpredictable conditions such as sudden job arrivals, equipment failures, and fluctuating demands. Traditional scheduling approaches—though foundational—often fall short when faced with rapid changes and high computational complexity. Recent developments in artificial intelligence (AI), especially reinforcement learning (RL), offer powerful alternatives by continuously refining scheduling policies through interaction with live shop-floor data. This review systematically examines AI-driven scheduling methods, highlighting how evolutionary heuristics, advanced machine learning, and RL-based algorithms each address the demands of modern manufacturing. Emphasis is placed on RL’s capacity to cope with large state spaces, handle continuous or discrete control, and integrate domain heuristics for more robust real-time decision-making. Despite these advances, challenges remain in algorithm scalability, interpretability, data availability, and standardization of performance metrics. Future directions point toward leveraging digital twins, quantum computing, hybrid models, and explainable RL to ensure more resilient, transparent, and scalable solutions. By illuminating both current achievements and persistent gaps, this review underscores the transformative potential of RL in dynamic scheduling and highlights actionable steps for broader industrial adoption.",
+    "concepts": [
+      "Reinforcement learning",
+      "Job shop",
+      "Industrial engineering",
+      "Scheduling (production processes)",
+      "Reinforcement",
+      "Computer science",
+      "Manufacturing engineering",
+      "Job shop scheduling"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "hybrid",
+      "oa_url": "https://link.springer.com/content/pdf/10.1007/s10845-025-02585-6.pdf",
+      "any_repository_has_fulltext": true
+    },
+    "url": "https://doi.org/10.1007/s10845-025-02585-6"
+  },
+  "42": {
+    "id": "https://openalex.org/W4220994423",
+    "doi": "https://doi.org/10.1109/tcyb.2022.3151855",
+    "title": "Multiobjective Flexible Job-Shop Rescheduling With New Job Insertion and Machine Preventive Maintenance",
+    "publication_year": 2022,
+    "source": "IEEE Transactions on Cybernetics",
+    "type": "article",
+    "abstract": "In the actual production, the insertion of new job and machine preventive maintenance (PM) are very common phenomena. Under these situations, a flexible job-shop rescheduling problem (FJRP) with both new job insertion and machine PM is investigated. First, an imperfect PM (IPM) model is established to determine the optimal maintenance plan for each machine, and the optimality is proven. Second, in order to jointly optimize the production scheduling and maintenance planning, a multiobjective optimization model is developed. Third, to deal with this model, an improved nondominated sorting genetic algorithm III with adaptive reference vector (NSGA-III/ARV) is proposed, in which a hybrid initialization method is designed to obtain a high-quality initial population and a critical-path-based local search (LS) mechanism is constructed to accelerate the convergence speed of the algorithm. In the numerical simulation, the effect of parameter setting on the NSGA-III/ARV is investigated by the Taguchi experimental design. After that, the superiority of the improved operators and the overall performance of the proposed algorithm are demonstrated. Next, the comparison of two IPM models is carried out, which verifies the effectiveness of the designed IPM model. Last but not least, we have analyzed the impact of different maintenance effects on both the optimal maintenance decisions and integrated maintenance-production scheduling schemes.",
+    "concepts": [
+      "Preventive maintenance",
+      "Initialization",
+      "Sorting",
+      "Mathematical optimization",
+      "Scheduling (production processes)",
+      "Population",
+      "Tardiness",
+      "Computer science"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1109/tcyb.2022.3151855"
+  },
+  "43": {
+    "id": "https://openalex.org/W3205671243",
+    "doi": "https://doi.org/10.1016/j.jmsy.2021.09.018",
+    "title": "Real-time integrated production-scheduling and maintenance-planning in a flexible job shop with machine deterioration and condition-based maintenance",
+    "publication_year": 2021,
+    "source": "Journal of Manufacturing Systems",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Job shop",
+      "Scheduling (production processes)",
+      "Job shop scheduling",
+      "Computer science",
+      "Industrial engineering",
+      "Production planning",
+      "Production (economics)",
+      "Benchmark (surveying)"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.jmsy.2021.09.018"
+  },
+  "44": {
+    "id": "https://openalex.org/W4385364730",
+    "doi": "https://doi.org/10.1016/j.cor.2023.106365",
+    "title": "A multi-agent system for integrated scheduling and maintenance planning of the flexible job shop",
+    "publication_year": 2023,
+    "source": "Computers & Operations Research",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Computer science",
+      "Scheduling (production processes)",
+      "Job shop scheduling",
+      "Scalability",
+      "Integrated business planning",
+      "Job shop",
+      "Dynamic priority scheduling",
+      "Operations research"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.cor.2023.106365"
+  },
+  "45": {
+    "id": "https://openalex.org/W4393951273",
+    "doi": "https://doi.org/10.1016/j.ress.2024.110129",
+    "title": "An integrated framework of preventive maintenance and task scheduling for repairable multi-unit systems",
+    "publication_year": 2024,
+    "source": "Reliability Engineering & System Safety",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Preventive maintenance",
+      "Scheduling (production processes)",
+      "Computer science",
+      "Interdependence",
+      "Reliability engineering",
+      "Fair-share scheduling",
+      "Dynamic priority scheduling",
+      "Operations research"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.ress.2024.110129"
+  },
+  "46": {
+    "id": "https://openalex.org/W4410883852",
+    "doi": "https://doi.org/10.1016/j.jclepro.2025.145856",
+    "title": "Integrated coordination of production scheduling, preventive maintenance, and energy conservation in flexible manufacturing environments",
+    "publication_year": 2025,
+    "source": "Journal of Cleaner Production",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Preventive maintenance",
+      "Production (economics)",
+      "Energy conservation",
+      "Scheduling (production processes)",
+      "Manufacturing engineering",
+      "Business",
+      "Engineering",
+      "Computer science"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/j.jclepro.2025.145856"
+  },
+  "47": {
+    "id": "https://openalex.org/W2109910161",
+    "doi": "https://doi.org/10.1016/s0004-3702(99)00052-1",
+    "title": "Between MDPs and semi-MDPs: A framework for temporal abstraction in reinforcement learning",
+    "publication_year": 1999,
+    "source": "Artificial Intelligence",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Reinforcement learning",
+      "Markov decision process",
+      "Computer science",
+      "Abstraction",
+      "Action (physics)",
+      "Artificial intelligence",
+      "Set (abstract data type)",
+      "Dynamic programming"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1016/s0004-3702(99)00052-1"
+  },
+  "48": {
+    "id": "https://openalex.org/W1557517019",
+    "doi": "https://doi.org/10.1023/a:1022676722315",
+    "title": "Technical Note: Q-Learning",
+    "publication_year": 1992,
+    "source": "Machine Learning",
+    "type": "article",
+    "abstract": null,
+    "concepts": [
+      "Sketch",
+      "Action (physics)",
+      "Q-learning",
+      "Convergence (economics)",
+      "Markov process",
+      "Simple (philosophy)",
+      "Mathematics",
+      "Markov decision process"
+    ],
+    "open_access": {
+      "is_oa": false,
+      "oa_status": "closed",
+      "oa_url": null,
+      "any_repository_has_fulltext": false
+    },
+    "url": "https://doi.org/10.1023/a:1022676722315"
+  },
+  "49": {
+    "id": "https://openalex.org/W2155968351",
+    "doi": "https://doi.org/10.1609/aaai.v30i1.10295",
+    "title": "Deep Reinforcement Learning with Double Q-Learning",
+    "publication_year": 2016,
+    "source": "Proceedings of the AAAI Conference on Artificial Intelligence",
+    "type": "article",
+    "abstract": "The popular Q-learning algorithm is known to overestimate action values under certain conditions. It was not previously known whether, in practice, such overestimations are common, whether they harm performance, and whether they can generally be prevented. In this paper, we answer all these questions affirmatively. In particular, we first show that the recent DQN algorithm, which combines Q-learning with a deep neural network, suffers from substantial overestimations in some games in the Atari 2600 domain. We then show that the idea behind the Double Q-learning algorithm, which was introduced in a tabular setting, can be generalized to work with large-scale function approximation. We propose a specific adaptation to the DQN algorithm and show that the resulting algorithm not only reduces the observed overestimations, as hypothesized, but that this also leads to much better performance on several games.",
+    "concepts": [
+      "Reinforcement learning",
+      "Computer science",
+      "Artificial intelligence",
+      "Action (physics)",
+      "Function (biology)",
+      "Artificial neural network",
+      "Function approximation",
+      "Q-learning"
+    ],
+    "open_access": {
+      "is_oa": true,
+      "oa_status": "diamond",
+      "oa_url": "https://ojs.aaai.org/index.php/AAAI/article/download/10295/10154",
+      "any_repository_has_fulltext": true
+    },
+    "url": "https://doi.org/10.1609/aaai.v30i1.10295"
+  }
+}

@@ -26,11 +26,11 @@ def resolve_machine_set(cfg: "SimConfig") -> tuple[str, tuple[int, ...], int]:
 class SimConfig:
     # --- experiment profile ---
     # "default": run the general paired matrix with THDQN and PPO schedulers,
-    # each evaluated against DQN and POMCP maintenance
+    # each evaluated against flat_ddqn, hier_ddqn, and pomcp maintenance
     # "thesis_ppo_maint": thesis main experiment with fixed PPO scheduler,
-    # unrestricted maintenance comparison (DQN vs POMCP), and long horizon
+    # unrestricted maintenance comparison (flat_ddqn vs pomcp), and long horizon
     # "thesis_ppo_maint_short": short-horizon PPO maintenance comparison
-    # "thesis_ppo_reward_ablation": fixed PPO+DQN long-horizon reward ablation
+    # "thesis_ppo_reward_ablation": fixed PPO+flat_ddqn long-horizon reward ablation
     EXPERIMENT_PROFILE: str = "default"
 
     # --- data / artifact paths ---

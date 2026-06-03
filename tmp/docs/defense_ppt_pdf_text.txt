@@ -1,0 +1,127 @@
+=== PDF PAGE 1 ===
+面向设备健康状态的智能作业车间调度系统设计与实现22级自动化1班傅懋杰指导老师：冯颖
+1
+
+=== PDF PAGE 2 ===
+柔性作业车间调度问题柔性作业车间调度问题(Flexible Job Shop Scheduling Problem, FJSP)定义了一种允许一道工序在多台不同机器上加工的问题。
+图1 FJSP的析取图图片来源：图1: WANG R, WANG G, SUN J , e t a l . Fl e x i b l e j o b s h o p s c h e d u l i n g v i a d u a l a t t e n t i o n n e t wo r k-based reinforcement learning[J]. IEEE Transactions on Neural Networks and Learning Systems, 2024, 35(3): 3091-3102, p. 3 (Fig. 1) 2
+
+=== PDF PAGE 3 ===
+FJSP的现实应用场景
+图(a)机械加工与金属加工车间图(b)半导体芯片制造图 (c)汽车零部件生产线图 (d)企业内小批量、多品种生产图片来源：图 (a): https://www.acmetall.com/thumbnails/95818-2000-1000-Crop.jpg图 (b): https://www.shopfloor-software.com/fileadmin/_processed_/3/4/csm_Techologiefabrik_VUVGMontageanlage_2_6891d58fb6.jpg图 (c): https://th-i.thgim.com/public/incoming/zc8mr9/article69755181.ece/alternates/LANDSCAPE_1200/iStock-1320950393.jpg图 (d): https://cdn.skoda-storyboard.com/2020/09/200929-Robot-delivers-just-in-sequence-parts-directly-2-2560x1596.jpg3
+
+=== PDF PAGE 4 ===
+剩余使用寿命(Remaining Useful Life, RUL)
+图2 设备退化过程图片来源：图2: https://media.licdn.com/dms/image/v2/C4E22AQETZ1z5CdjiCA/feedshare-shrink_1280/feedshare-shrink_1280/0/1580444482197?e=2147483647&v=beta&t=o8m6df7_OxQC2LTzFqZrKgaaR646i4t4tGcBulnMIXE4
+
+=== PDF PAGE 5 ===
+课题任务、目的与意义课题任务：•构建考虑设备退化、RUL预测、维护动作和动态柔性作业车间调度的仿真与决策框架。並实现RUL预测、维护决策、调度决策三个模块，并进行组合实验。课题目的：•将RUL健康信号引入调度与维护闭环。在动态作业到达、交期压力变化和设备退化并存的环境下，降低总成本、拖期成本和故障风险。课题意义：•工程意义：更贴近真实车间中“生产-退化-维护”相互影响的过程。•方法意义：把RUL预测、强化学习调度和维护决策放入统一框架。•实验意义：通过调度器与维护器的配对比较，分析算法结构之间的适配关系。
+5
+
+=== PDF PAGE 6 ===
+原始数据集来源数据集：Preventive to Predictive Maintenance dataset
+图片来源：图3: HagmeyerS, Mauthe F, Zeiler P. Creation of publicly available data sets for prognostics and diagnostics addressing data scenarios relevant to industrial applications[J]. International Journal of Prognostics and Health Management, 2021, 12(2). DOI: 10.36001/ijphm.2021.v12i2.3087, p. 9 (Fig. 2)图4: PrognosticsHSE. Preventive to predictive maintenance[DB/OL]. Kaggle, 2023[2026-05-1]. https://www.kaggle.com/datasets/prognosticshse/preventive-to-predicitve-maintenance, Preventive to Predictive Maintenance dataset.pdf, p. 5 (Fig. 6)
+图3 带有颗粒进料系统和过滤室的过滤测试台图4 过滤测试运行中的典型变化曲线
+6
+
+=== PDF PAGE 7 ===
+Data_No寿命序列编号Differential_pressure滤材两端压差Flow_rate流量Time采样时间(10 Hz)Dust_feed加尘速率Dust粉尘类型RUL测试集中提供的剩余寿命标签
+训练集测试集本地使用文件Train_Data_CSV.csvTest_Data_CSV.csv数据规模39420 行50 条寿命序列39414 行50 条寿命序列
+粉尘类型(ISO 12103-1)A2 FineA3 MediumA4 Coarse Test Dust
+加尘速率（保留到小数点后2位）59.11118.21158.49236.43237.74316.99
+Data_NoDifferential_pressureFlow_rateTimeDust_feedDustRUL10.27126752.28199340.1236.428943A358.910.3616954.98667130.2236.428943A358.81055.42478620.3236.428943A358.712.62225155.52414590.4236.428943A358.613.88816555.85201790.5236.428943A358.514.52112256.13020340.6236.428943A358.414.52112256.15006990.7236.428943A358.314.52112256.09045680.8236.428943A358.215.78703755.5837590.9236.428943A358.1⋯⋯50464.228982.421872952.1316.985065A48.150466.037382.743156552.2316.985065A4850472.276582.785427352.3316.985065A47.950474.175483.013710452.4316.985065A47.8数据来源：左表资讯整理自Preventive to Predictive Maintenance dataset.pdf；右表撷取自测试集Test_Data_CSV.csv7
+
+=== PDF PAGE 8 ===
+核心指导文献文献(a):Dynamicmulti-objectiveschedulingforflexiblejobshopbydeepreinforcementlearning (2021)•将FJSP扩展为动态多目标问题•提出基于层级决策的DQN方法•补充了基于规则的决策方案
+文献 (b):Adaptivereal-timeschedulingforproductionandmaintenance:integratingRULpredictionwithmulti-agentdeepreinforcementlearning(2025)•提出了生产和维护的自适应实时调度方法•将RUL预测模型与多智能体深度强化学习相结合
+文献来源：文献 (a): Luo S, Zhang L, Fan Y . Dynamic multi-objective scheduling for flexible job shop by deep reinforcement learning[J]. Computers & Industrial Engineering, 2021, 159: 107489文献 (b): Ding C, Qiao F, Wang D, et al. Adaptive real-time scheduling for production and maintenance: integrating RUL prediction with multi-agent deep reinforcement learning[J]. Reliability Engineering & System Safety, 2025, 264: 1113948
+
+=== PDF PAGE 9 ===
+总体系统设计•系统由三层组成：
+健康估计层
+维护决策层
+调度决策层
+GRU根据退化序列输出归一化RUL/健康状态
+根据健康状态和生产压力选择 DN、IM、CM
+根据作业、机器、交期和健康状态选择派工规则
+调度动作
+健康状态维护动作
+•闭环关系：
+9
+
+=== PDF PAGE 10 ===
+RUL预测方法压差退化序列Differential_pressure
+最近30点窗口长度 RUL_WINDOW=30
+归一化 RUL机器健康状态0 失效1 健康
+维护决策DN / IM / CM调度决策选择派工规则
+训练样本：Test_Data_CSV.csv，Data_No=18，按 Time 升序划分80% Train20% Val早期 后期
+GRU读取一段历史窗口提取退化趋势弱化单点噪声
+10
+
+=== PDF PAGE 11 ===
+维护方法设计•维护动作空间：𝒜!={0,1,2}={DN,IM,CM} •其中：
+DN:Do Nothing,不进行维护；IM:Imperfect Maintenance,非完全维护；CM:Corrective Maintenance,恢复性维护。三种维护算法Flat DDQNHier DDQNPOMCP11
+
+=== PDF PAGE 12 ===
+三种维护算法Flat DDQNHier DDQNPOMCP单层结构，直接选择DN/IM/CM先判断是否维护，再判断IM或CM用粒子信念和蒙特卡洛树搜索进行在线规划
+GA TE
+TYPE
+DNIMCM
+每当进行决策时
+当前信念状态 "!
+选择最大Q值动作作为维护动作输出
+根节点候选动作集
+DN
+观测/状态转移
+累计回报估计 #"!,{DN,IM,CM}
+IM
+CM
+12
+
+=== PDF PAGE 13 ===
+调度方法设计•THDQN：高层选择调度目标，低层在目标条件下选择规则。
+•PPO：作为扁平策略优化对照，直接学习状态到 6 条规则概率分布。
+!!"∈ℝ"# 
+高层DQN
+%&!" ∈ℝ"" 
+'$∈{0,1,2,3} 
+%&!",onehot'$∈ℝ"#
+ /%={0,1,2,3,4,5} 
+低层DQN
+输入
+裁切后
+输出
+输入
+输出
+13
+
+=== PDF PAGE 14 ===
+六条调度规则
+效率优先 交期/风险优先
+SRPT + SPT Machine优先处理短任务使用加工时间最短的机器
+LRPT + Earliest Idle优先处理长任务使用最早可用的机器
+EDD + Earliest Idle优先处理最早需要交付的任务使用最早可用的机器
+EDD + SPT Machine优先处理最早需要交付的任务使用加工时间最短的机器
+Minimum Slack + Earliest Idle优先处理最临近交期边界任务使用最早可用的机器
+最大加权拖期风险+ SPT优先抢救最可能造成高拖期损失的使用加工时间最短的机器
+SPT Machine: Shortest Processing Time Machine14
+
+=== PDF PAGE 15 ===
+实验设计动态场景设计：•λ表示作业到达间隔均值，λ越小，作业到达越密集，负载越高•λ = 20、40、60•DDT表示交期紧度，DDT越小，交期越紧•DDT = 1.0、1.5、2.0配对实验设计：•调度器：THDQN、PPO。•维护器：flat_ddqn、hier_ddqn、pomcp
+15
+
+=== PDF PAGE 16 ===
+实验结果排名组合总成本拖期成本维护成本逾期工序数逾期比例1THDQN + hier_ddqn113.17079.17034.00070.02482PPO + hier_ddqn167.094131.09436.000110.03903PPO + pomcp172.997114.99758.000100.03554PPO + flat_ddqn206.609192.60914.000150.05325THDQN + pomcp214.209167.20947.000150.05326THDQN + flat_ddqn439.669422.66917.000190.0674
+16
+
+=== PDF PAGE 17 ===
+实验结果
+17
+
+=== PDF PAGE 18 ===
+实验结果
+18
+
+=== PDF PAGE 19 ===
+实验结果
+19

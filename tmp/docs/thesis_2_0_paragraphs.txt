@@ -1,0 +1,2169 @@
+[0000] block=1 type=p style= sup=False
+本科毕业设计（论文）
+
+[0001] block=5 type=p style= sup=False
+面向设备健康状态的智能作业车间调度系统设计与实现
+
+[0002] block=11 type=table style= sup=False
+学院 / 自动化科学与工程学院 | 专业 / 自动化 | 学生姓名 / 傅懋杰
+
+[0003] block=14 type=p style= sup=False
+华南理工大学
+
+[0004] block=15 type=p style= sup=False
+学位论文原创性声明
+
+[0005] block=16 type=p style= sup=False
+本人郑重声明：所呈交的论文是本人在导师的指导下独立进行研究所取得的研究成果。除了文中特别加以标注引用的内容外，本论文不包含任何其他个人或集体已经发表或撰写的成果作品。对本文的研究做出重要贡献的个人和集体，均已在文中以明确方式标明。本人完全意识到本声明的法律后果由本人承担。
+
+[0006] block=18 type=p style= sup=False
+作者签名： 日期： 年 月 日
+
+[0007] block=20 type=p style= sup=False
+学位论文版权使用授权书
+
+[0008] block=21 type=p style= sup=False
+本学位论文作者完全了解学校有关保留、使用学位论文的规定，即：学校有权保存并向国家有关部门或机构送交论文的复印件和电子版，允许学位论文被查阅；学校可以公布学位论文的全部或部分内容，可以允许采用影印、缩印或其它复制手段保存、汇编学位论文。本人电子文档的内容和纸质论文的内容相一致。
+
+[0009] block=22 type=p style= sup=False
+作者签名： 日期： 年 月 日
+
+[0010] block=23 type=p style= sup=False
+指导教师签名： 日期： 年 月 日
+
+[0011] block=26 type=p style=1a sup=False
+摘 要
+
+[0012] block=27 type=p style= sup=False
+随着智能制造技术的发展，以及预测性维护等概念的提出，生产系统中的设备健康状态已不再是外部约束，而是会影响加工能力、维护时机与调度效果的关键因素。为了优化动态作业到达、柔性机器分配和设备退化并存的生产场景，本文研究重点是结合了剩余使用寿命预测的生产维护协同调度问题，以此降低设备故障风险，并提升车间运行效率。
+
+[0013] block=28 type=p style= sup=False
+本文将RUL预测放在调度—维护闭环中使用，而不是把它作为独立预测任务。设备退化序列首先由GRU转换为归一化RUL估计，随后该健康信号同时进入维护智能体和调度智能体的状态。维护侧比较单层DDQN、分层DDQN和POMCP三类决策路径，分别对应直接动作价值学习、维护必要性与维护类型分离、以及基于粒子信念的在线规划；调度侧比较THDQN和PPO，前者先选择调度目标再选择规则，后者直接学习六类调度规则的策略分布。第五章在统一随机种子的仿真设置下构造六组调度—维护组合，围绕总成本、拖期成本、维护成本和健康下界分析策略匹配关系。
+
+[0014] block=29 type=p style= sup=False
+从实验结果看，THDQN + hier_ddqn在该配对场景中表现较好。这说明RUL信号进入状态后，系统表现不只取决于某个单独算法，而更依赖维护结构和调度结构之间是否匹配。该结论也与第五章中对六组组合的成本、健康余量和动作分布分析相对应。
+
+[0015] block=31 type=p style= sup=False
+关键词：柔性作业车间调度；剩余使用寿命预测；预测性维护；强化学习；层级决策
+
+[0016] block=33 type=p style=1a sup=False
+Abstract
+
+[0017] block=34 type=p style= sup=False
+With the development of intelligent manufacturing and predictive maintenance, machine health is no longer treated as a constraint outside the production system. It affects processing capacity, maintenance timing, and scheduling results. This thesis studies a production-maintenance scheduling problem with remaining useful life prediction under dynamic job arrivals, flexible machine assignment, and machine degradation, aiming to reduce failure risk and improve shop-floor efficiency.
+
+[0018] block=35 type=p style= sup=False
+RUL prediction is used as part of the scheduling-maintenance loop rather than as a standalone forecasting task. A GRU model converts degradation sequences into normalized RUL estimates, which are then included in the state inputs of both the maintenance agent and the scheduling agent. On the maintenance side, flat DDQN, hierarchical DDQN, and POMCP are compared. These methods represent direct action-value learning, separated decisions on maintenance necessity and maintenance type, and online planning with particle beliefs. On the scheduling side, THDQN and PPO are compared: THDQN selects a scheduling objective before choosing a dispatching rule, while PPO learns a policy distribution over six dispatching rules. Chapter 5 evaluates six scheduler-maintainer combinations under the same random seed, using total cost, tardiness cost, maintenance cost, and the lower health bound as the main criteria.
+
+[0019] block=36 type=p style= sup=False
+The results show that THDQN + hier_ddqn performs better in this paired setting. After RUL is added to the state, system performance is shaped not only by each algorithm itself, but also by the match between the maintenance structure and the scheduling structure. This finding is consistent with the cost, health-margin, and action-distribution analysis of the six combinations in Chapter 5.
+
+[0020] block=38 type=p style= sup=False
+Keywords: Flexible Job-shop Scheduling Problem; Remaining Useful Life Prediction; Predictive Maintenance; Reinforcement Learning; Hierarchical Decision-Making
+
+[0021] block=40 type=p style=1a sup=False
+目 录
+
+[0022] block=41 type=p style=1c sup=False
+TOC \o "1-3" \h \z \u 摘 要 PAGEREF _Toc229427538 \h I
+
+[0023] block=42 type=p style=1c sup=False
+Abstract PAGEREF _Toc229427539 \h II
+
+[0024] block=43 type=p style=1c sup=False
+目 录 PAGEREF _Toc229427540 \h III
+
+[0025] block=44 type=p style=1c sup=False
+第一章 绪论 PAGEREF _Toc229427541 \h 1
+
+[0026] block=45 type=p style=22 sup=False
+1.1 引言 PAGEREF _Toc229427542 \h 1
+
+[0027] block=46 type=p style=22 sup=False
+1.2 研究背景 PAGEREF _Toc229427543 \h 2
+
+[0028] block=47 type=p style=22 sup=False
+1.3 研究现状 PAGEREF _Toc229427544 \h 4
+
+[0029] block=48 type=p style=22 sup=False
+1.4 论文结构 PAGEREF _Toc229427545 \h 7
+
+[0030] block=49 type=p style=22 sup=False
+1.5 本章小结 PAGEREF _Toc229427546 \h 7
+
+[0031] block=50 type=p style=1c sup=False
+第二章 基础理论与背景知识 PAGEREF _Toc229427547 \h 8
+
+[0032] block=51 type=p style=22 sup=False
+2.1 马尔可夫决策过程 PAGEREF _Toc229427548 \h 8
+
+[0033] block=52 type=p style=32 sup=False
+2.1.1 基本定义 PAGEREF _Toc229427549 \h 8
+
+[0034] block=53 type=p style=32 sup=False
+2.1.2 马尔可夫性质 PAGEREF _Toc229427550 \h 9
+
+[0035] block=54 type=p style=32 sup=False
+2.1.3 策略和价值函数 PAGEREF _Toc229427551 \h 9
+
+[0036] block=55 type=p style=22 sup=False
+2.2 强化学习的概念 PAGEREF _Toc229427552 \h 10
+
+[0037] block=56 type=p style=32 sup=False
+2.2.1 探索与利用 PAGEREF _Toc229427553 \h 10
+
+[0038] block=57 type=p style=32 sup=False
+2.2.2 回合型与连续型任务 PAGEREF _Toc229427554 \h 10
+
+[0039] block=58 type=p style=32 sup=False
+2.2.3 策略评估与策略改进 PAGEREF _Toc229427555 \h 10
+
+[0040] block=59 type=p style=22 sup=False
+2.3 基于价值的方法 PAGEREF _Toc229427556 \h 11
+
+[0041] block=60 type=p style=32 sup=False
+2.3.1 Q-Learning PAGEREF _Toc229427557 \h 11
+
+[0042] block=61 type=p style=32 sup=False
+2.3.2 深度Q网络（Deep Q-Network, DQN） PAGEREF _Toc229427558 \h 12
+
+[0043] block=62 type=p style=32 sup=False
+2.3.3 双重深度Q网络（Double Deep Q-Network, Double DQN） PAGEREF _Toc229427559 \h 12
+
+[0044] block=63 type=p style=22 sup=False
+2.4 基于策略梯度的方法 PAGEREF _Toc229427560 \h 13
+
+[0045] block=64 type=p style=32 sup=False
+2.4.1 策略梯度方法 PAGEREF _Toc229427561 \h 13
+
+[0046] block=65 type=p style=32 sup=False
+2.4.2 近端策略优化（Proximal Policy Optimization, PPO） PAGEREF _Toc229427562 \h 13
+
+[0047] block=66 type=p style=22 sup=False
+2.5 不完全信息下的决策 PAGEREF _Toc229427563 \h 14
+
+[0048] block=67 type=p style=32 sup=False
+2.5.1 部分可观测马尔可夫决策过程（POMDP） PAGEREF _Toc229427564 \h 14
+
+[0049] block=68 type=p style=32 sup=False
+2.5.2 部分可观测蒙特卡洛规划（POMCP） PAGEREF _Toc229427565 \h 15
+
+[0050] block=69 type=p style=22 sup=False
+2.6 序列建模方法 PAGEREF _Toc229427566 \h 15
+
+[0051] block=70 type=p style=32 sup=False
+2.6.1 时间序列建模问题 PAGEREF _Toc229427567 \h 15
+
+[0052] block=71 type=p style=32 sup=False
+2.6.2 循环神经网络（RNN） PAGEREF _Toc229427568 \h 16
+
+[0053] block=72 type=p style=32 sup=False
+2.6.3 长期依赖问题 PAGEREF _Toc229427569 \h 16
+
+[0054] block=73 type=p style=32 sup=False
+2.6.4 长短期记忆网络（LSTM） PAGEREF _Toc229427570 \h 17
+
+[0055] block=74 type=p style=32 sup=False
+2.6.5 门控循环单元（GRU） PAGEREF _Toc229427571 \h 17
+
+[0056] block=75 type=p style=32 sup=False
+2.6.6 本章小结 PAGEREF _Toc229427572 \h 18
+
+[0057] block=76 type=p style=1c sup=False
+第三章 设备退化感知车间建模 PAGEREF _Toc229427573 \h 19
+
+[0058] block=77 type=p style=22 sup=False
+3.1 问题描述 PAGEREF _Toc229427574 \h 19
+
+[0059] block=78 type=p style=22 sup=False
+3.2 机器性能退化过程与RUL预测的建模 PAGEREF _Toc229427575 \h 19
+
+[0060] block=79 type=p style=32 sup=False
+3.2.1 等效运行年龄的建模 PAGEREF _Toc229427576 \h 20
+
+[0061] block=80 type=p style=32 sup=False
+3.2.2 生产压力对退化的影响 PAGEREF _Toc229427577 \h 20
+
+[0062] block=81 type=p style=32 sup=False
+3.2.3 RUL与健康函数的建模 PAGEREF _Toc229427578 \h 20
+
+[0063] block=82 type=p style=22 sup=False
+3.3 退化数据来源与特征 PAGEREF _Toc229427579 \h 21
+
+[0064] block=83 type=p style=32 sup=False
+3.3.1 退化数据来源 PAGEREF _Toc229427580 \h 21
+
+[0065] block=84 type=p style=32 sup=False
+3.3.2 原始数据结构 PAGEREF _Toc229427581 \h 21
+
+[0066] block=85 type=p style=32 sup=False
+3.3.3 数据集的退化与失效特征 PAGEREF _Toc229427582 \h 22
+
+[0067] block=86 type=p style=22 sup=False
+3.4 生产调度任务建模 PAGEREF _Toc229427583 \h 22
+
+[0068] block=87 type=p style=32 sup=False
+3.4.1 问题定义 PAGEREF _Toc229427584 \h 22
+
+[0069] block=88 type=p style=32 sup=False
+3.4.2 作业到达与交期的建模 PAGEREF _Toc229427585 \h 23
+
+[0070] block=89 type=p style=32 sup=False
+3.4.3 工序加工与机器分配的关系 PAGEREF _Toc229427586 \h 24
+
+[0071] block=90 type=p style=32 sup=False
+3.4.4 机器可用性约束 PAGEREF _Toc229427587 \h 25
+
+[0072] block=91 type=p style=32 sup=False
+3.4.5 事件驱动的调度时刻 PAGEREF _Toc229427588 \h 25
+
+[0073] block=92 type=p style=32 sup=False
+3.4.6 健康感知的机器可行性建模 PAGEREF _Toc229427589 \h 26
+
+[0074] block=93 type=p style=32 sup=False
+3.4.7 调度状态描述 PAGEREF _Toc229427590 \h 26
+
+[0075] block=94 type=p style=32 sup=False
+3.4.8 调度决策空间的形式化描述 PAGEREF _Toc229427591 \h 27
+
+[0076] block=95 type=p style=32 sup=False
+3.4.9 本章小结 PAGEREF _Toc229427592 \h 28
+
+[0077] block=96 type=p style=1c sup=False
+第四章 RUL驱动协同决策算法 PAGEREF _Toc229427593 \h 29
+
+[0078] block=97 type=p style=22 sup=False
+4.1 RUL预测算法的设计 PAGEREF _Toc229427594 \h 29
+
+[0079] block=98 type=p style=32 sup=False
+4.1.1 RUL预测任务分析 PAGEREF _Toc229427595 \h 29
+
+[0080] block=99 type=p style=32 sup=False
+4.1.2 问题定义 PAGEREF _Toc229427596 \h 29
+
+[0081] block=100 type=p style=32 sup=False
+4.1.3 GRU预测器的结构设计 PAGEREF _Toc229427597 \h 30
+
+[0082] block=101 type=p style=32 sup=False
+4.1.4 数据预处理与监督目标的设计 PAGEREF _Toc229427598 \h 31
+
+[0083] block=102 type=p style=32 sup=False
+4.1.5 在线推理与健康轨迹缓存 PAGEREF _Toc229427599 \h 32
+
+[0084] block=103 type=p style=22 sup=False
+4.2 维护智能体算法的设计 PAGEREF _Toc229427600 \h 32
+
+[0085] block=104 type=p style=32 sup=False
+4.2.1 维护决策任务分析 PAGEREF _Toc229427601 \h 32
+
+[0086] block=105 type=p style=32 sup=False
+4.2.2 维护决策问题定义 PAGEREF _Toc229427602 \h 33
+
+[0087] block=106 type=p style=32 sup=False
+4.2.3 维护奖励函数的设计 PAGEREF _Toc229427603 \h 34
+
+[0088] block=107 type=p style=32 sup=False
+4.2.4 分层DDQN维护智能体的设计 PAGEREF _Toc229427604 \h 34
+
+[0089] block=108 type=p style=32 sup=False
+4.2.5 单层DDQN维护智能体的设计 PAGEREF _Toc229427605 \h 37
+
+[0090] block=109 type=p style=32 sup=False
+4.2.6 POMCP维护规划器设计 PAGEREF _Toc229427606 \h 38
+
+[0091] block=110 type=p style=22 sup=False
+4.3 调度智能体算法的设计 PAGEREF _Toc229427607 \h 39
+
+[0092] block=111 type=p style=32 sup=False
+4.3.1 THDQN层级调度智能体 PAGEREF _Toc229427608 \h 41
+
+[0093] block=112 type=p style=32 sup=False
+4.3.2 PPO调度智能体 PAGEREF _Toc229427609 \h 42
+
+[0094] block=113 type=p style=32 sup=False
+4.3.3 本章小结 PAGEREF _Toc229427610 \h 43
+
+[0095] block=114 type=p style=1c sup=False
+第五章 调度维护配对实验分析 PAGEREF _Toc229427611 \h 44
+
+[0096] block=115 type=p style=22 sup=False
+5.1 实验目标与分析思路 PAGEREF _Toc229427612 \h 44
+
+[0097] block=116 type=p style=22 sup=False
+5.2 实验设置 PAGEREF _Toc229427613 \h 44
+
+[0098] block=117 type=p style=32 sup=False
+5.2.1 退化曲线与RUL信号 PAGEREF _Toc229427614 \h 44
+
+[0099] block=118 type=p style=32 sup=False
+5.2.2 车间环境与任务生成参数 PAGEREF _Toc229427615 \h 44
+
+[0100] block=119 type=p style=32 sup=False
+5.2.3 维护与规划参数 PAGEREF _Toc229427616 \h 45
+
+[0101] block=120 type=p style=32 sup=False
+5.2.4 强化学习与规划器参数 PAGEREF _Toc229427617 \h 46
+
+[0102] block=121 type=p style=22 sup=False
+5.3 调度维护配对设计 PAGEREF _Toc229427618 \h 47
+
+[0103] block=122 type=p style=32 sup=False
+5.3.1 PPO与单层DDQN组合 PAGEREF _Toc229427619 \h 47
+
+[0104] block=123 type=p style=32 sup=False
+5.3.2 PPO与分层DDQN组合 PAGEREF _Toc229427620 \h 48
+
+[0105] block=124 type=p style=32 sup=False
+5.3.3 PPO与POMCP组合 PAGEREF _Toc229427621 \h 50
+
+[0106] block=125 type=p style=32 sup=False
+5.3.4 THDQN与单层DDQN组合 PAGEREF _Toc229427622 \h 51
+
+[0107] block=126 type=p style=32 sup=False
+5.3.5 THDQN与分层DDQN组合 PAGEREF _Toc229427623 \h 53
+
+[0108] block=127 type=p style=32 sup=False
+5.3.6 THDQN与POMCP组合 PAGEREF _Toc229427624 \h 55
+
+[0109] block=128 type=p style=22 sup=False
+5.4 配对策略总体表现 PAGEREF _Toc229427625 \h 56
+
+[0110] block=129 type=p style=22 sup=False
+5.5 同调度器维护差异 PAGEREF _Toc229427626 \h 57
+
+[0111] block=130 type=p style=22 sup=False
+5.6 同维护器调度差异 PAGEREF _Toc229427627 \h 58
+
+[0112] block=131 type=p style=22 sup=False
+5.7 最优组合形成机制 PAGEREF _Toc229427628 \h 58
+
+[0113] block=132 type=p style=22 sup=False
+5.8 本章小结 PAGEREF _Toc229427629 \h 59
+
+[0114] block=133 type=p style=1c sup=False
+结论 PAGEREF _Toc229427630 \h 60
+
+[0115] block=134 type=p style=1c sup=False
+参考文献 PAGEREF _Toc229427631 \h 62
+
+[0116] block=135 type=p style=1c sup=False
+致谢 PAGEREF _Toc229427632 \h 67
+
+[0117] block=137 type=p style=1a sup=False
+绪论
+
+[0118] block=138 type=p style=20 sup=False
+引言
+
+[0119] block=139 type=p style= sup=True
+工业4.0相关研究强调利用信息物理系统、工业物联网和数据分析技术连接生产现场与决策模型，使制造系统能够在复杂环境中进行数据感知和资源调整 REF _Ref229425446 \r \h \* MERGEFORMAT [1]。放到本文问题中，最直接的变化是机器状态不再只是调度模型外部的可用性约束。若进一步考虑设备退化，机器是否适合承担当前工序，不只取决于空闲时间和加工时长，还取决于当前健康状态和剩余使用寿命。
+
+[0120] block=140 type=p style= sup=True
+柔性作业车间调度本身需要同时处理工序顺序和候选机器选择。当系统中存在动态作业到达、机器健康状态变化和维护活动插入时，调度器面对的不再是单纯的工序—机器匹配问题，而是加工效率、交付风险和设备健康之间的取舍。已有研究已将深度强化学习用于动态柔性作业车间调度、新作业插入、多目标调度和多智能体制造系统调度等问题 REF _Ref229425528 \r \h\#"[0" \* MERGEFORMAT [2- REF _Ref229425530 \r \h\#"0]" 5]；本文在这一基础上进一步关注RUL信号进入状态后，学习型调度策略能否与维护策略形成有效配合。
+
+[0121] block=141 type=p style= sup=True
+预测性维护通过对设备运行数据进行建模，估计设备的剩余使用寿命（Remaining Useful Life, RUL），并据此提前规划维护活动，从而降低突发故障给生产系统带来的停机风险。近年来，已有研究尝试将RUL预测结果与实时调度、维护决策和多智能体强化学习进行结合，用于生产与维护的协同优化 REF _Ref229425628 \r \h \* MERGEFORMAT [6]。同时预测性维护在工业4.0中的跨行业应用也表明，维护决策正在由固定周期或故障后维修逐步转向基于状态和寿命预测的主动维护 REF _Ref229425650 \r \h \* MERGEFORMAT [7]。所以如何在同一决策框架下协调设备退化、维护选择与生产调度，是本文主要的研究方向。
+
+[0122] block=142 type=p style= sup=True
+本文的研究重点从设备RUL预测、维护决策与动态柔性作业车间调度之间的耦合关系展开。在方法设计上，本文以强化学习方法作为理论和决策建模的基础 REF _Ref229425669 \r \h \* MERGEFORMAT [8]，使用深度Q网络、近端策略优化和蒙特卡洛规划等方法在序贯决策中的思想 REF _Ref229425681 \r \h\#"[0" \* MERGEFORMAT [9- REF _Ref229425683 \r \h\#"0]" \* MERGEFORMAT 11]。在数据建模上，本文采用了公开工业退化数据构造RUL预测任务，并结合实际的实验数据集完成模型的训练与验证 REF _Ref229425692 \r \h\#"[0" \* MERGEFORMAT [12- REF _Ref229425694 \r \h\#"0]" \* MERGEFORMAT 13]。第一章将从研究背景、国内外研究现状与论文结构三个方面展开论述，为后续问题建模、算法设计和实验分析奠定基础。
+
+[0123] block=143 type=p style=20 sup=False
+研究背景
+
+[0124] block=144 type=p style= sup=True
+工业4.0相关研究把现代制造系统描述为由设备、作业、物流和信息系统共同构成的集成环境，其中横向集成、纵向集成和端到端工程集成强调的是生产数据在不同层级之间的流动 REF _Ref229425871 \r \h \* MERGEFORMAT [14]。信息物理系统进一步把物理设备状态、传感器数据和决策模型连接起来，使生产系统能够根据实时状态作出调整 REF _Ref229425879 \r \h \* MERGEFORMAT [15]。对本文而言，这一背景对应一个具体问题：设备健康数据如何从现场观测转化为调度器和维护器能够使用的状态变量。预测性制造研究强调在故障发生前利用健康评估、故障诊断和性能预测调整生产计划与维护策略 REF _Ref229425885 \r \h \* MERGEFORMAT [16]，本文后续采用的RUL输入正是这一思路在调度—维护耦合问题中的具体体现。
+
+[0125] block=145 type=p style= sup=True
+维护方式的差异也会直接影响调度模型。事后维修虽然决策简单，但故障时间不可控，容易打断既有排程；定期预防性维护能够降低部分风险，却可能因为周期设定依赖经验而产生过度维护或维护不足。随着传感器、工业数据库和机器学习方法的发展，基于状态的维护和预测性维护成为重要方向 REF _Ref229425894 \r \h \* MERGEFORMAT [17]。前者利用设备运行特征判断当前健康状态，后者进一步估计退化趋势和RUL，并为维护窗口、备件准备和生产排程提供依据 REF _Ref229425909 \r \h \* MERGEFORMAT [18]。在本文中，维护活动不是调度完成后的外部补丁，而是会占用机器时间并改变后续机器可用性的决策动作。
+
+[0126] block=146 type=p style= sup=True
+预测性维护通常需要经历数据采集、特征构造、健康状态识别、RUL预测和维护策略优化等环节 REF _Ref229425914 \r \h\#"[0" \* MERGEFORMAT [19- REF _Ref229425916 \r \h\#"0]" \* MERGEFORMAT 20]。在本文的调度场景中，RUL预测的作用不止是估计设备何时失效。它会影响两个后续判断：维护智能体需要据此决定当前机器是否执行 {DN / IM / CM}，调度智能体也需要据此判断某台机器是否适合承担即将派发的工序。若RUL估计偏高，系统可能把长工序分配给高风险机器；若估计偏低，维护动作又可能过早占用机器时间。因而，RUL在本文中被作为生产—维护耦合的状态变量，而不是单独用预测误差评价的模型输出。
+
+[0127] block=147 type=p style= sup=True
+RUL建模方法大体可以分为基于物理机制的方法、统计随机过程方法和数据驱动方法。基于物理机制的方法依赖设备退化机理和失效模型，具有较强的可解释性，但在复杂装置和多工况环境下建模成本较高。统计方法通常通过随机过程或概率模型描述退化过程中的不确定性，适合分析寿命分布和置信区间。数据驱动方法则从历史运行数据中学习退化特征与RUL之间的非线性映射关系，更适用于传感器数据较为丰富、但机理模型难以精确构建的工业场景 REF _Ref229425994 \r \h\#"[0" \* MERGEFORMAT [21- REF _Ref229425996 \r \h\#"0]" \* MERGEFORMAT 22]。机械健康预测研究还指出，RUL预测能力的提升主要依赖信息整合、时序特征提取以及对复杂工况的适应能力 REF _Ref229426033 \r \h \* MERGEFORMAT [23]。
+
+[0128] block=148 type=p style= sup=True
+深度学习方法能够从退化序列中提取时间相关特征，因此常被用于RUL预测。长短期记忆网络（Long Short-Term Memory, LSTM）通过门控结构缓解长序列训练中的梯度消失问题 REF _Ref229426044 \r \h \* MERGEFORMAT [24]，门控循环单元（Gated Recurrent Units, GRU）则在保留序列记忆能力的同时简化了计算结构 REF _Ref229426051 \r \h \* MERGEFORMAT [25]，相关实验也显示GRU在若干序列建模任务中具有较好的预测潜力 REF _Ref229426057 \r \h \* MERGEFORMAT [26]。RUL预测领域已有循环神经网络、LSTM、卷积神经网络和制造系统深度序列模型等研究，用于从传感序列中提取退化模式 REF _Ref229426065 \r \h\#"[0" \* MERGEFORMAT [27- REF _Ref229426066 \r \h\#"0]" \* MERGEFORMAT 30]。本文选择GRU并不是为了单独比较多种预测模型，而是为了在仿真过程中持续提供健康估计；具体实现中，RUL预测器使用长度为RUL_WINDOW = 30的Differential_pressure（请见 REF _Ref229426083 \r \h 3.3）序列窗口输出归一化RUL，使该健康信号能够进入维护和调度状态。
+
+[0129] block=149 type=p style= sup=True
+生产调度研究通常关注有限资源条件下的工序排序和资源分配，传统模型多基于确定性作业、固定加工时间和静态机器可用性假设构建目标函数 REF _Ref229426098 \r \h \* MERGEFORMAT [31]。调度规则由于计算快、解释性强，在实际生产中仍然常用，例如最短加工时间、最早交期、剩余松弛时间和关键比率等准则 REF _Ref229426105 \r \h \* MERGEFORMAT [32]。但这些规则单独使用时通常依赖局部信息，难以同时处理动态作业到达、机器柔性、健康约束和维护插入带来的长期影响 REF _Ref229426111 \r \h \* MERGEFORMAT [33]。本文因此将规则集合放入近端策略优化（Proximal Policy Optimization, PPO）和双层级深度Q网络（Two-Hierarchy Deep Q-Network, THDQN）的动作空间，使调度器能够在健康压力、交期压力和机器可用性变化下学习规则切换。
+
+[0130] block=150 type=p style= sup=True
+柔性作业车间调度问题（Flexible Job-Shop Scheduling Problem, FJSP）放宽了传统作业车间中工序与机器之间的单一映射约束，允许同一道工序在多个候选机器上加工。早期研究主要围绕多用途机器调度展开，并采用禁忌搜索、局部搜索和多目标优化等启发式算法对该问题进行建模与求解 REF _Ref229426120 \r \h\#"[0" \* MERGEFORMAT [34- REF _Ref229426121 \r \h\#"0]" \* MERGEFORMAT 37]。后续研究进一步引入遗传算法、变邻域下降和混合启发式方法，以提高求解效率和解质量 REF _Ref229426127 \r \h \* MERGEFORMAT [38]。作为典型的NP-hard问题，柔性作业车间调度的主要难点在于组合空间庞大、机器选择与工序排序高度耦合，以及约束条件较为复杂 REF _Ref229426135 \r \h\#"[0" \* MERGEFORMAT [39- REF _Ref229426138 \r \h\#"0]" \* MERGEFORMAT 40]。在实际动态环境中，作业可能陆续到达，机器状态也可能实时变化，静态优化方案容易随环境变化而失效，因此系统需要具备持续重调度能力 REF _Ref229426147 \r \h\#"[0" \* MERGEFORMAT [41- REF _Ref229426148 \r \h\#"0]" \* MERGEFORMAT 42]。
+
+[0131] block=151 type=p style= sup=True
+生产调度与维护计划的集成优化是本文关注的重要研究脉络。传统方法往往将维护视为外部硬约束，并采用分阶段优化策略，例如先确定维护计划再进行生产排程，或在生产计划完成后再插入维护活动。这种处理方式虽然简化了问题，但容易忽略维护活动对交期、机器负载和后续工序可行性的影响。已有研究从预防性维护与生产调度联合优化、维护窗口选择、机器组维护和生产计划协同等角度进行了探索 REF _Ref229426161 \r \h\#"[0" \* MERGEFORMAT [43- REF _Ref229426163 \r \h\#"0]" \* MERGEFORMAT 46]。这些研究表明，维护活动会占用机器时间，并改变后续机器可用性，因此有必要将维护决策与生产调度放入统一建模框架中进行分析。
+
+[0132] block=152 type=p style= sup=False
+本文的仿真环境中，作业会随时间进入系统，每个作业包含多道有先后约束的工序，且同一工序可能对应多个候选机器。调度器在决策时需要同时看到交期压力、候选机器、加工时间和当前负载，而不是只选择最短加工时间的机器。进一步加入RUL后，机器健康状态会改变这一判断：低RUL机器即使处于空闲状态，也可能无法安全完成长工序；若系统过度回避低RUL机器，又会造成产能闲置和维护成本增加。本文因此把调度动作限定为规则选择，并让规则选择过程读取健康相关状态，使调度器在交付压力和设备风险之间形成可分析的取舍。
+
+[0133] block=153 type=p style= sup=False
+综上，本文研究的问题同时涉及设备退化感知、RUL预测、维护选择和柔性调度。该问题的复杂性不仅体现在算法设计本身，也体现在不同子系统之间的相互影响：RUL预测会影响维护智能体对维护时机和维护类型的判断，维护决策会改变机器可用性和健康状态，调度智能体则需要结合交期、加工时间、机器负载和健康风险进行决策。因此，在智能制造环境下，生产系统的调度问题不能只考虑工序与机器之间的匹配关系，还需要同时纳入设备健康、维护活动和动态交付压力等因素。
+
+[0134] block=154 type=p style=20 sup=False
+研究现状
+
+[0135] block=155 type=p style= sup=True
+现有研究可以从RUL预测、维护决策、柔性作业车间调度以及生产维护协同四个方面进行归纳。首先在RUL预测方面，研究重点已经由依赖人工特征和浅层回归模型逐渐转向深度时序模型。循环神经网络能够自然处理时间序列数据，适合描述设备退化过程中前后观测之间的相关性。LSTM和GRU通过门控机制保留历史信息，能够缓解普通循环神经网络难以学习长期依赖的问题 REF _Ref229426044 \r \h\#"[0" \* MERGEFORMAT [24- REF _Ref229426057 \r \h\#"0]" \* MERGEFORMAT 26]。在工业退化数据中，传感器特征往往具有噪声、多维、非线性和工况差异，深度模型可以通过端到端训练学习隐含退化表示，因此在RUL预测任务中被广泛采用 REF _Ref229426065 \r \h\#"[0" \* MERGEFORMAT [27- REF _Ref229426066 \r \h\#"0]" \* MERGEFORMAT 30]。
+
+[0136] block=156 type=p style= sup=True
+RUL预测精度提高后，系统性能并不会自动改善。维护器还需要结合队列状态、机器负载、交期压力和维护成本判断当前是否适合停机维护。比如低RUL机器在没有关键工序等待时可以优先维护；若它仍能完成短工序，而当前交期压力较高，延后维护反而可能降低拖期风险。因此，本文把RUL作为维护和调度状态的一部分，而不是单独优化的预测目标。这一处理仍属于预测性维护研究中利用健康评估支持运维决策的思路 REF _Ref229425909 \r \h\#"[0" \* MERGEFORMAT [18- REF _Ref229425916 \r \h\#"0]" \* MERGEFORMAT 20]，但更强调健康信号进入后续动作选择后的影响。
+
+[0137] block=157 type=p style= sup=True
+传统调度规则仍然是本文动作设计的基础。最短加工时间规则偏向快速释放机器，最早交期规则偏向控制交付风险，松弛时间和关键比率规则则利用作业紧迫程度辅助排序 REF _Ref229426105 \r \h\#"[0" \* MERGEFORMAT [32- REF _Ref229426111 \r \h\#"0]" \* MERGEFORMAT 33]。问题在于，这些规则单独使用时通常只看当前局部状态。当维护动作改变机器后续可用时间，或低RUL机器继续加工会带来故障风险时，当前最优的规则选择未必对应后续较低的总成本。因此，本文没有直接抛弃规则，而是把规则作为调度智能体的离散动作，让PPO和THDQN在不同系统状态下学习何时切换规则。
+
+[0138] block=158 type=p style= sup=True
+禁忌搜索、遗传算法、局部搜索和变邻域下降等元启发式方法适合在给定问题实例上搜索高质量解，并已在静态或准静态柔性作业车间问题中得到应用 REF _Ref229426705 \r \h\#"[0" \* MERGEFORMAT [35, REF _Ref229426706 \r \h\#"0" \* MERGEFORMAT 36, REF _Ref229426127 \r \h\#"0]" \* MERGEFORMAT 38]。但本文环境中的决策点由事件触发：新作业到达、机器完成工序、维护窗口插入或健康状态变化，都可能改变当前可行动作集合。若每次事件发生后都重新执行全局优化，计算负担会直接影响在线响应。因此，本文更关注可在决策时刻快速给出动作的学习和规划方法，并在后续实验中比较flat_ddqn、hier_ddqn、POMCP、PPO和THDQN在同一事件驱动环境下的表现。
+
+[0139] block=159 type=p style= sup=True
+时间抽象与选项框架的研究说明，复杂序贯决策可以拆分为不同层级的子策略或宏动作，从而减轻单一决策器同时处理全部状态和动作的负担 REF _Ref229426720 \r \h \* MERGEFORMAT [47]。本文中的分层设计对应两个具体模块。维护端的hier_ddqn先判断是否需要维护，再在进入维护分支后选择IM或CM，避免把维护介入和维护类型混在同一个动作价值判断中。调度端的THDQN则先选择高层目标，再在低层选择调度规则，使调度器可以在拖期、维护成本和折中目标之间切换。这样的分层并不是单纯增加网络结构，而是对应生产现场中两类不同判断：先判断当前更需要保护健康、控制拖期还是平衡成本，再选择具体维护或调度动作。
+
+[0140] block=160 type=p style= sup=True
+强化学习为动态调度提供了以状态、动作和奖励为基本要素的序贯决策建模框架。从Q-Learning对有限马尔可夫决策过程的求解 REF _Ref229426729 \r \h \* MERGEFORMAT [48]，到深度Q网络利用神经网络处理高维状态 REF _Ref229425681 \r \h \* MERGEFORMAT [9]，再到Double DQN通过降低价值估计偏差提升训练稳定性 REF _Ref229426749 \r \h \* MERGEFORMAT [49]，相关算法的发展扩展了强化学习在复杂决策问题中的适用范围。此外，针对较大动作空间，PPO通过限制新旧策略更新幅度，提高了策略梯度训练的稳定性[10]。这些方法为本文维护智能体和调度智能体的设计提供了理论基础。
+
+[0141] block=161 type=p style= sup=True
+针对部分可观测或不确定性较强的决策环境，蒙特卡洛规划方法可以通过采样与模拟评估候选动作在长时程下的期望回报。部分可观测蒙特卡洛规划（Partially Observable Monte Carlo Planning, POMCP）将蒙特卡洛树搜索与粒子信念表示相结合，实现了在大规模部分可观测马尔可夫决策过程（Partially Observable Markov Decision Process, POMDP）中的在线规划 REF _Ref229425683 \r \h \* MERGEFORMAT [11]。在本文调度场景中，未来作业到达、维护效果和机器状态变化都会引入不确定性，因此POMCP类方法可作为基于模拟搜索的对比方法，用于分析学习型策略与在线规划策略之间的差异。
+
+[0142] block=162 type=p style= sup=False
+从已有研究局限看，当前工作仍存在三个不足。第一，部分调度研究默认机器始终可用，未显式考虑设备健康退化和维护占机对调度可行性的影响。第二，部分预测性维护研究只关注RUL预测误差，缺少与生产交期、机器负载和作业权重等调度指标的联动分析。第三，生产维护联合优化研究中常见的静态模型难以直接适用于动态作业到达和事件驱动决策环境。因此，本文需要在问题建模中同时刻画工序顺序约束、机器候选约束、设备健康约束和维护占用约束，并在算法设计中分别构造RUL预测模块、维护智能体和调度智能体。
+
+[0143] block=163 type=p style= sup=False
+本文与单独RUL预测或单独调度研究的差别在于，RUL输出会同时进入两个决策模块。维护动作执行后，机器健康状态和可用时间会被更新，调度器随后面对的候选机器集合也会改变；调度动作又会改变机器负荷，从而影响后续退化速度。维护器需要在维护过早造成成本和产能损失、维护过晚增加故障风险之间取舍；调度器也不能只追求短期加工时间最小，因为机器健康状态会影响后续可用性和承载能力。
+
+[0144] block=164 type=p style= sup=False
+基于这一链条，本文在实验中同时设置价值函数学习、策略优化和在线规划路径。DQN类方法用于观察离散动作价值学习的效果，PPO用于观察扁平策略分布在六类规则上的选择，POMCP则用于对比基于模拟搜索的维护规划。实验关注点不是给算法简单排序，而是看不同决策机制与调度器、维护器结构组合后会形成怎样的系统行为。
+
+[0145] block=165 type=p style= sup=False
+基于上述分析，本文研究的核心不是单独提高RUL预测精度，也不是求解一个标准FJSP实例，而是考察健康信号进入调度—维护系统后，两个决策模块如何相互影响。GRU预测器提供归一化RUL，维护智能体据此判断 {DN / IM / CM}，调度智能体则在作业交期、候选机器和健康风险之间选择规则。后续章节将围绕这一信息传递关系建立模型，并用六组调度—维护组合检验不同结构的适配效果。
+
+[0146] block=166 type=p style=20 sup=False
+论文结构
+
+[0147] block=167 type=p style= sup=False
+本文共分为五章。第一章说明研究背景、相关研究和本文关注的生产—维护耦合问题。第二章介绍马尔可夫决策过程、强化学习、POMDP/POMCP和序列建模等基础理论。第三章给出设备退化、RUL和动态柔性作业车间调度环境的形式化描述。第四章说明GRU预测器、维护智能体和调度智能体的算法设计。第五章基于六组调度—维护组合实验，分析不同策略结构在成本、拖期、维护行为和健康状态上的差异。最后，对全文工作、主要结论和后续可拓展方向进行总结。
+
+[0148] block=168 type=p style=20 sup=False
+本章小结
+
+[0149] block=169 type=p style= sup=False
+本章围绕设备健康状态进入柔性作业车间调度后的问题变化展开说明。与传统FJSP主要关注工序排序和机器选择不同，本文进一步考虑设备退化、RUL预测和维护活动对机器可用性的影响。通过梳理RUL预测、预测性维护、动态调度和强化学习相关研究，本章明确了本文的研究重点：将RUL作为维护和调度的共享状态信息，并在统一仿真环境下分析维护策略与调度策略之间的结构适配关系。
+
+[0150] block=170 type=p style=1a sup=False
+基础理论与背景知识
+
+[0151] block=171 type=p style=20 sup=False
+马尔可夫决策过程
+
+[0152] block=172 type=p style= sup=True
+与传统的监督式学习不同，强化学习的核心特点是试错搜寻和延迟奖励 REF _Ref229425669 \r \h \* MERGEFORMAT [8]。智能体必须通过不断尝试不同的动作，观察环境的反馈，以探寻合适的策略。在这个过程作出的决策，其影响可能要到很久之后才会显现，这要求算法具备长远的规划能力。马尔可夫决策过程提供了一套严谨的数学框架，将前述的两个基本概念转变成可解释性的数学模型。
+
+[0153] block=173 type=p style=30 sup=False
+基本定义
+
+[0154] block=174 type=p style= sup=False
+马尔可夫决策过程旨在为“通过交互学习以实现目标”这一问题提供一个简单明了的框架。其中的学习者与决策者被称为智能体（Agent）。与其交互的对象，即智能体之外的所有事物被称为环境（Environment）。两者持续不断地进行交互：智能体选择动作（actions），环境则对这些动作做出响应，并向智能体呈现新的状态（states）。此外，环境还会产生奖励（rewards），这是一种特殊的数值，智能体寻求通过其动作选择在一段时间内实现该数值的最大化。
+
+[0155] block=176 type=p style= sup=True
+图2-1 马尔可夫决策过程中的智能体和环境的交互过程 REF _Ref229425669 \r \h \* MERGEFORMAT [8]
+
+[0156] block=177 type=p style= sup=False
+在强化学习领域，S、A、R 分别对应状态、动作和奖励。状态 St∈S（S：状态空间）表示在时间步 t 时环境的一个描述，它包含了所有对未来决策有影响的信息。动作 At∈ASt（ASt：在状态St下可选的动作集合）表示智能体在时间步 t 根据当前状态 St 所采取的决策或控制输入。奖励 Rt+1∈R 是环境在时间步 t 执行动作 At 后，从状态 St 转移到 St+1 时反馈给智能体的标量信号。
+
+[0157] block=178 type=p style=30 sup=False
+马尔可夫性质
+
+[0158] block=179 type=p style= sup=False
+在马尔可夫决策过程中，由公式（2-1）给出的概率完全刻画了环境的动态。也就是说，St 和 Rt 的每一种可能取值的概率，只依赖于紧接着之前的状态和动作 St-1 和 At-1，并且在给定它们的情况下，与更早的状态和动作无关。状态必须包含过去智能体与环境交互中所有会影响未来的相关信息。如果满足这一点，那么这个状态就被称为具有马尔可夫性质。如果以象棋为例，我们无需知道具体某颗棋子的历史移动轨迹，只需要知道当前棋盘的具体状态，就可以决定下一步的可能结果。换句话说，当前状态已经包含了所有与未来相关的信息。在此假设下，环境的动态可以建模为一个马尔可夫决策过程，其中状态和动作决定了下一时刻状态和奖励的概率分布。
+
+[0159] block=180 type=table style= sup=False
+ps's,a≐Pr{St=s'∣St-1=s, At-1=a}=r∈Rps',rs,a / 
+
+[0160] block=181 type=p style=30 sup=False
+策略和价值函数
+
+[0161] block=182 type=p style= sup=False
+价值函数是相对于特定的行动方式来定义的，这些行动方式被称为策略。从形式上来说，策略是指一个从状态到选择每个可能动作的概率的映射。如果智能体在时间步 t 遵循策略 π，那么当 St=s 时，πas 表示采取动作 At=a 的概率。
+
+[0162] block=183 type=p style= sup=False
+进而我们分别可以将状态 s 在策略 π 下的价值函数记为 vπs，指的是从状态 s 出发并随后都遵循策略 π 时的期望回报。对于马尔可夫决策过程，可以将 vπ 定义为公式（2-2）：
+
+[0163] block=184 type=table style= sup=False
+vπs ≐ Eπ Gt St=s=Eπk=0∞γkRt+k+1  St=s, ∀s∈S / 
+
+[0164] block=185 type=p style= sup=False
+其中，Eπ⋅ 表示在智能体遵循策略 π 时随机变量的期望值，且 t 可以是任意时间步。我们称函数 vπ 为策略 π 的状态价值函数。
+
+[0165] block=186 type=p style= sup=False
+类似的可以定义在策略 π 下，在状态 s 先采取动作 a 的价值记作 qπs,a，意味着从状态 s 出发，先采取动作 a，再遵循策略 π 时的期望回报，写作公式（2-3）：
+
+[0166] block=187 type=table style= sup=False
+qπs, a ≐ Eπ Gt St=s, At=a=Eπk=0∞γkRt+k+1  St=s,At=a / 
+
+[0167] block=188 type=p style= sup=False
+我们称函数 qπ 为策略 π 的动作价值函数。
+
+[0168] block=189 type=p style=20 sup=False
+强化学习的概念
+
+[0169] block=190 type=p style= sup=False
+正如图2-1所示，强化学习就是智能体不断与环境交互，在不断的探索与失败中学习到合适的策略，最终收敛到一个最优策略（π*）。
+
+[0170] block=191 type=p style=30 sup=False
+探索与利用
+
+[0171] block=192 type=p style= sup=False
+在强化学习中，探索和利用是两种基本的策略选择方式。探索是指尝试当前看起来并不是最优的动作，来获得更多关于环境的信息。而利用是根据已有的经验，选择当前预估拥有最高期望回报的动作。过度的探索会导致智能体的行为过于随机，而过度利用会导致智能体过早收敛到局部最优。
+
+[0172] block=193 type=p style= sup=False
+一种常用的平衡策略是ε-greedy方法，形式上可以表示为公式（2-4）:
+
+[0173] block=194 type=table style= sup=False
+πas=1-ϵ+ϵAs , ϵAs, if a=argmaxa'Qs,a'otherwise / 
+
+[0174] block=195 type=p style= sup=False
+其中，ϵ∈0,1 控制探索的程度。当 ϵ= 0 时，策略退化为完全贪婪（greedy），始终选择当前最优动作；随着 ϵ 增大，策略的随机性增强，探索程度提高。
+
+[0175] block=196 type=p style=30 sup=False
+回合型与连续型任务
+
+[0176] block=197 type=p style= sup=False
+在强化学习中，根据任务是否具有自然终止的结构，可以将问题划分为回合型和连续型两类。前者的任务具有明确的起点和终点，智能体与环境的交互过程被划分为一系列独立的“回合（episode）”。每个回合都会从初始状态开始，经过有限的状态转移后到达终止状态，随后重置环境开始新的回合。相比之下后者描述的是没有自然终止状态的连续型过程。在处理回合型与连续型问题的方法会有所不同，连续型的交互是无限延续的，因此通常会引入折扣因子（γ∈0,1），以回报为例：Gt=k=0∞γkRt+k+1。通过 γ 压缩早期的信息，使得无限时间范围内的回报保持有限，反映了智能体对即时奖励与长期收益之间的权衡。
+
+[0177] block=198 type=p style=30 sup=False
+策略评估与策略改进
+
+[0178] block=199 type=p style= sup=False
+策略评估的目标是在给定策略 π 的情况下，计算或估计该策略的价值函数，由此评估在各个状态下遵循该策略所能获得的期望回报。在此基础上，策略改进利用已估计的价值函数来构造一个更优的策略。这个过程可以被表达为：π's=argmaxaqπs,a，即优先选择当下最优的动作。
+
+[0179] block=200 type=p style= sup=False
+策略评估与策略改进的交替进行构成了经典的策略迭代方法：先评估当前的策略，再基于评估结果改进策略，在不断的重复过程中，逐渐收敛到最优策略。
+
+[0180] block=201 type=p style=20 sup=False
+基于价值的方法
+
+[0181] block=202 type=p style= sup=False
+前文提到了价值函数为评估长期回报提供了基础。然而，在大多数实际问题中，环境的 ps',rs,a 是未知的，因此无法直接求解出价值函数。为此，研究者提出了一类基于数据驱动的学习方法——基于价值的方法。核心思想是通过与环境交互的经验来估计最优动作价值函数 q*s,a，并根据此推导出最优策略。
+
+[0182] block=203 type=p style=30 sup=False
+Q-Learning
+
+[0183] block=204 type=p style= sup=False
+在实现方法上，Q-learning是基于时序差分（Temporal-difference, TD）的强化学习方法，其目标是直接学习最优动作价值函数 q*s,a，从而推导出最优策略。
+
+[0184] block=205 type=table style= sup=False
+q*s,a≐Er+γmaxa'q*s',a's,a / 
+
+[0185] block=206 type=p style= sup=False
+有别于蒙特卡洛方法依赖完整回合回报，TD方法可以直接通过当前的估值进行更新，利用已有的价值函数对未来回报进行近似，这一过程称为自举（bootstrapping）。
+
+[0186] block=207 type=p style= sup=False
+在TD方法的基础上，Q-Learning对上述期望值进行近似，并通过迭代更新逼近最优解，核心内容如公式（2-6）:
+
+[0187] block=208 type=table style= sup=False
+Qs,a←Qs,a+αr+γmaxa'Qs',a'-Qs,a / 
+
+[0188] block=209 type=p style= sup=False
+其中，α∈0,1 为学习率，括号中的项称为时序差分误差，用于衡量当前估计与目标值之间的偏差。
+
+[0189] block=210 type=p style= sup=False
+简单地说，Q-learning并不是学习在状态 s 之下具体应该要执行哪一个动作 a，而是学习在状态 s 之下执行动作 a 所得的分值，亦称Q值，并将其存在一个表格中。该表格记录了所有 s,a 的Q值。在进行策略选择时，可以使用如前文所提到的ε-greedy方法，即查找所有动作的Q值，并选择其中最大者（即argmaxaQs,a）。
+
+[0190] block=211 type=p style=30 sup=False
+深度Q网络（Deep Q-Network, DQN）
+
+[0191] block=212 type=p style= sup=False
+尽管Q-learning在理论上能够收敛到最优动作价值函数，但该方法使用表格记录Q值。在实际问题中，往往需要面对高维甚至连续的状态空间，表格方法将难以存储和泛化。因此，将函数逼近方法引入强化学习领域是十分必要的。深度Q网络利用深度神经网络对动作价值函数进行参数化表示，即用 Qs,a;w 近似 q*s,a，从而将Q-learning扩展到大规模状态空间中。
+
+[0192] block=213 type=p style= sup=False
+在DQN中，网络参数通过最小化公式（2-7）的损失函数进行更新：
+
+[0193] block=214 type=table style= sup=False
+Lw ≐ E  r + γ maxa'Qs', a'; w- - Qs,a; w 2 / 
+
+[0194] block=215 type=p style= sup=False
+其中，w- 表示目标网络（target network）的参数，用于生成稳定的学习目标。
+
+[0195] block=216 type=p style= sup=True
+与表格方法直接为每个状态—动作对存储一个值不同，函数逼近通过一组参数 w 在整个状态空间上进行建模，从而实现对未见状态的泛化能力。在这一框架下，学习问题被转化为参数优化问题，即通过最小化目标函数，使得估计的Q值逐步逼近真实的目标值。通常采用梯度下降等优化方法来更新参数，使模型输出逐渐接近Bellman方程所定义的目标 REF _Ref229425681 \r \h \* MERGEFORMAT [9]。
+
+[0196] block=217 type=p style=30 sup=False
+双重深度Q网络（Double Deep Q-Network, Double DQN）
+
+[0197] block=218 type=p style= sup=False
+尽管深度Q网络在高维状态空间中表现出了良好的学习能力，但其在实际训练过程中仍存在一定的偏差问题。具体而言，在DQN的目标函数中，动作选择与价值评估均依赖同一网络参数 w-，即通过 maxa'Qs', a'; w- 同时完成动作选择与价值评估，估计误差可能会在最大化操作中被放大，使部分动作的价值被偏高估计。
+
+[0198] block=219 type=p style= sup=False
+为减轻这一问题，Double Q-learning的思想被引入深度强化学习框架，并形成了Double DQN。该方法的主要做法是将动作选择和动作价值评估分开处理：当前网络负责在下一状态中选择动作，目标网络则用于计算该动作对应的Q值。这样可以避免在同一估计过程中同时完成最优动作选择和价值计算，从而降低过估计偏差。
+
+[0199] block=220 type=p style= sup=False
+在Double DQN中，动作选择仍由当前的网络参数 w 决定，后续的价值评估则由目标网络参数 w- 完成。因此，其目标值可以表示为：
+
+[0200] block=221 type=table style= sup=False
+y=r+γQs',argmaxa'Qs',a';w;w- / 
+
+[0201] block=222 type=p style= sup=False
+与DQN相比，该形式首先利用当前网络选择最优动作 argmaxQs',a';w，随后再使用目标网络对该动作进行价值评估，从而避免了由单一网络直接取最大值所带来的偏差累积。
+
+[0202] block=223 type=p style= sup=False
+基于上述目标值，Double DQN的损失函数可写为：
+
+[0203] block=224 type=table style= sup=False
+Lw≐Er+γQs',argmaxa'Qs',a';w;w--Qs,a;w2 / 
+
+[0204] block=225 type=p style= sup=False
+在训练过程中，仍然通过梯度下降方法对参数 w 进行更新，并周期性地将当前网络参数复制到目标网络，即 w-←w，以保证训练过程的稳定性。
+
+[0205] block=226 type=p style= sup=False
+从直观角度来看，Double DQN并未改变Q-learning的基本更新框架，而是在估计目标值时引入了更加合理的分工机制。通过减少过估计现象，Double DQN通常能够获得更加稳定的训练过程，并在复杂环境中取得更优的策略性能。
+
+[0206] block=227 type=p style=20 sup=False
+基于策略梯度的方法
+
+[0207] block=228 type=p style=30 sup=False
+策略梯度方法
+
+[0208] block=229 type=p style= sup=False
+与基于价值的方法不同的是，基于策略梯度的方法直接对策略进行参数化，并通过优化参数来最大化期望回报。具体可以将策略表示为：πas;θ≐Pr{At=a∣St=s, θt=θ}，其中 θ 为参数。其目标是最大化期望回报：
+
+[0209] block=230 type=table style= sup=False
+Jθ≐EπGt / 
+
+[0210] block=231 type=p style= sup=False
+策略梯度方法通过对该目标函数求梯度，并利用梯度上升来更新参数：
+
+[0211] block=232 type=table style= sup=False
+∇Jθ≐Eπ∇logπas;θ⋅Gt / 
+
+[0212] block=233 type=p style= sup=False
+其核心思想是通过增加选择能够带来高回报的动作的概率，同时降低带来低回报动作的概率，进而改进策略。
+
+[0213] block=234 type=p style=30 sup=False
+近端策略优化（Proximal Policy Optimization, PPO）
+
+[0214] block=235 type=p style= sup=False
+尽管策略梯度方法能够直接优化策略，但是在实际的运用中，更新的步长难以控制，容易导致策略变化过大，从而破坏原有的性能。如果每次更新都让策略发生巨大变化，可能会导致性能大幅下降，甚至导致训练失败。
+
+[0215] block=236 type=p style= sup=False
+为了解决这个问题，研究者提出了通过限制策略更新的幅度，使学习过程更加稳定。为此，PPO引入了一个概率比：rtθ=πatst;θπatst;θold。该比值用于衡量新策略相较于旧策略对于同一动作的偏好程度。在此基础上，PPO采用了裁剪目标函数：
+
+[0216] block=237 type=table style= sup=False
+LCLIPw≐EminrtθAt, cliprtθ,1-ϵ,1+ϵAt / 
+
+[0217] block=238 type=p style= sup=False
+其中，ϵ 为一个小常数，用于限制更新幅度。
+
+[0218] block=239 type=p style=20 sup=False
+不完全信息下的决策
+
+[0219] block=240 type=p style=30 sup=False
+部分可观测马尔可夫决策过程（POMDP）
+
+[0220] block=241 type=p style= sup=False
+在马尔可夫决策过程中，智能体可以完全感知环境的当前状态。然而在许多实际的工程案例中，真实的状态是无法直接被观测的。部分可观测马尔可夫决策过程（Partially Observable Markov Decision Process, POMDP）作为马尔可夫决策过程的延伸，得以通过观测来推测出状态。POMDP可以表示为：P=S,A,O,T,Z,R,γ，其中：S：状态空间，表示环境的真实状态；A：动作空间；O：观测空间；Ts's,a：状态转移概率函数；Zos',a：观测概率函数；Rs,a：奖励函数；以及 γ∈0,1：折扣因子。
+
+[0221] block=242 type=p style= sup=False
+现实案例中，观测到的内容往往带有噪声，或者是不完整的状态信息的映射，因为观测仅提供关于真实状态的部分信息，智能体无法直接基于单一时刻的观测就做出最优决策，所以必须考虑历史信息。历史序列可以表示为：ht=a1,o1,a2,o2,…,at,ot。
+
+[0222] block=243 type=p style= sup=False
+然而历史序列长度随着时间不断增长，直接基于历史进行决策的计算过于冗长和复杂。为此引入信念（belief）状态，定义为在给定历史信息下对真实状态的概率分布：
+
+[0223] block=244 type=table style= sup=False
+bts≐Pst=sht / 
+
+[0224] block=245 type=p style= sup=False
+信念分布 bt 是定义在状态空间上的概率分布，可以理解为是对于真实状态的不确定性的描述。在每一步，belief通过贝叶斯规则进行更新：
+
+[0225] block=246 type=table style= sup=False
+bt+1s'∝Zot+1s',ats∈STs's,atbts / 
+
+[0226] block=247 type=p style= sup=False
+通过belief表示，POMDP可以被转化为一个定义在belief空间上的MDP（称为belief-MDP），从而可以使用动态规划方法进行求解。
+
+[0227] block=248 type=p style= sup=False
+但是belief空间是一个高维连续空间，计算复杂度极高，随着状态空间的扩大，belief的表示和更新成本迅速增加。因此在大规模的问题上，通常无法精确求解POMDP，需要依赖近似方法。
+
+[0228] block=249 type=p style=30 sup=False
+部分可观测蒙特卡洛规划（POMCP）
+
+[0229] block=250 type=p style= sup=True
+为了解决大规模POMDP在计算上的困难，提出了基于蒙特卡洛规划的方法，使用基于采样的近似方法替代显式belief更新，并通过蒙特卡洛树搜索进行在线规划 REF _Ref229425683 \r \h \* MERGEFORMAT [11]。
+
+[0230] block=251 type=p style= sup=False
+POMCP使用历史序列 h 作为搜索树的节点，每个节点 h 对应一个决策状态，并可组成后续的统计量：Nh：节点访问次数；Nh,a：动作 a 在节点 h 的访问次数；以及 Qh,a：动作价值估计。该树结构通过模拟不断更新和拓展。
+
+[0231] block=252 type=p style= sup=False
+POMCP基于蒙特卡洛树搜索的核心流程包括四个阶段。首先从根节点开始，根据UCB策略选择动作：a*=argmaxaQh,a+clnNhNh,a。当到达未完全展开的节点时，扩展新的动作分支。随后从当前状态开始，使用随机策略进行rollout，估计未来回报。最后将模拟到的回报更新到路径上的所有节点。
+
+[0232] block=253 type=p style= sup=False
+POMCP使用基于采样的粒子集合来近似，避免原本使用概率分布所导致的复杂计算。并使用在线规划方法，这种方法适用于动态变化的环境，且能够根据当前信息进行实时决策。相较于POMDP来说，POMCP可以用来解决具有大规模状态空间的问题，并且能够有效降低计算复杂度。
+
+[0233] block=254 type=p style=20 sup=False
+序列建模方法
+
+[0234] block=255 type=p style=30 sup=False
+时间序列建模问题
+
+[0235] block=256 type=p style= sup=False
+在实际工程系统中，观测数据通常按照时间顺序生成，从而形成时间序列。设观测序列为 {x1,x2,…,xT}，其中 xt∈RF 表示时刻 t 的观测向量。时间序列建模需要关注不同时间步之间的依赖关系，并利用已有观测信息对当前状态进行估计，或对后续变化趋势作出推断。
+
+[0236] block=257 type=p style= sup=False
+与静态数据相比，时间序列具有更明显的时间相关性。当前观测通常不仅与当前输入有关，也会受到历史状态的影响。同时，许多序列还具有动态非平稳特征，其统计性质可能随时间变化而改变。在物理系统中，状态演化还常常伴随累积效应，早期状态可能持续影响后续过程。由于这些特征，传统基于独立同分布假设的方法在处理复杂时间序列时往往存在局限。
+
+[0237] block=258 type=p style= sup=False
+对本文使用的Differential_pressure序列（请见 REF _Ref229426083 \r \h 3.3）而言，单个采样点本身不足以说明机器是否接近风险区间，关键在于一段窗口内退化轨迹的变化。早期自回归模型和隐马尔可夫模型能够描述部分时间依赖关系，但在高维、非线性和复杂动态变化场景下表达能力有限，因此后续采用循环神经网络类模型处理该时间依赖关系。
+
+[0238] block=259 type=p style=30 sup=False
+循环神经网络（RNN）
+
+[0239] block=260 type=p style= sup=False
+为了能够在模型中显式引入时间依赖关系，循环神经网络（Recurrent Neural Network, RNN）通过构建递归结构，使得模型在时间维度上能够传递信息。在该结构中，当前时刻的隐藏状态不仅依赖于当前输入，还依赖于上一时刻的隐藏状态，其基本形式可以表示为：
+
+[0240] block=261 type=table style= sup=False
+ht=ϕWxxt+Whht-1+b / 
+
+[0241] block=262 type=p style= sup=False
+其中 ht 表示时刻 t 的隐藏状态，xt 表示输入，ϕ⋅ 表示非线性激活函数。通过上述递推关系，RNN可以将历史信息逐步传递到后续时刻，并在隐藏状态中保留与序列变化相关的特征，从而对时间依赖关系进行建模。
+
+[0242] block=263 type=p style= sup=False
+在RNN中，隐藏状态可以看作对历史观测的压缩记录。当前时刻的输出不只由当前输入决定，还会受到上一时刻隐藏状态的影响，因此模型能够把退化序列中较早的变化传递到后续计算中。这个特点适合描述设备健康的连续演化，但也带来训练问题：当序列较长时，误差信息需要沿多个时间步反向传播，梯度可能在传递过程中逐渐衰减或放大。对RUL预测而言，这意味着普通RNN可能难以稳定利用较长窗口中的早期退化信息。
+
+[0243] block=264 type=p style=30 sup=False
+长期依赖问题
+
+[0244] block=265 type=p style= sup=False
+在对RNN进行训练时，通常采用基于时间展开的反向传播算法。在该过程中，梯度需要通过多个时间步逐步传递，其形式可以写为一系列雅可比矩阵的连乘。随着时间跨度的增加，这种连乘结构容易导致梯度迅速衰减或放大，从而产生梯度消失或梯度爆炸问题：
+
+[0245] block=266 type=table style= sup=False
+∂L∂ht=k=tTWh⊤⋅∂L∂hT / 
+
+[0246] block=267 type=p style= sup=False
+时间展开后的RNN需要把梯度从后续时刻逐步传回较早时刻。若连乘项不断变小，早期观测对参数更新的影响会被削弱，模型就难以学习较长时间范围内的退化趋势；若连乘项不断变大，参数更新又可能过于剧烈，导致训练不稳定。设备退化序列往往不是由单个采样点决定，而是由一段时间内的累积变化形成，因此长期依赖问题会直接影响RUL估计的可靠性。后续引入LSTM和GRU，主要是为了让模型在较长窗口内更稳定地保留有效历史信息。
+
+[0247] block=268 type=p style=30 sup=False
+长短期记忆网络（LSTM）
+
+[0248] block=269 type=p style= sup=False
+LSTM通过记忆单元和门控机制缓解普通RNN在长序列训练中的信息衰减问题。遗忘门决定保留多少历史状态，输入门控制新信息写入，输出门决定当前状态向外传递的内容。对于设备退化序列，这种结构可以帮助模型在较长时间跨度内保留与健康变化相关的历史信息。不过，LSTM的门控结构也带来更多参数和计算步骤。本文后续选择GRU，是在保留门控记忆能力的同时降低模型复杂度，以便在仿真流程中持续提供RUL估计。
+
+[0249] block=270 type=p style=30 sup=False
+门控循环单元（GRU）
+
+[0250] block=271 type=p style= sup=False
+在LSTM的基础上，门控循环单元（Gated Recurrent Unit, GRU）对网络结构进行了进一步简化。GRU不再显式区分独立的记忆单元，而是将其与隐藏状态进行统一表示，同时仅保留更新门与重置门两个门控结构。
+
+[0251] block=272 type=p style= sup=False
+在GRU中，更新门用于控制当前状态在多大程度上继承历史信息，而重置门则用于调节历史信息在当前计算中的影响程度。通过这种方式，模型能够在保留重要历史信息的同时，有选择地引入新的输入信息。其状态更新过程可以形式化表示为：
+
+[0252] block=273 type=table style= sup=False
+zt=σWzxt+Uzht-1 /  | rt=σWrxt+Urht-1 /  | ht=tanhWhxt+Uhrt⊙ht-1 / 
+
+[0253] block=274 type=p style= sup=False
+通过门控机制的引入，GRU在一定程度上继承了LSTM在处理长期依赖问题上的优势，同时由于结构更加简洁，其参数规模更小，训练效率更高。在实际应用中，GRU往往能够在模型复杂度与性能之间取得较为平衡的效果。
+
+[0254] block=275 type=p style=30 sup=False
+本章小结
+
+[0255] block=276 type=p style= sup=False
+本章介绍了后续建模和算法设计所需的基础理论。马尔可夫决策过程为维护和调度问题提供了状态、动作和奖励的形式化描述；DQN、Double DQN和PPO分别对应价值函数学习与策略优化路径；POMDP和POMCP为不完全信息下的维护规划提供了建模基础；RNN、LSTM和GRU则为设备退化序列中的RUL估计提供了时间序列建模方法。这些理论共同支撑了后续RUL预测器、维护智能体和调度智能体的设计。
+
+[0256] block=277 type=p style=1a sup=False
+设备退化感知车间建模
+
+[0257] block=278 type=p style=20 sup=False
+问题描述
+
+[0258] block=279 type=p style= sup=True
+本章从柔性作业车间调度的基本假设出发描述本文问题。FJSP通常用于描述多机器、多工序环境下的资源配置过程，调度器需要同时处理工序顺序和候选机器选择。传统FJSP研究多假设机器处于恒定可用状态，或仅将故障视为随机扰动 REF _Ref229425528 \r \h\#"[0" \* MERGEFORMAT [2- REF _Ref229425530 \r \h\#"0]" \* MERGEFORMAT 5]；本文进一步引入设备退化，使机器可用性与健康状态和RUL相关。此时，调度器不能只根据加工时间和交期选择机器，还需要考虑该机器在执行当前工序后是否会进入高风险区间。维护动作也不再是外部固定安排，而会占用机器时间、改变健康水平，并影响后续工序的可行机器集合。
+
+[0259] block=280 type=p style= sup=False
+为描述更接近实际的工业生产过程，本文在FJSP框架中引入机器退化机制，并将设备健康管理纳入决策过程。本文采用RUL作为衡量设备健康状态的核心指标。RUL表示设备在特定工况下距离失效的剩余作业时间，是实现预测性维护的重要量化依据。
+
+[0260] block=281 type=p style= sup=False
+本文将研究问题划分为三个子任务：RUL预测、维护决策和生产调度。三者之间存在相互影响关系：RUL预测用于估计设备健康状态，维护决策会改变设备可用性，调度策略则需要在动态变化的系统中完成资源分配。
+
+[0261] block=282 type=p style=20 sup=False
+机器性能退化过程与RUL预测的建模
+
+[0262] block=283 type=p style= sup=False
+在现实生产制造中，设备在长期运行的过程中不可避免地会发生性能退化，其退化过程随着加工任务的进行逐渐积累，最终可能导致设备失效。为了在调度与维护决策中有效描述设备健康状态，本文将机器建模为一个由退化观测、等效运行年龄及剩余寿命共同组成的动态系统。
+
+[0263] block=284 type=p style= sup=False
+假设加工设备的集合为 M={1,2,…,M}，对于任意设备 i∈M，其退化过程由一组按时间排序的感测观测序列表示，如公式（3-1）：
+
+[0264] block=285 type=table style= sup=False
+xiτ=xi1τ,…,xiFτ⊤ / 
+
+[0265] block=286 type=p style= sup=False
+其中 F 为特征维度，τ 为观测时间索引。
+
+[0266] block=287 type=p style= sup=False
+本研究的退化特征维度取为滤材两端的压差，即 xiτ=Δpiτ，该指标能够有效反映设备阻塞程度与性能衰退趋势（数据集相关内容请见后文 REF _Ref229426083 \r \h 3.3）。
+
+[0267] block=288 type=p style=30 sup=False
+等效运行年龄的建模
+
+[0268] block=289 type=p style= sup=False
+通过引入设备的等效运行年龄 zit，记录设备在生产过程中的有效运行消耗。该变量仅在设备执行加工任务的时候增长，在空闲和维护时期保持不变，定义为：
+
+[0269] block=290 type=table style= sup=False
+zitk+1=zitk+uitkΔzitk / 
+
+[0270] block=291 type=p style= sup=False
+其中 uitk∈{0,1} 表示设备是否处于加工状态。退化增量定义为：Δzitk=κpitk1+αsitk。其中，κ 为时间到退化索引的缩放系数；α 为生产压力对退化速度的放大系数；sitk 为设备在当前调度环境下承受的综合压力（请见 REF _Ref226488956 \r \h 3.2.2）。
+
+[0271] block=292 type=p style=30 sup=False
+生产压力对退化的影响
+
+[0272] block=293 type=p style= sup=False
+设备所承受的综合压力 sitk 由系统的运行状态决定，该压力主要由交期松弛压力与设备利用率共同构成，可抽象表示为：
+
+[0273] block=294 type=table style= sup=False
+sit=ω1qt+ω2max0,μt-μrefμref / 
+
+[0274] block=295 type=p style= sup=False
+其中，其中 qt 表示由平均松弛时间诱导的生产压力，μt 表示系统利用率，μref 为参考利用率。设备退化不仅由加工时长驱动，也受到生产负荷状态的调制。
+
+[0275] block=296 type=p style=30 sup=False
+RUL与健康函数的建模
+
+[0276] block=297 type=p style= sup=False
+为了统一设备健康状态的描述，采用归一化的健康函数：hiz∈0,1。其中，hiz=1 指全新状态，hiz=0 指失效状态。
+
+[0277] block=298 type=p style= sup=False
+由于实际数据多为右设限，即该数据集并没有完整记录“运行到失效”的数据（具体请见 REF _Ref229426083 \r \h 3.3），所以在 z>Tiobs 时，本文采用线性外推方式补齐尾部，以得到完整寿命的描述：
+
+[0278] block=299 type=table style= sup=False
+hiz=hiTiobsTifull-zTifull-Tiobs，Tiobs<z≤Tifull / 
+
+[0279] block=300 type=p style= sup=False
+设 Tifull 为设备对应的完整等效寿命上界，且当 z>Tifull 时，hiz=0。
+
+[0280] block=301 type=p style=20 sup=False
+退化数据来源与特征
+
+[0281] block=302 type=p style= sup=True
+本文采用Preventive to Predictive Maintenance数据集 REF _Ref229425692 \r \h\#"[0" \* MERGEFORMAT [12- REF _Ref229425694 \r \h\#"0]" \* MERGEFORMAT 13]作为RUL预测的基础数据来源。该数据集来源于具有实际工程背景的过滤寿命测试平台，用于模拟气固分离过程中滤材逐步堵塞的退化过程，属于典型的面向预测与健康管理的工业退化数据集。其核心任务是基于监测数据预测滤材的RUL，从而支持由预防性维护向预测性维护的转变。
+
+[0282] block=303 type=p style=30 sup=False
+退化数据来源
+
+[0283] block=304 type=p style= sup=False
+该数据集的退化对象为过滤介质，其退化机理表现为固体颗粒不断沉积在滤材表面，导致压差逐渐升高，最终达到失效阈值。实验平台在寿命测试过程中记录滤材两端的压差与流量等运行信息，并控制颗粒输入速率，从而形成可用于寿命分析的退化轨迹。数据集中使用的滤材为同一种材料型号CC 600 G，因此不同样本之间的主要差异主要来自粉尘类型、加尘速率、流量以及制造公差，而不是滤材本体规格差异。
+
+[0284] block=305 type=p style= sup=False
+原始说明文档表明，实验中使用了三类标准化Arizona test dust，分别为A2 Fine、A3 Medium和A4 Coarse，并记录了对应的颗粒输入速率Dust_feed。同时，传感器测量了滤材两端压差Differential_pressure与流量Flow_rate，其中流量数据已经过补偿修正。
+
+[0285] block=306 type=p style=30 sup=False
+原始数据结构
+
+[0286] block=307 type=p style= sup=False
+原始数据以Train_Data和Test_Data两部分组织，每条寿命序列均包含对应的测量数据与设定参数。根据说明文档，数据的主要字段包括：Differential_pressure、Flow_rate、Time、Sampling、Dust、Dust_feed和Data_No。其中，测试集额外包含RUL标注，用于剩余寿命预测任务。Dust_feed表示单位时间内的加尘量，单位为 mm3/s。此外，训练集与测试集均包含50条寿命序列，且不存在缺失值。采样频率为10 Hz，相邻时间步长基本为0.1。因此，从建模角度看，该数据集可以视为固定采样间隔下的离散时间序列数据。
+
+[0287] block=308 type=p style= sup=False
+表3-1 Test_Data_CSV.csv的列表内容预览，以Data_No: 1为例
+
+[0288] block=309 type=table style= sup=False
+Data_No / Differential_pressure / Flow_rate / Time / Dust_feed / Dust / RUL | 1 / 0.271267 / 52.2819934 / 0.1 / 236.428943 / A3 Medium / 58.9 | 1 / 0.36169 / 54.9866713 / 0.2 / 236.428943 / A3 Medium / 58.8
+
+[0289] block=310 type=p style=30 sup=False
+数据集的退化与失效特征
+
+[0290] block=311 type=p style= sup=False
+该数据集的一个重要特点是其退化过程有明确的物理意义，即随着颗粒的不断沉积，滤材的压差逐渐增大，当压差超过600 Pa时视为失效。这个阈值为RUL定义和健康状态建模提供了明确依据。
+
+[0291] block=312 type=p style= sup=False
+此外，数据集并不是单一形式的完整寿命全覆盖数据。训练集主要提供可用于回放的退化观测序列，而测试集面向RUL预测任务并提供相应寿命标签。基于当前代码实现，本文的GRU训练使用测试集中Data_No=18的RUL标注；训练集曲线则主要用于构造车间中各机台的退化回放轨迹。
+
+[0292] block=313 type=p style= sup=False
+这一数据组织方式对本文具有两方面意义：一方面，它提高了问题的现实性，使得退化建模更加接近真实工业场景。另一方面，它也要求区分“RUL预测训练数据”和“仿真退化回放数据”的用途，避免将仿真尾部延伸误解为监督学习阶段的标签补齐。
+
+[0293] block=314 type=p style=20 sup=False
+生产调度任务建模
+
+[0294] block=315 type=p style=30 sup=False
+问题定义
+
+[0295] block=316 type=p style= sup=False
+本文研究的生产调度问题可以建模成一个考虑动态作业到达、柔性机器分配、设备健康约束以及维护活动耦合的事件驱动柔性作业车间调度问题。设机器集合为 M={1,2,…,M}，作业集合为 J={1,2,…,N}。每个作业 j∈J 由一组具有先后顺序的工序构成，记为：
+
+[0296] block=317 type=table style= sup=False
+Oj={Oj1,Oj2,…,OjKj} / 
+
+[0297] block=318 type=p style= sup=False
+其中 Kj 表示作业 j 的工序数。每个作业具有到达时刻 aj、交期 dj 以及权重 wj，分别用于描述作业进入系统的时间、交付要求以及拖期代价敏感性。
+
+[0298] block=319 type=p style= sup=False
+对于任一道工序 Ojk，其可加工机器集合记为：
+
+[0299] block=320 type=table style= sup=False
+Mjk⊆M / 
+
+[0300] block=321 type=p style= sup=False
+并且工序在不同机器上的加工时间可能不同，因此定义机器相关加工时间为：
+
+[0301] block=322 type=table style= sup=False
+pjkm, m∈Mjk / 
+
+[0302] block=323 type=p style= sup=False
+由此，本文中的调度问题不仅需要决定工序的加工顺序，还需要在可行机器集合中为工序选择具体的执行设备，因此属于典型的柔性作业车间调度问题。
+
+[0303] block=324 type=p style=30 sup=False
+作业到达与交期的建模
+
+[0304] block=325 type=p style= sup=False
+与传统的静态车间调度不同，本文采用在线动态到达的方式，系统中的作业并非在初始时刻同时布置，而是在生产过程中逐步进入车间。设作业 j 所属的系统负荷阶段为 qj，则相邻作业到达间隔可建模为指数分布：
+
+[0305] block=326 type=table style= sup=False
+aj-aj-1∼Expλqj / 
+
+[0306] block=327 type=p style= sup=False
+其中 λqj 为对应阶段的到达参数，不同区段代表不同的系统负荷水平。
+
+[0307] block=328 type=p style= sup=False
+作业交期由其到达时刻和预估加工需求共同决定。对于作业 j 的工序 Ojk，定义其平均加工时间为：
+
+[0308] block=329 type=table style= sup=False
+pjk=1Mjkm∈Mjkpjkm / 
+
+[0309] block=330 type=p style= sup=False
+则作业 j 的交期可表示为
+
+[0310] block=331 type=table style= sup=False
+dj=aj+δqjk=1Kjpjk / 
+
+[0311] block=332 type=p style= sup=False
+其中 δqj 为对应负荷阶段的交期紧度系数（Due Date Tightness, DDT）。该定义表明，本文中的交期并非外部固定常数，而是由系统负荷水平和作业本身的加工需求共同决定。
+
+[0312] block=333 type=p style=30 sup=False
+工序加工与机器分配的关系
+
+[0313] block=334 type=p style= sup=False
+为描述工序与机器之间的分配关系，定义二元变量：
+
+[0314] block=335 type=table style= sup=False
+xjkmt∈{0,1} / 
+
+[0315] block=336 type=p style= sup=False
+当 xjkmt=1 时表示在决策时刻 t，工序 Ojk 被分配给机器 m 进行加工，否则为0。在此基础上进行如下约束：
+
+[0316] block=337 type=p style=af9 sup=False
+可用机器约束
+
+[0317] block=338 type=p style= sup=False
+若机器 m 不属于工序 Ojk 的可加工集合，则该工序不可分配给该机器，定义为公式（3-12）。
+
+[0318] block=339 type=table style= sup=False
+xjkmt=0，∀m∉Mjk / 
+
+[0319] block=340 type=p style=af9 sup=False
+工序唯一分配约束
+
+[0320] block=341 type=p style= sup=False
+任一时刻，每道待加工工序至多只能被分配给一台机器，定义为公式（3-13）。
+
+[0321] block=342 type=table style= sup=False
+m∈Mxjkmt≤1 / 
+
+[0322] block=343 type=p style=af9 sup=False
+机器容量约束
+
+[0323] block=344 type=p style= sup=False
+任一时刻，每台机器最多只能加工一道工序，定义为公式（3-14）。
+
+[0324] block=345 type=table style= sup=False
+jkxjkmt≤1，∀m∈M / 
+
+[0325] block=346 type=p style=af9 sup=False
+作业到达约束
+
+[0326] block=347 type=p style= sup=False
+作业未到达系统前，其首道工序不得进入可调度状态，因此有：
+
+[0327] block=348 type=table style= sup=False
+Sj1≥aj / 
+
+[0328] block=349 type=p style= sup=False
+其中 Sj1 为作业 j 首道工序的开始加工时刻。
+
+[0329] block=350 type=p style=af9 sup=False
+工序顺序约束
+
+[0330] block=351 type=p style= sup=False
+同一作业内部各道工序必须按既定顺序执行，即对任意 k=1,…,Kj-1，有：
+
+[0331] block=352 type=table style= sup=False
+Sj,k+1≥Cjk / 
+
+[0332] block=353 type=p style= sup=False
+其中 Cjk 表示工序 Ojk 的完成时刻。
+
+[0333] block=354 type=p style=af9 sup=False
+非抢占加工约束
+
+[0334] block=355 type=p style= sup=False
+若工序 Ojk 被分配至机器 m，则其在正常条件下的完成时刻为：
+
+[0335] block=356 type=table style= sup=False
+Cjk=Sjk+pjkm / 
+
+[0336] block=357 type=p style= sup=False
+且一旦开始加工，在区间 Sjk,Cjk 内不允许由调度器主动中断。允许的中断仅来自设备故障等外生扰动，而不属于调度决策本身。
+
+[0337] block=358 type=p style=30 sup=False
+机器可用性约束
+
+[0338] block=359 type=p style= sup=False
+本研究同时考虑设备退化与维护过程，因此机器在任意时刻的状态相较一般FJSP问题在原有的“忙碌”和“空闲”两种状态的基础上，还可能处于维护阶段。可以定义机器状态变量为：
+
+[0339] block=360 type=table style= sup=False
+ymt∈{IDLE, PROC, MAINT} / 
+
+[0340] block=361 type=p style= sup=False
+分别表示空闲、加工中和维护中。
+
+[0341] block=362 type=p style= sup=False
+当机器处于维护状态时，不得承担任何加工任务，因此有：
+
+[0342] block=363 type=table style= sup=False
+ymt=MAINT⇒jkxjkmt=0 / 
+
+[0343] block=364 type=p style= sup=False
+该约束体现了生产任务与维护活动之间的互斥关系，即机器在同一时刻不能同时执行加工与维护。
+
+[0344] block=365 type=p style= sup=False
+进一步地，本文假设维护活动只能在当前工序完成后开始执行，不允许在工序加工过程中插入维护，因此维护对调度的影响主要表现为：改变机器未来一段时间内的可用性，从而约束后续工序分配。
+
+[0345] block=366 type=p style=30 sup=False
+事件驱动的调度时刻
+
+[0346] block=367 type=p style= sup=False
+本文采用事件驱动调度机制，而不是固定时间步轮询决策。设调度决策时刻集合为：
+
+[0347] block=368 type=table style= sup=False
+TD=Tarr∪Tidle / 
+
+[0348] block=369 type=p style= sup=False
+其中 Tarr 表示新作业到达系统的时刻集合，Tidle 表示机器完成加工或完成维护后重新转变为空闲的时刻集合。
+
+[0349] block=370 type=p style= sup=False
+这意味着调度决策仅在系统结构发生变化时触发，而不是在每一个离散时间点持续执行。这样的建模方式更符合实际车间的事件演化逻辑，也与本文环境中的事件队列更新机制一致。
+
+[0350] block=371 type=p style= sup=False
+在任意决策时刻 t∈TD，定义作业 j 当前尚未完成的下一道工序编号为 νjt。则系统中的就绪工序集合可写为：
+
+[0351] block=372 type=table style= sup=False
+Oreadyt=Oj,νjtaj≤t, νjt≤Kj, Oj,νjt-1已完成, Oj,νjt未在加工 / 
+
+[0352] block=373 type=p style= sup=False
+同时，定义当前空闲机器集合为：
+
+[0353] block=374 type=table style= sup=False
+Midlet={m∈M∣ymt=IDLE} / 
+
+[0354] block=375 type=p style= sup=False
+因此，在时刻 t 真正可参与调度的工序集合为：
+
+[0355] block=376 type=table style= sup=False
+Oavailt=Ojk∈OreadytMjk∩Midlet≠∅ / 
+
+[0356] block=377 type=p style= sup=False
+该集合体现了两个必要条件：一是工序在工艺上已具备开工条件，二是存在至少一台当前可用的可加工机器。
+
+[0357] block=378 type=p style=30 sup=False
+健康感知的机器可行性建模
+
+[0358] block=379 type=p style= sup=False
+由于设备健康状态可能会影响后续加工过程的可靠性，本研究进一步将健康约束引入工序—机器匹配过程。设：
+
+[0359] block=380 type=table style= sup=False
+Ψjkmt∈{0,1} / 
+
+[0360] block=381 type=p style= sup=False
+表示在时刻 t 将工序 Ojk 分配给机器 m 后，该机器在工序加工区间内是否不会触发硬故障。若 Ψjkmt=1，则说明该分配在健康约束下是安全的。
+
+[0361] block=382 type=p style= sup=False
+由此可定义工序 Ojk 在时刻 t 的健康安全机器集合为：
+
+[0362] block=383 type=table style= sup=False
+Mjksafet={m∈Mjk∩Midlet∣Ψjkmt=1} / 
+
+[0363] block=384 type=p style= sup=False
+考虑到实际生产中不能因为健康约束过于严格而导致系统停滞，本文采用分层候选机制，将工序的候选机器集合定义为：
+
+[0364] block=385 type=table style= sup=False
+Mjkcandt=Mjksafet，Mjksafet≠∅Mjk∩Midlet，否则 / 
+
+[0365] block=386 type=p style= sup=False
+该定义意味着：当存在健康安全的可行机器时，优先在安全集合中进行分配。仅当安全集合为空时，才退回到一般可行机器集合。这种机制在保证生产连续性的同时，尽可能避免高风险加工行为。
+
+[0366] block=387 type=p style=30 sup=False
+调度状态描述
+
+[0367] block=388 type=p style= sup=False
+为了描述系统在决策时刻的运行状态，本文从作业层和系统层构造若干调度状态量。
+
+[0368] block=389 type=p style= sup=False
+对于作业 j，其从当前未完成工序起的剩余平均加工时间定义为：
+
+[0369] block=390 type=table style= sup=False
+RPTjt=k=νjtKjpjk / 
+
+[0370] block=391 type=p style= sup=False
+据此可得其预估完工时刻：
+
+[0371] block=392 type=table style= sup=False
+Cjt=t+RPTjt / 
+
+[0372] block=393 type=p style= sup=False
+并进一步定义以下作业级评价量：
+
+[0373] block=394 type=p style=af9 sup=False
+预估拖期
+
+[0374] block=395 type=table style= sup=False
+Tjt=maxCjt-dj,0 / 
+
+[0375] block=396 type=p style=af9 sup=False
+松弛量
+
+[0376] block=397 type=table style= sup=False
+SLjt=dj-Cjt / 
+
+[0377] block=398 type=p style=af9 sup=False
+加权紧迫度
+
+[0378] block=399 type=table style= sup=False
+Ujt=wjTjt / 
+
+[0379] block=400 type=p style= sup=False
+上述量分别反映作业的预计拖期程度、时间余量以及拖期风险权重。
+
+[0380] block=401 type=p style=30 sup=False
+调度决策空间的形式化描述
+
+[0381] block=402 type=p style= sup=False
+在任意决策时刻 t，调度智能体的任务是在当前可调度工序与候选机器之间建立有效匹配。定义当前动作候选集合为：
+
+[0382] block=403 type=table style= sup=False
+At=Ojk,mOjk∈Oavailt, m∈Mjkcandt / 
+
+[0383] block=404 type=p style= sup=False
+因此，单次调度决策可表示为从 At 中选择一个工序—机器对：Ojk*,m*∈At，并将该工序分配到对应机器上开始加工。从问题的本质上看，调度任务包括两个相互耦合的子决策：在当前可调度工序中确定优先执行的工序，并在该工序的候选机器集合中确定具体被分配到的设备。
+
+[0384] block=406 type=p style= sup=False
+图3-1 调度决策空间及动作生成过程示意图
+
+[0385] block=407 type=p style=30 sup=False
+本章小结
+
+[0386] block=408 type=p style= sup=False
+本章建立了面向设备健康状态的动态柔性作业车间模型。首先描述机器性能退化、等效运行年龄、生产压力和RUL健康函数之间的关系；随后说明退化数据来源、原始数据结构和失效特征；最后构建生产调度任务，包括作业到达、交期、工序加工、机器分配、机器可用性、事件驱动调度时刻、健康感知可行性、调度状态和动作空间。通过这些定义，RUL信号、维护动作和调度规则被放入同一决策环境中。
+
+[0387] block=410 type=p style=1a sup=False
+RUL驱动协同决策算法
+
+[0388] block=411 type=p style= sup=False
+第三章已经给出设备退化、RUL和动态调度环境的建模方式。本章关注这些变量如何进入具体算法。本文的计算流程从退化序列开始：GRU预测器读取时间窗口并输出归一化RUL；维护智能体在机器空闲等决策点读取RUL、健康趋势和系统状态，选择 {DN / IM / CM}；调度智能体在事件驱动时刻读取全局车间状态和健康相关特征，选择派工规则。三类模块之间不是简单串联关系，维护动作会改变机器可用时间，调度动作又会改变后续负荷和退化暴露，因此本章分别说明预测、维护和调度算法的输入、动作空间及训练目标。
+
+[0389] block=412 type=p style= sup=False
+本章重点介绍各算法模块的结构设计，包括输入输出定义、状态空间构造、目标函数表征、关键参数配置和核心实现流程。
+
+[0390] block=413 type=p style=20 sup=False
+RUL预测算法的设计
+
+[0391] block=414 type=p style=30 sup=False
+RUL预测任务分析
+
+[0392] block=415 type=p style= sup=False
+RUL预测模块为后续维护决策提供主要信息来源。该模块首先需要解决的问题是，如何从设备当前可观测的退化序列中提取能够反映寿命演化趋势的信息。对于本文所使用的退化数据，观测值并非相互独立的样本，而是具有时间相关性的演化序列。设备当前健康状态不仅取决于即时压差水平，也会受到既往时段内变化趋势的影响。如果只依赖单点观测，系统较难区分随机波动和趋势性退化，从而可能造成剩余寿命估计不稳定。
+
+[0393] block=416 type=p style= sup=False
+基于这一问题，本文将RUL预测建模为序列到标量的回归问题：以设备近期退化观测窗口作为输入，输出当前时刻的归一化RUL估计值。由于普通前馈网络难以刻画时间依赖关系，本文采用具有门控机制的GRU网络对退化序列进行编码。该设计主要基于两点考虑：一方面，GRU的递归结构能够捕捉退化过程中的时序相关性；另一方面，相较于结构更复杂的模型，GRU参数规模较小，更适合本文单变量退化特征下的建模需求，也有助于兼顾计算效率和预测精度。
+
+[0394] block=417 type=p style=30 sup=False
+问题定义
+
+[0395] block=418 type=p style= sup=False
+设设备 i 在时刻 t 的输入观测窗口为：
+
+[0396] block=419 type=table style= sup=False
+XiLt=xit-L+1,xit-L+2,…,xit∈RL×F / 
+
+[0397] block=420 type=p style= sup=False
+其中，L 为时间窗口长度，F 为输入特征维度。结合当前实现，本文仅采用单变量压差信号作为输入特征，因此 F=1。
+
+[0398] block=421 type=p style= sup=False
+RUL预测目标定义为归一化剩余寿命：
+
+[0399] block=422 type=table style= sup=False
+yit=RitRi0∈0,1 / 
+
+[0400] block=423 type=p style= sup=False
+其中 Rit 表示时刻 t 的真实剩余寿命，Ri0 表示该寿命序列初始时刻的总寿命。于是预测模型的目标可以表示为：
+
+[0401] block=424 type=table style= sup=False
+yit=fθXiLt / 
+
+[0402] block=425 type=p style= sup=False
+即从长度为 L 的退化时间窗映射到当前归一化RUL。
+
+[0403] block=426 type=p style=30 sup=False
+GRU预测器的结构设计
+
+[0404] block=427 type=p style= sup=False
+RUL预测器为基于GRU的回归模型。选择GRU而非普通RNN的原因在于：退化过程具有明显的时序依赖性，而普通RNN在长序列上容易出现梯度消失问题，GRU通过门控机制能够在较低模型复杂度下更稳定地提取长期退化趋势。
+
+[0405] block=428 type=p style= sup=False
+设输入窗口 XiLt 经过GRU后得到最终隐藏状态 ht，则模型输出为：
+
+[0406] block=429 type=table style= sup=False
+ht=GRUXiLt /  | yit=σW2 ϕW1ht+b1+b2 / 
+
+[0407] block=430 type=p style= sup=False
+其中：ϕ⋅ 为ReLU激活函数，σ⋅ 为Sigmoid函数，W1,W2,b1,b2 为可训练参数。
+
+[0408] block=431 type=p style= sup=False
+由于输出层使用Sigmoid，因此预测结果天然满足 yit∈0,1，从而与归一化RUL标签的定义一致，避免后处理裁剪带来的不连续性。
+
+[0409] block=433 type=p style= sup=False
+图4-1 GRU-based RUL预测网络结构图
+
+[0410] block=434 type=p style=30 sup=False
+数据预处理与监督目标的设计
+
+[0411] block=435 type=p style= sup=False
+在序列模型训练中，原始退化观测通常存在量纲偏移和尺度不一致的问题。如果直接将原始压差序列输入网络，模型训练容易受到数值范围变化影响，造成收敛缓慢甚至不稳定。因此，在进入网络之前，本文首先对输入特征进行标准化处理。设原始退化观测为 xt，则标准化后输入为 xt=xt-μσ，其中 μ 和 σ 由训练子集统计得到。
+
+[0412] block=436 type=p style= sup=False
+对于监督标签，若直接预测绝对RUL，会使得不同寿命长度样本之间的数值跨度较大，从而加大回归难度。为减少这种尺度差异，本文采用归一化标签，设某时刻样本的寿命总长度为：
+
+[0413] block=437 type=table style= sup=False
+Tlife=Timet+RULt / 
+
+[0414] block=438 type=p style= sup=False
+则其归一化标签为：
+
+[0415] block=439 type=table style= sup=False
+yt=RULtTlife / 
+
+[0416] block=440 type=p style= sup=False
+模型训练目标定义为最小化均方误差损失：
+
+[0417] block=441 type=table style= sup=False
+LRUL=1Nn=1Nyn-yn2 / 
+
+[0418] block=442 type=p style= sup=False
+该损失函数直接度量预测归一化RUL与真实标签之间的平方偏差，适用于连续回归问题。
+
+[0419] block=443 type=p style= sup=False
+表4-1对训练策略与参数设置进行了总结。
+
+[0420] block=444 type=p style= sup=False
+表4-1 RUL预测模块采用的策略
+
+[0421] block=445 type=table style= sup=False
+训练样本来源 / 使用Test_Data_CSV.csv中Data_No = 18的序列 | 序列排序方式 / 按Time升序排列 | 数据划分方式 / 按时间顺序进行80%训练集、20%验证集划分
+
+[0422] block=446 type=p style=30 sup=False
+在线推理与健康轨迹缓存
+
+[0423] block=447 type=p style= sup=False
+在仿真运行阶段，RUL预测模块并不是每次维护决策时都重新在线训练，而是采用离线训练与在线查询相结合的方式。具体做法为：对每台机器的完整回放退化轨迹预先逐点输入GRU模型，得到整个寿命周期上的预测健康序列，并进行单调修正，形成健康缓存。
+
+[0424] block=448 type=p style= sup=False
+若设备 i 的预测健康轨迹记为 {yi1,yi2,…,yiTi}，则在缓存阶段进一步强制满足 yi1≥yi2≥⋯≥yiTi，即保证健康值随设备使用过程单调不升。这样做的目的在于避免回归噪声导致局部“健康回升”的不合理现象，使预测结果更符合退化过程的物理常识。
+
+[0425] block=449 type=p style=20 sup=False
+维护智能体算法的设计
+
+[0426] block=450 type=p style=30 sup=False
+维护决策任务分析
+
+[0427] block=451 type=p style= sup=False
+在设备健康状态持续变化、生产任务动态推进的条件下，维护决策需要回答两个问题：当前是否需要维护，以及应选择哪一种维护方式。该问题的难点主要体现在以下几个方面。
+
+[0428] block=452 type=p style= sup=False
+第一，维护行为具有跨时段影响。若维护过早，可能造成剩余寿命浪费和不必要停机；若维护过晚，则可能增加故障损失和修复成本。第二，维护决策并不是独立环节。维护动作会直接改变机器可用性，并进一步影响后续调度结果。第三，虽然设备健康状态可以通过RUL预测获得，但设备退化过程仍存在不确定性。因此，维护决策本质上是一个具有时序相关性和状态不确定性的决策问题。
+
+[0429] block=453 type=p style= sup=False
+针对上述问题，本文设计了两类维护决策路径。一类是基于DQN的维护智能体，通过与环境的长期交互学习动作价值函数，并据此形成维护策略；另一类是基于POMCP的在线维护规划方法，将维护决策建模为部分可观测条件下的在线规划过程。两类方法分别对应数据驱动的学习决策和基于模拟搜索的在线规划，为后续实验对比提供方法基础。
+
+[0430] block=454 type=p style=30 sup=False
+维护决策问题定义
+
+[0431] block=455 type=p style= sup=False
+对于任意机器 m，在维护决策时刻 t，本文定义维护状态向量为 smMt∈RdM。其中 dM 取决于具体维护策略结构。在本文所考虑的不同算法组合中，基础状态维度为18，而在分层维护决策结构中进一步扩展至20维。
+
+[0432] block=456 type=p style= sup=False
+维护决策需要同时刻画设备退化、生产紧迫度与短期风险。状态向量主要包括：当前健康值 hmt、健康变化率 dhmt、到达阈值 Hy 的估计时间 ηmt、松弛压力slack pressure qt、局部紧急度 umloct、当前平均slack SLt、作业到达节奏估计 λt、交期紧度估计 δt、当前故障风险 riskt、维护窗口 wine,winl、RUL均值与方差代理、距上次维护的时间、不同维护动作下的短期故障概率估计（通过基于当前状态或POMCP仿真估计得到）。以及当前系统压力 σt。其中，作业到达节奏估计 λt与交期紧度估计 δt由当前观测统计或估计参数给出，用于描述局部生产环境的不确定性。
+
+[0433] block=457 type=p style= sup=False
+维护动作空间定义为：
+
+[0434] block=458 type=table style= sup=False
+AM={0,1,2}={DN,IM,CM} / 
+
+[0435] block=459 type=p style= sup=False
+其中：
+
+[0436] block=460 type=p style=af9 sup=False
+DN：Do Nothing，不进行维护；
+
+[0437] block=461 type=p style=af9 sup=False
+IM：Imperfect Maintenance，非完全维护；
+
+[0438] block=462 type=p style=af9 sup=False
+CM：Corrective Maintenance，恢复性维护。
+
+[0439] block=463 type=p style= sup=False
+在具体实现中，不同维护策略对该动作集合采用不同的决策结构。例如，在分层维护策略中，动作决策被分解为“是否执行维护”和“维护类型选择”两个阶段。而在单层结构策略中，则直接在三种动作之间进行选择。
+
+[0440] block=464 type=p style= sup=False
+维护智能体的优化目标是最大化累计折扣回报，即：
+
+[0441] block=465 type=table style= sup=False
+maxπMEt=0TγtrtM / 
+
+[0442] block=466 type=p style= sup=False
+其中即时回报 rtM 由停机损失、维护成本、潜在故障风险以及维护时机偏离惩罚等多项成本共同构成。
+
+[0443] block=467 type=p style=30 sup=False
+维护奖励函数的设计
+
+[0444] block=468 type=p style= sup=False
+由于预测性维护问题本质上涉及多目标权衡（如生产效率、维护成本与故障风险），单一指标难以全面刻画决策质量，因此维护奖励函数必须同时体现多种成本来源，其形式为：
+
+[0445] block=469 type=table style= sup=False
+rtM=-cdown+cmaint+1{a=DN}cfailexp+cwin+cprior+clowgain+ccm_pref / 
+
+[0446] block=470 type=p style= sup=False
+其中各项参数请见如下表4-2。
+
+[0447] block=471 type=p style= sup=False
+表4-2 维护奖励函数的各项参数定义
+
+[0448] block=472 type=table style= sup=False
+参数符号 / 描述 | cdown / 停机成本 | cmaint / 维护动作成本
+
+[0449] block=473 type=p style= sup=False
+其中 cfailexp 仅在执行“无维护”（DN）时计入，用于刻画当前不采取维护所带来的未来故障风险的期望损失。该奖励函数的设计使得维护策略不再局限于简单的“故障前立即维护”规则，而是在设备退化状态、系统生产压力、潜在故障风险以及维护收益之间进行权衡，从而实现更加动态且情境依赖的维护决策。
+
+[0450] block=474 type=p style=30 sup=False
+分层DDQN维护智能体的设计
+
+[0451] block=475 type=p style= sup=False
+维护决策并不只是对 {DN,IM,CM} 三种动作进行平面选择。对于实际维护问题而言，“当前是否需要维护”与“若执行维护，应选择何种维护等级”是两个性质不同的子问题。前者反映维护必要性，后者反映维护类型选择。若将二者压缩到同一个动作价值函数中进行学习，则“是否维护”的判断与“维护等级”的判断会耦合在一起，使得价值学习难以区分维护需求与维护强度的不同来源。基于这一考虑，本节首先设计分层DDQN维护智能体，将维护决策分解为两个阶段。
+
+[0452] block=476 type=p style= sup=False
+在第一个阶段，GATE层用于判断当前是否需要进入维护分支，其动作集合定义为：
+
+[0453] block=477 type=table style= sup=False
+AG={DN,MAINT} / 
+
+[0454] block=478 type=p style= sup=False
+在第二个阶段，若GATE层判定需要维护，则由TYPE层进一步在非完全维护与恢复性维护之间进行选择，其动作集合定义为：
+
+[0455] block=479 type=table style= sup=False
+AT={IM,CM} / 
+
+[0456] block=480 type=p style= sup=False
+因此，最终维护动作由两层决策组合得到：
+
+[0457] block=481 type=table style= sup=False
+atM=DN,atG=DNIM,atG=MAINT,atT=IMCM,atG=MAINT,atT=CM / 
+
+[0458] block=483 type=p style= sup=False
+图4-2 双层级DDQN决策流程
+
+[0459] block=484 type=p style= sup=False
+为了支持上述分层判断，维护状态不能只包含基础健康信息，还需要包含刻画维护历史与维护累积效应的附加特征。因此，在基础维护状态 smMt∈R18 的基础上，分层维护智能体进一步扩展为20维输入。新增的两个状态量分别定义为：
+
+[0460] block=485 type=table style= sup=False
+x19=ρIMrep=clipnIMsinceCM-22,0,1 /  | x20=δIM=clipdamageIMDcap,0,1 / 
+
+[0461] block=486 type=p style= sup=False
+其中，ρIMrep 用于表征自上次恢复性维护以来非完全维护的重复程度，δIM 用于刻画由连续IM引起的累积损伤。引入这两个变量的目的在于使智能体不仅感知当前健康值，还能感知当前维护历史所隐含的“继续IM是否仍然合理”这一问题。
+
+[0462] block=487 type=p style= sup=False
+在此基础上，GATE层与TYPE层分别学习对应的动作价值函数。设GATE层在线网络与目标网络分别为：
+
+[0463] block=488 type=table style= sup=False
+QGs,aG;wG /  | QG-s,aG;wG- / 
+
+[0464] block=489 type=p style= sup=False
+TYPE层在线网络与目标网络分别为：
+
+[0465] block=490 type=table style= sup=False
+QTs,aT;wT /  | QT-s,aT;wT- / 
+
+[0466] block=491 type=p style= sup=False
+对GATE层，Double DQN目标值写为：
+
+[0467] block=492 type=table style= sup=False
+yG=rG+γ1-d QG-​s',argmaxa'QGs',a';wG;wG- / 
+
+[0468] block=493 type=p style= sup=False
+其损失函数为：
+
+[0469] block=494 type=table style= sup=False
+LG=E​yG-QGs,aG;wG2 / 
+
+[0470] block=495 type=p style= sup=False
+对TYPE层，同理有：
+
+[0471] block=496 type=table style= sup=False
+yT=rT+γ1-d QT-​s',argmaxa'QTs',a';wT;wT- /  | LT=E​yT-QTs,aT;wT2 / 
+
+[0472] block=497 type=p style= sup=False
+其中，rG 与 rT 并不直接等于环境回报 rM，而是在 rM 的基础上分别叠加对应层次的软约束修正。为此，本文进一步构造维护需求分数与CM readiness分数。
+
+[0473] block=498 type=p style= sup=False
+首先定义低健康评分：
+
+[0474] block=499 type=table style= sup=False
+sh=clipHtrig-hHtrig,0,1 / 
+
+[0475] block=500 type=p style= sup=False
+其次定义DN风险评分：
+
+[0476] block=501 type=table style= sup=False
+sdn=1, &若执行 DN 会导致imminent hard breakdownclippfDNrtrig,0,1,&否则 / 
+
+[0477] block=502 type=p style= sup=False
+由此得到维护需求分数：
+
+[0478] block=503 type=table style= sup=False
+Need=maxsh,ρIMrep,δIM,sdn / 
+
+[0479] block=504 type=p style= sup=False
+以及恢复性维护readiness分数：
+
+[0480] block=505 type=table style= sup=False
+ReadyCM=maxsh,ρIMrep,δIM / 
+
+[0481] block=506 type=p style= sup=False
+基于这两个评分，GATE层的软惩罚定义为：
+
+[0482] block=507 type=table style= sup=False
+PenG=αG1-Need,&aG=MAINTβGNeed,&aG=DN / 
+
+[0483] block=508 type=p style= sup=False
+TYPE层的软惩罚定义为：
+
+[0484] block=509 type=table style= sup=False
+PenT=αT1-ReadyCM,&aT=CMβTReadyCM,&aT=IM / 
+
+[0485] block=510 type=p style= sup=False
+于是两层用于训练的回报分别写为：
+
+[0486] block=511 type=table style= sup=False
+rG=rM-PenG /  | rT=rM-PenT / 
+
+[0487] block=512 type=p style= sup=False
+在分层DDQN中，维护决策被拆成两个连续判断。GATE层只回答当前机器是否需要进入维护分支；当GATE层选择维护后，TYPE层再判断执行IM还是CM。这样处理的原因是，DN与“是否维护”相关，而 {IM/CM} 更接近维护类型和恢复幅度的选择。如果三类动作直接放入同一个价值函数，模型需要同时比较“不维护”和“两种维护强度”，容易把维护时机判断与维护类型判断混在一起。
+
+[0488] block=513 type=p style= sup=False
+实现上，两个层级均采用多层感知机近似动作价值函数，并配合经验回放、目标网络同步和ε-greedy探索完成训练。系统还设置了IM后置保护：当机器刚执行完IM、当前健康仍高于阈值且继续 {DN} 不会造成即时故障时，临时限制重复维护动作。该逻辑对应代码中的维护安全约束，用于减少连续IM或CM造成的策略振荡。
+
+[0489] block=514 type=p style=30 sup=False
+单层DDQN维护智能体的设计
+
+[0490] block=515 type=p style= sup=False
+与分层DDQN不同，单层DDQN直接在完整动作集合上学习动作价值函数。其适用前提是：维护决策被视为一个单阶段离散动作选择问题，而不显式区分维护必要性判断与维护类型判断。在这种情况下，状态输入保持为基础维护状态 smMt∈R18，动作集合定义为 AM={DN,IM,CM}。
+
+[0491] block=516 type=p style= sup=False
+设在线动作价值函数为：
+
+[0492] block=517 type=table style= sup=False
+QMs,a;w / 
+
+[0493] block=518 type=p style= sup=False
+目标网络为：
+
+[0494] block=519 type=table style= sup=False
+QM-s,a;w- / 
+
+[0495] block=520 type=p style= sup=False
+在经验回放样本 s,a,r,s',d 上，采用Double DQN目标值：
+
+[0496] block=521 type=table style= sup=False
+y=r+γ1-d QM-​s',argmaxa'QMs',a';w;w- / 
+
+[0497] block=522 type=p style= sup=False
+对应损失函数为：
+
+[0498] block=523 type=table style= sup=False
+LDQN=Ey-QMs,a;w2 / 
+
+[0499] block=524 type=p style= sup=False
+单层DDQN的设计相对简洁，其优势在于动作空间表达直接，训练流程与标准Double DQN保持一致；其局限在于维护必要性与维护类型被压缩到同一个动作价值函数中，因而在复杂调度压力下可能难以形成稳定的维护节奏。
+
+[0500] block=525 type=p style=30 sup=False
+POMCP维护规划器设计
+
+[0501] block=526 type=p style=40 sup=False
+设计思路
+
+[0502] block=527 type=p style= sup=False
+虽然DQN可以从历史交互中学习策略，但它默认当前输入状态已经足够描述环境。而对于维护问题，设备真实健康状态往往并不可直接观测，当前健康值通常只是带噪的估计。因此，仅凭当前估计状态做值函数学习，可能无法充分体现隐藏健康状态的不确定性。
+
+[0503] block=528 type=p style= sup=False
+为了解决这一问题，本文引入POMCP作为维护对比方法，将维护决策建模为部分可观测环境下的在线规划问题。其核心思想不是学习一个固定策略网络，而是在每次决策时基于当前信念状态进行多次模拟搜索，直接选择当前最优动作。
+
+[0504] block=529 type=p style=40 sup=False
+粒子信念表示
+
+[0505] block=530 type=p style= sup=False
+设机器 m 在时刻 t 的粒子信念集合为 Bmt={zm1t,zm2t,…,zmNpt}，每个粒子包含隐状态分量：
+
+[0506] block=531 type=table style= sup=False
+zm=htrue, stress, baseline_rul, τB / 
+
+[0507] block=532 type=p style= sup=False
+这里，htrue 表示不可直接观测的真实健康状态，stress 表示粒子层面的系统压力，baseline_rul 表示维护基准寿命信息，τB 用于表征某一退化阶段的累计停留时间。
+
+[0508] block=533 type=p style= sup=False
+在观测更新时，设当前健康观测为 hobs，第 i 个粒子的健康预测值为 hitrue，则其重要性权重定义为：
+
+[0509] block=534 type=table style= sup=False
+wi∝exp-hobs-hitrue22σo2 / 
+
+[0510] block=535 type=p style= sup=False
+归一化后根据权重进行重采样，即可得到新的例子集合，从而近似实现对信念分布的更新。
+
+[0511] block=536 type=p style=40 sup=False
+规划目标
+
+[0512] block=537 type=p style= sup=False
+给定当前信念 Bt，POMCP的目标是在有限规划深度 H 内选择使累计维护回报最大的动作，即：
+
+[0513] block=538 type=table style= sup=False
+at*=argmaxaQBt,a / 
+
+[0514] block=539 type=p style= sup=False
+其中：
+
+[0515] block=540 type=table style= sup=False
+QBt,a≈Ek=0H-1γkrt+kMBt,a / 
+
+[0516] block=541 type=p style= sup=False
+在具体搜索过程中，算法首先采用root sampling从当前信念中抽样一个粒子作为隐状态起点，然后在搜索树上通过UCB规则选择动作。若到达尚未展开的新节点，则执行rollout估计剩余回报。若节点已存在，则递归进入下一层搜索。最后将累计回报沿路径回传并更新节点统计量。对于连续观测，当前实现通过对观测值进行离散bucket化处理，以便在树结构中进行索引。
+
+[0517] block=542 type=p style= sup=False
+需要强调的是，当前默认配置下的POMCP也不是在 {DN,IM,CM} 上进行完全自由搜索，而是先根据当前健康值、IM是否具有正收益以及执行DN是否会触发imminent hard breakdown等条件构造允许动作集合，再在该集合内进行在线规划。换言之，POMCP所求解的是一个带有安全过滤约束的在线维护规划问题，而不是无约束的全动作搜索问题。
+
+[0518] block=544 type=p style= sup=False
+图4-3 基于POMCP的维护决策搜索树及动作约束示意图
+
+[0519] block=545 type=p style=40 sup=False
+POMCP与DQN的差异
+
+[0520] block=546 type=p style= sup=False
+POMCP方法与DQN的最大差异在于：DQN通过离线交互训练得到策略网络，而POMCP在每个决策时刻基于当前信念进行在线搜索，并选择当前估计最优的维护动作。因此，POMCP不需要训练神经网络参数，但需要在每个维护决策时刻执行一定次数的模拟搜索。这种方法更强调对当前不确定性的即时处理能力。
+
+[0521] block=547 type=p style=20 sup=False
+调度智能体算法的设计
+
+[0522] block=548 type=p style= sup=False
+调度模块的任务是在事件驱动的决策时刻，根据当前系统状态选择适当的派工规则，从而完成工序—机器匹配。与维护模块不同，调度问题的核心难点不在于隐藏状态不完全可观测，而在于：作业动态到达、机器健康状态持续变化、调度与维护成本相互耦合，并且可行派工行为需要通过调度规则间接实现。因此，本文不直接令调度器输出某一具体工序—机器对，而是令其在有限规则集合中选择当前最适合的派工规则。
+
+[0523] block=549 type=p style= sup=False
+设调度状态为：
+
+[0524] block=550 type=table style= sup=False
+sSt∈R15 / 
+
+[0525] block=551 type=p style= sup=False
+动作集合定义为：
+
+[0526] block=552 type=table style= sup=False
+As={0,1,2,3,4,5} / 
+
+[0527] block=553 type=p style= sup=False
+分别对应六条调度规则：
+
+[0528] block=554 type=p style= sup=False
+第1条规则为“最早交期优先+最早空闲机器分配（EDD + Earliest Idle Machine）”。该规则首先在当前可调度工序中选择所属作业交期 dj 最早的工序，再将该工序分配给其候选机器集合中当前最早可用的机器。该规则强调交期约束，适用于需要优先控制作业拖期风险的场景。
+
+[0529] block=555 type=p style= sup=False
+第2条规则为“最早交期优先+最短加工时间机器分配（EDD + Shortest Processing Time Machine）”。与第1条规则相同，该规则同样先依据最早交期原则确定优先工序，但在机器分配阶段不再采用最早空闲原则，而是从候选机器中选择使当前工序加工时间 pjkm 最短的机器。该规则在兼顾交期压力的同时，进一步追求单工序加工效率。
+
+[0530] block=556 type=p style= sup=False
+第3条规则为“最大加权拖期风险优先+最短加工时间机器分配”。该规则结合作业权重 wj 和预估拖期程度来衡量拖期风险，并优先选择风险较高的工序；在机器分配阶段，则从可行机器中选择加工时间最短的设备。该规则适用于订单权重差异较明显、需要优先处理高权重紧急订单的情况。
+
+[0531] block=557 type=p style= sup=False
+第4条规则为“最短剩余加工时间优先+最短加工时间机器分配（SRPT + SPT Machine）”。该规则优先选择剩余加工需求较少的作业，并将其分配给加工时间最短的候选机器。其作用是使短作业更快完成，从而提高系统吞吐效率，并减少在制品积压。
+
+[0532] block=558 type=p style= sup=False
+第5条规则为“最长剩余加工时间优先+最早空闲机器分配（LRPT + Earliest Idle Machine）”。该规则与第4条规则的选择方向相反，优先处理剩余工作量较大的作业，并将其分配给最早可用的机器。这样可以提前处理加工量较大的任务，避免其长时间滞留在系统中并影响整体完工节奏。
+
+[0533] block=559 type=p style= sup=False
+第6条规则为“最小松弛时间优先+最早空闲机器分配（Minimum Slack + Earliest Idle Machine）”。该规则根据作业当前松弛量 SLj(t)=dj-Cj(t) 进行排序，优先选择最接近交期边界的工序。该规则直接关注作业的交付紧迫程度，可用于降低临近逾期作业的风险。
+
+[0534] block=560 type=p style= sup=False
+上述规则设计的目的，是将复杂的工序—机器匹配过程转化为有限规则集合上的选择问题。如果直接在所有工序—机器组合上学习动作，动作空间会随着工件数量和机器数量增加而迅速扩大，进而提高学习难度。相比之下，采用规则选择方式可以压缩动作空间，同时保留调度决策的可解释性。
+
+[0535] block=561 type=p style=30 sup=False
+THDQN层级调度智能体
+
+[0536] block=562 type=p style= sup=False
+对于调度问题而言，不同系统阶段的优化关注点并不一致。有时系统更需要控制拖期成本，有时则更需要控制维护成本，另外一些阶段则需要在两者之间进行折中。如果将所有目标权衡压缩到同一个单层动作价值函数中，容易导致价值学习混杂不同偏好，削弱策略的结构性。基于这一考虑，本文引入THDQN作为分层调度智能体。
+
+[0537] block=563 type=p style= sup=False
+THDQN首先由高层DQN根据完整调度状态 sSt∈R15 选择当前调度目标：
+
+[0538] block=564 type=table style= sup=False
+gt∈{0,1,2,3} / 
+
+[0539] block=565 type=p style= sup=False
+其语义分别对应拖期优先、维护优先、偏拖期平衡以及偏维护平衡。随后，低层DQN并不直接使用完整调度状态，而是采用裁剪后的11维局部状态：sSt=idle, wip, ready, SL, SL0.1, Pslack, u, ρover, ridle, rmaxidle, stress 并与高层目标的one-hot编码拼接，形成低层输入：sSt, onehotgt∈R15。
+
+[0540] block=566 type=p style= sup=False
+这种设计体现了如下考虑：高层需要基于完整系统状态判断“当前应优先优化什么”，而低层在已知目标条件下只需要关注与规则选择最直接相关的局部信息，因此没有必要重复使用全部15维状态。
+
+[0541] block=567 type=p style= sup=False
+设高层动作价值函数为：
+
+[0542] block=568 type=table style= sup=False
+QHs,g;wH / 
+
+[0543] block=569 type=p style= sup=False
+目标网络为：
+
+[0544] block=570 type=table style= sup=False
+QH-s,g;wH- / 
+
+[0545] block=571 type=p style= sup=False
+低层动作价值函数为：
+
+[0546] block=572 type=table style= sup=False
+QLs,eg,r;wL / 
+
+[0547] block=573 type=p style= sup=False
+目标网络为：
+
+[0548] block=574 type=table style= sup=False
+QL-s,eg,r;wL- / 
+
+[0549] block=575 type=p style= sup=False
+在Double DQN框架下，高层目标值写为：
+
+[0550] block=576 type=table style= sup=False
+yH=rtS+γ1-d QH-​s',argmaxg'QHs',g';wH;wH- / 
+
+[0551] block=577 type=p style= sup=False
+低层目标值写为：
+
+[0552] block=578 type=table style= sup=False
+yL=rtS+γ1-d QL-​s',egt,argmaxr'QLs',egt,r';wL;wL- / 
+
+[0553] block=579 type=p style= sup=False
+对应损失函数分别为：
+
+[0554] block=580 type=table style= sup=False
+LH=EyH-QHs,gt;wH2 /  | LL=EyL-QLs,egt,rt;wL2 / 
+
+[0555] block=581 type=p style= sup=False
+在奖励构造上，高层目标并非抽象标签，而是对应不同的调度代价权衡方式。设 ΔJtard 表示调度后总拖期成本的增量，ΔJmaint 表示维护相关成本的增量，则调度即时回报定义为：
+
+[0556] block=582 type=table style= sup=False
+rtS=-ΔJtard,&gt=0-ΔJmaint,&gt=1-ΔJtard+0.3ΔJmaint,&gt=2-0.3ΔJtard+ΔJmaint,&gt=3 / 
+
+[0557] block=583 type=p style= sup=False
+由此，高层负责决定代价权衡方向，低层负责在该方向下选择具体派工规则。
+
+[0558] block=585 type=p style= sup=False
+图4-4 分层调度智能体结构示意图
+
+[0559] block=586 type=p style=30 sup=False
+PPO调度智能体
+
+[0560] block=587 type=p style= sup=False
+与THDQN的分层值函数结构不同，PPO调度智能体将规则选择视为一个直接的随机策略优化问题，不显式构造高层目标变量，也不直接输出某个工序—机器对。其设计前提在于：若调度目标在运行期间保持固定，则可以直接学习状态到派工规则分布的映射，而不必再引入目标切换层。
+
+[0561] block=588 type=p style= sup=False
+设PPO的策略网络为 πθrsS，r∈{0,…,5}，价值网络为 VθsS。
+
+[0562] block=589 type=p style= sup=False
+θ 表示PPO中需要优化的网络参数。策略网络输出六条调度规则的概率分布，价值网络输出当前调度状态的价值估计。在训练时，动作通过温度化categorical分布进行采样。在评估时，则采用概率最大的规则作为输出动作。
+
+[0563] block=590 type=p style= sup=False
+对于一条rollout轨迹，首先计算时序差分残差：
+
+[0564] block=591 type=table style= sup=False
+δt=rtS+γVθst+1-Vθst / 
+
+[0565] block=592 type=p style= sup=False
+并使用广义优势估计得到优势函数：
+
+[0566] block=593 type=table style= sup=False
+At=δt+γλAt+1 / 
+
+[0567] block=594 type=p style= sup=False
+随后，PPO 的裁剪目标函数定义为：
+
+[0568] block=595 type=table style= sup=False
+Lclipθ=EminρtθAt,clipρtθ,1-ϵ,1+ϵAt / 
+
+[0569] block=596 type=p style= sup=False
+其中ρtθ=πθatstπθoldatst。总损失写为：
+
+[0570] block=597 type=table style= sup=False
+LPPO=-Lclipθ+cvLvalue-ceHπθ / 
+
+[0571] block=598 type=p style= sup=False
+PPO调度器不进行高层目标切换，而是采用固定的平衡型调度奖励，即：
+
+[0572] block=599 type=table style= sup=False
+rtS=-ΔJtard+0.3ΔJmaint / 
+
+[0573] block=600 type=p style= sup=False
+因此，PPO的设计逻辑并不是在多个目标之间动态切换，而是在一个预先设定的拖期—维护平衡目标下，直接学习最优规则分布。
+
+[0574] block=601 type=p style=30 sup=False
+本章小结
+
+[0575] block=602 type=p style= sup=False
+本章围绕RUL预测、维护决策和调度决策三个模块展开算法设计。RUL预测部分采用GRU从退化时间窗中提取健康状态信息，并为后续智能体提供归一化RUL输入。维护部分分别设计单层DDQN、分层DDQN和POMCP，用于比较直接价值学习、分层维护判断和在线规划三类决策方式。调度部分设计THDQN和PPO，分别对应层级目标选择和扁平规则策略。三个模块通过RUL状态、维护动作和调度规则形成闭环。
+
+[0576] block=604 type=p style=1a sup=False
+调度维护配对实验分析
+
+[0577] block=605 type=p style=20 sup=False
+实验目标与分析思路
+
+[0578] block=606 type=p style= sup=False
+第五章的实验主要用于观察调度器和维护器组合后的系统行为。本文不把PPO、THDQN、DDQN和POMCP放在彼此独立的环境中比较，而是在相同仿真场景下构造PPO/THDQN×flat_ddqn/hier_ddqn/pomcp的六组配对。正式实验采用seed=42、EVAL_EPISODES=1，因此结论用于说明该统一场景下不同组合的相对表现，不进行跨随机种子的统计显著性判断。
+
+[0579] block=607 type=p style= sup=False
+分析顺序围绕实验证据展开：首先说明退化曲线、机器集合、任务到达和维护参数，再展示六组组合的甘特图、RUL演化曲线、动作分布和核心成本指标。随后比较同一调度器下不同维护器的差异，以及同一维护结构下PPO和THDQN的差异。重点在于解释为什么THDQN + hier_ddqn在本次设置中形成较低总成本，以及POMCP和flat_ddqn分别呈现怎样的成本—健康取舍。
+
+[0580] block=608 type=p style=20 sup=False
+实验设置
+
+[0581] block=609 type=p style=30 sup=False
+退化曲线与RUL信号
+
+[0582] block=610 type=p style= sup=True
+正式实验采用公开退化数据中的6条曲线映射为车间中的6台机器，对应Data_No = {4, 8, 11, 17, 18, 23}。这些曲线来自Train_Data_CSV.csv REF _Ref229425692 \r \h\#"[0" \* MERGEFORMAT [12- REF _Ref229425694 \r \h\#"0]" \* MERGEFORMAT 13]，在仿真中作为机台健康演化的回放源。与此同时，RUL预测模块采用内部paper_gru基线，其监督训练数据来自Test_Data_CSV.csv中Data_No = 18的Differential_pressure序列，时间窗口长度为30，并按时间顺序进行80%/20%训练—验证划分，GRU主要参数为hidden_dim=40、num_layers=1、dropout=0.25，优化参数为lr=1e-3、batch_size=1024、epochs=250。由于前文已经对该模块的原理和训练过程作了说明，因此本章只保留与正式实验直接相关的数据来源与使用方式。
+
+[0583] block=611 type=p style=30 sup=False
+车间环境与任务生成参数
+
+[0584] block=612 type=p style= sup=False
+本章实验统一采用6机并行柔性作业车间。表5-1汇总了车间与任务生成相关的主要参数。
+
+[0585] block=613 type=p style= sup=False
+表5-1 车间与任务生成参数
+
+[0586] block=614 type=table style= sup=False
+参数 / 设定值 | 机器数量 / 6 | 训练阶段目标任务数 / 100
+
+[0587] block=615 type=p style= sup=False
+在本文中，λ 用于刻画作业到达节奏。系统采用分段随机到达机制，相邻作业到达间隔按照指数分布生成，已在前文进行定义，其均值由当前场景段参数 λ 决定。因此，λ 越小，作业到达越密集，系统负载越容易集中。λ 越大，作业进入系统的节奏越舒缓。在正式评估中，λ 取值为20、40和60，用于覆盖不同负载水平。
+
+[0588] block=616 type=p style= sup=False
+DDT用于刻画交期紧度。因此，DDT越小，交期越紧。DDT越大，交期越宽松。本文中 DDT 取值为1.0、1.5 和 2.0。由此，λ 与DDT共同构成了一个“负载压力—交期压力”的二维场景空间。表5-2对二者的作用作了概括。
+
+[0589] block=617 type=p style= sup=False
+表5-2 场景参数 λ与 DDT 的含义
+
+[0590] block=618 type=table style= sup=False
+参数 / 取值 / 含义 | λ / 20, 40, 60 / 控制作业到达节奏，反映系统负载水平 | DDT / 1.0, 1.5, 2.0 / 控制作业交期紧度，反映交付压力水平
+
+[0591] block=619 type=p style=30 sup=False
+维护与规划参数
+
+[0592] block=620 type=p style= sup=False
+除POMCP内部的安全动作过滤外，本文不通过预设健康区域规则将维护动作固定为某一类别，而是在统一状态输入下由维护器形成维护行为。与此同时，系统仍保留健康参考阈值与安全派工机制，以确保正式评估具有统一的安全边界。表5-3给出了维护与故障相关参数。
+
+[0593] block=621 type=p style= sup=False
+表5-3 维护与故障相关参数
+
+[0594] block=622 type=table style= sup=False
+参数 / 设定值 | Hx / 0.3 | Hy / 0.1
+
+[0595] block=623 type=p style= sup=False
+其中，IM的维护时长会随着时间线性增长，用于刻画滤芯随时间逐渐累积粉尘后维护难度上升的趋势。
+
+[0596] block=624 type=p style=30 sup=False
+强化学习与规划器参数
+
+[0597] block=625 type=p style= sup=False
+表5-4 强化学习与规划相关参数
+
+[0598] block=626 type=table style= sup=False
+模块 / 关键参数 | DDQN / gamma=0.95，lr=1e-3，batch=256，replay=50000，target_update=500 | ε-greedy / eps_start=1.0，eps_end=0.10，eps_decay_steps=20000
+
+[0599] block=627 type=p style= sup=False
+为了使各类学习方法与规划方法的设置清晰可查，表5-4汇总了本章实验中使用的强化学习与规划超参数。
+
+[0600] block=628 type=p style=20 sup=False
+调度维护配对设计
+
+[0601] block=629 type=p style= sup=False
+本章采用两类调度器与三类维护器的全配对方式，形成6组实验对象。表5-5给出本章的六组配对对象。
+
+[0602] block=630 type=p style= sup=False
+表5-5 六组配对实验对象
+
+[0603] block=631 type=table style= sup=False
+调度器 / 维护器 | PPO / flat_ddqn | PPO / hier_ddqn
+
+[0604] block=632 type=p style=30 sup=False
+PPO与单层DDQN组合
+
+[0605] block=633 type=p style= sup=False
+PPO + flat_ddqn代表扁平调度器与单层维护器的组合，是本章的重要基线之一。该组合直接由PPO在六条派工规则中选择规则，并由单层DDQN在DN、IM、CM三类维护动作中选择动作，因此可以作为无层级结构下的对照组。
+
+[0606] block=635 type=p style= sup=False
+图5-1 PPO + flat_ddqn的甘特图
+
+[0607] block=637 type=p style= sup=False
+图5-2 PPO + flat_ddqn的机台RUL演化图
+
+[0608] block=639 type=p style= sup=False
+图5-3 PPO + flat_ddqn的维护动作与松弛压力关系图
+
+[0609] block=640 type=p style= sup=False
+从结果看，该组合的总成本为206.609，其中拖期成本为192.609，维护成本为14.000；维护动作以DN为主，共执行DN 268次、IM 14次、CM 0次。该结果说明，单层维护器在当前配置下维护投入较低，但健康余量和拖期控制能力有限，因此适合作为后续比较的基线。
+
+[0610] block=641 type=p style=30 sup=False
+PPO与分层DDQN组合
+
+[0611] block=642 type=p style= sup=False
+PPO + hier_ddqn将调度器保持为PPO，而将维护器升级为分层DDQN。该设置使调度端仍然采用固定平衡目标下的规则分布学习，维护端则将“是否维护”和“维护类型”拆分为两个子决策，用于观察维护结构变化带来的影响。
+
+[0612] block=644 type=p style= sup=False
+图5-4 PPO + hier_ddqn的甘特图
+
+[0613] block=646 type=p style= sup=False
+图5-5 PPO + hier_ddqn的机台RUL演化图
+
+[0614] block=648 type=p style= sup=False
+图5-6 PPO + hier_ddqn的调度规则选择情况图
+
+[0615] block=649 type=p style= sup=False
+该组合的总成本降至167.094，其中拖期成本为131.094，维护成本为36.000；维护动作分布为DN 261次、IM 16次、CM 4次。与PPO + flat_ddqn相比，其维护投入有所增加，但拖期成本下降更明显，说明分层维护结构在PPO调度框架下能够提供更有效的健康干预。
+
+[0616] block=650 type=p style=30 sup=False
+PPO与POMCP组合
+
+[0617] block=651 type=p style= sup=False
+PPO + pomcp代表扁平调度器与规划式维护器的组合。调度端仍由PPO选择派工规则，维护端则在安全过滤后的动作集合上执行POMCP在线规划，因此该组合用于观察规划式维护在扁平调度结构下的表现。
+
+[0618] block=653 type=p style= sup=False
+图5-7 PPO + pomcp的甘特图
+
+[0619] block=655 type=p style= sup=False
+图5-8 PPO + pomcp的机台RUL演化图
+
+[0620] block=657 type=p style= sup=False
+图5-9 PPO + pomcp的维护动作与松弛压力关系图
+
+[0621] block=658 type=p style= sup=False
+该组合的总成本为172.997，其中拖期成本为114.997，维护成本为58.000；维护动作分布为DN 258次、IM 13次、CM 9次。与PPO + hier_ddqn相比，POMCP进一步降低了拖期成本并提高了终端平均健康度，但维护成本更高，且终端健康下界为0.246，低于两组hier_ddqn，说明其改善了部分场景下的拖期表现，但健康稳定性仍不如分层维护结构。
+
+[0622] block=659 type=p style=30 sup=False
+THDQN与单层DDQN组合
+
+[0623] block=660 type=p style= sup=False
+THDQN + flat_ddqn代表层级调度器与单层维护器的组合。该组总成本为439.669，其中拖期成本为422.669，维护成本为17.000，是六组中成本最高的一组。其维护动作仍以DN和少量IM为主，未执行CM，说明层级调度器的高层目标切换在缺乏有效维护响应时无法自动转化为系统收益，反而可能放大调度目标与维护能力之间的不匹配。
+
+[0624] block=662 type=p style= sup=False
+图5-10 THDQN + flat_ddqn的甘特图
+
+[0625] block=664 type=p style= sup=False
+图5-11 THDQN + flat_ddqn的高层目标选择情况图
+
+[0626] block=666 type=p style= sup=False
+图5-12 THDQN + flat_ddqn的机台RUL演化图
+
+[0627] block=667 type=p style=30 sup=False
+THDQN与分层DDQN组合
+
+[0628] block=668 type=p style= sup=False
+THDQN + hier_ddqn是本实验中的最佳组合，也是本文最重要的主结果对象。由于它同时结合了层级调度器与层级维护器，因此最适合用来说明“层级结构之间的协同”这一核心结论。
+
+[0629] block=670 type=p style= sup=False
+图5-13 THDQN + hier_ddqn的甘特图
+
+[0630] block=672 type=p style= sup=False
+图5-14 THDQN + hier_ddqn的机台RUL演化与维护窗口图
+
+[0631] block=674 type=p style= sup=False
+图5-15 THDQN + hier_ddqn的高层目标选择情况图
+
+[0632] block=676 type=p style= sup=False
+图5-16 THDQN + hier_ddqn的调度规则选择情況图
+
+[0633] block=678 type=p style= sup=False
+图5-17 THDQN + hier_ddqn的维护动作与压力关系图
+
+[0634] block=679 type=p style= sup=False
+该组合的总成本为113.170，其中拖期成本为79.170，维护成本为34.000；维护动作分布为DN 264次、IM 14次、CM 4次。其终端平均健康度为0.737，终端健康下界为0.510，且未发生硬故障。该结果表明，高层目标切换与分层维护决策之间形成了较好的结构匹配，因此后文将其作为中心对象展开比较和机制解释。
+
+[0635] block=680 type=p style=30 sup=False
+THDQN与POMCP组合
+
+[0636] block=681 type=p style= sup=False
+THDQN + pomcp代表层级调度器与规划式维护器的组合。将其放在最佳组合之后，有助于进一步说明在线规划维护在层级调度框架下所形成的独特行为风格。
+
+[0637] block=683 type=p style= sup=False
+图5-18 THDQN + pomcp的甘特图
+
+[0638] block=685 type=p style= sup=False
+图5-19 THDQN + pomcp的机台RUL演化图
+
+[0639] block=687 type=p style= sup=False
+图5-20 THDQN + pomcp的高层目标选择情况图
+
+[0640] block=689 type=p style= sup=False
+图5-21 THDQN + pomcp的调度规则选择情況图
+
+[0641] block=690 type=p style= sup=False
+该组合的总成本为214.209，其中拖期成本为167.209，维护成本为47.000；维护动作分布为DN 262次、IM 12次、CM 7次。其未发生硬故障，说明规划式维护与层级调度器可以形成可运行的协同行为；但其成本高于PPO + pomcp和两组hier_ddqn，且终端健康下界仅为0.143，表明当前POMCP安全过滤与THDQN高层目标切换之间仍存在适配损失。
+
+[0642] block=691 type=p style=20 sup=False
+配对策略总体表现
+
+[0643] block=692 type=p style= sup=False
+在逐组呈现之后，可以进一步把六组策略放在统一表格中进行整体观察。表5-6总结了六组组合的核心指标。
+
+[0644] block=693 type=p style= sup=False
+表5-6 六组策略的总体结果
+
+[0645] block=694 type=table style= sup=False
+排名 / 组合 / 总成本 / 拖期成本 / 维护成本 / 逾期工序数 / 逾期工序比例 | 1 / THDQN + hier_ddqn / 113.170 / 79.170 / 34.000 / 7 / 0.0248 | 2 / PPO + hier_ddqn / 167.094 / 131.094 / 36.000 / 11 / 0.0390
+
+[0646] block=695 type=p style= sup=False
+从表5-6可以看出，THDQN + hier_ddqn在总成本、拖期成本和终端健康下界等指标上均表现最好，其总成本为113.170、拖期成本为79.170、终端健康下界为0.510，且未发生硬故障。PPO + hier_ddqn与PPO + pomcp位于中间层次，分别体现了分层维护结构与规划式维护结构在PPO框架下的不同优势。两组flat_ddqn则构成单层维护基线，其中THDQN + flat_ddqn表现最差，说明层级调度必须与足够有效的维护结构配合才能发挥作用。由此可见，本文更应强调调度器与维护器之间的结构匹配，而不是单独强调某一类调度器或维护器的绝对优势。
+
+[0647] block=696 type=p style=20 sup=False
+同调度器维护差异
+
+[0648] block=697 type=p style= sup=False
+为了更清晰地观察维护器结构的影响，表5-7整理了同一调度器内部的维护器替换效果。
+
+[0649] block=698 type=p style= sup=False
+表5-7 同一调度器下维护器替换的结果变化
+
+[0650] block=699 type=table style= sup=False
+调度器 / 比较 / 总成本变化(率) / 拖期成本变化(率) / 维护成本变化(率) | PPO / flat_ddqn → hier_ddqn / -39.515 (-19.1%) / -61.515 (-31.9%) / +22.000 (+157.1%) | PPO / flat_ddqn → pomcp / -33.612 (-16.3%) / -77.612 (-40.3%) / +44.000 (314.3%)
+
+[0651] block=700 type=p style= sup=False
+对于PPO而言，维护器从flat_ddqn升级为hier_ddqn后，总成本由206.609下降至167.094；继续切换为pomcp后，拖期成本由131.094进一步下降至114.997，但维护成本由36.000上升至58.000，同时终端健康均值提高而健康下界下降。对于THDQN而言，维护器从flat_ddqn升级为hier_ddqn所带来的收益最明显，总成本由439.669下降至113.170，说明分层维护结构能够更充分地支撑层级调度器的高层目标切换。在线规划维护相较flat_ddqn也能降低总成本，但在当前结果中没有超过hier_ddqn。
+
+[0652] block=701 type=p style=20 sup=False
+同维护器调度差异
+
+[0653] block=702 type=p style= sup=False
+若将视角转为“固定维护器、比较调度器”，则可进一步观察层级调度器与扁平调度器的适配关系。表5-8对这一点作了概括。
+
+[0654] block=703 type=p style= sup=False
+表5-8 同一维护器下调度器的结果比较
+
+[0655] block=704 type=table style= sup=False
+维护器 / PPO总成本 / THDQN总成本 / 主要特征 | flat_ddqn / 206.609 / 439.669 / 单层维护下，PPO形成更稳定的整体结果 | hier_ddqn / 167.094 / 113.170 / 层级维护下，THDQN的层级优势得到充分体现
+
+[0656] block=705 type=p style= sup=False
+这一比较表明，调度器的优势并不是脱离维护器单独存在的。对于flat_ddqn，PPO构成了更稳健的配对；对于hier_ddqn，THDQN明显优于PPO；对于pomcp，PPO的总成本低于THDQN，说明当前POMCP安全过滤与PPO的扁平规则选择更适配，而THDQN + pomcp虽然未发生硬故障，但成本与健康下界均不占优。由此，本文更值得强调的是“调度器结构与维护器结构之间的匹配关系”，而不是单独强调某一类调度器在所有条件下都具有优势。
+
+[0657] block=706 type=p style=20 sup=False
+最优组合形成机制
+
+[0658] block=707 type=p style= sup=False
+综合前述个体分析、总体结果与对比结果，THDQN + hier_ddqn的优势不仅来自较低的总成本，更来自其内部结构的一致性。其高层目标能够根据不同场景在拖期优先和平衡目标之间切换，低层规则则围绕关键规则形成结构化选择；与此同时，维护端通过分层结构把“是否维护”与“维护类型选择”区分开来，使维护时点与维护强度都更具节奏性。换言之，该组合的效果并不是由单一规则、单一目标或高频率维护堆叠而成，而是由调度层与维护层之间较好的结构匹配形成。
+
+[0659] block=708 type=p style= sup=False
+在图像层面，这一机制可以通过图5-14、图5-15、图5-16和图5-17进行共同说明：图5-14展示了机台健康轨迹与维护窗口的配合关系，图5-15展示了高层目标选择如何随场景变化而调整，图5-16展示了不同子场景下的规则切换结构，图5-17则展示了维护动作如何在压力区间内形成节制而有效的分布。
+
+[0660] block=709 type=p style=20 sup=False
+本章小结
+
+[0661] block=710 type=p style= sup=False
+本章在统一仿真设置下比较六组调度维护组合，重点分析不同维护器和调度器之间的配合关系。实验围绕总成本、拖期成本、维护成本、RUL演化、动作分布和规则选择行为展开。结果显示，THDQN与分层DDQN组合在该设置下表现较好，说明层级调度目标与分层维护判断之间存在较好的结构匹配。同时，PPO与POMCP等组合体现出不同成本和健康裕度取舍，说明系统表现不能只由单个算法解释。
+
+[0662] block=713 type=p style=1a sup=False
+结论
+
+[0663] block=714 type=p style= sup=False
+本文实验表明，在引入设备退化的动态柔性作业车间中，维护策略和调度策略不能作为两个互不影响的模块分别评价。RUL预测值进入维护和调度状态后，维护动作会改变机器可用时间和健康水平，调度动作又会改变机器负荷和后续退化暴露。基于这一关系，本文构建了包含GRU健康估计、维护智能体和调度智能体的协同框架，并在统一仿真环境下比较不同调度器与维护器的组合表现。
+
+[0664] block=715 type=p style= sup=False
+从建模角度看，本文将归一化RUL作为连接设备退化与后续决策的状态变量。该变量不是只用于展示预测结果，而是在仿真过程中持续影响维护动作和调度规则选择。GRU预测器通过滑动时间窗提取退化轨迹特征，并输出健康状态估计；维护器据此判断是否执行 {DN / IM / CM}；调度器则在交期、加工时间、候选机器和健康风险之间选择规则。这样，生产、退化和维护之间的动态影响能够在同一环境中被观察。
+
+[0665] block=716 type=p style= sup=False
+维护决策部分比较了学习型和规划型两条路径。单层DDQN直接在{DN / IM / CM} 中学习动作价值，可作为较简单的维护基线；分层DDQN把维护介入和维护类型拆开，使模型先判断是否维护，再判断执行IM或CM；POMCP则利用粒子信念和蒙特卡洛树搜索，在当前观测不完全确定的情况下进行在线规划。第五章结果显示，hier_ddqn在PPO和THDQN两类调度器下都比flat_ddqn更稳定，而POMCP虽然能够避免硬故障，但在不同调度器下会表现出维护成本偏高或健康下界偏低的倾向。
+
+[0666] block=717 type=p style= sup=False
+在调度决策部分，本文分别设计了THDQN和PPO两类调度方法。THDQN采用“高层目标选择—低层规则选择”的分层结构，使调度器能够在拖期优先、维护优先和平衡目标之间进行切换。PPO作为扁平策略优化方法，直接学习从系统状态到调度规则概率分布的映射，而不是直接输出工序—机器对。基于这两类方法，本文从层级强化学习和扁平强化学习两个角度，对动态调度策略进行了比较，并进一步分析了调度结构与维护结构之间的匹配关系。
+
+[0667] block=718 type=p style= sup=False
+六组配对结果中，THDQN + hier_ddqn取得了最低总成本113.170，拖期成本为79.170，末端健康最小值为0.510。这一结果说明，THDQN的高层目标切换只有在维护端能够稳定控制健康状态时才更容易转化为系统收益。若维护器换成flat_ddqn，THDQN组合反而出现较高拖期成本；若换成POMCP，系统虽然没有发生硬故障，但整体成本仍高于hier_ddqn组合。
+
+[0668] block=719 type=p style= sup=False
+同时，PPO + hier_ddqn和PPO + pomcp体现了不同取舍。前者总成本较低且成本结构较均衡，后者以更高维护成本换取较低拖期风险和较高健康均值。由此可见，本文结果并不能简单概括为“某个调度器最好”或“某个维护器总是最优”，更准确的结论是：调度目标结构与维护决策结构之间的匹配关系，会直接影响总成本、拖期和健康裕度。
+
+[0669] block=720 type=p style= sup=False
+本文的主要工作可以概括为三个方面。第一，将设备退化、RUL预测、维护动作和柔性作业车间调度放入同一事件驱动仿真框架，使健康状态能够进入调度与维护状态。第二，在维护端比较flat_ddqn、hier_ddqn和POMCP，分析直接价值学习、分层维护判断和在线规划在同一环境下的差异。第三，在调度端比较THDQN和PPO，并通过六组配对实验观察层级调度与分层维护之间的配合关系。
+
+[0670] block=721 type=p style= sup=False
+本文也存在明确边界。RUL预测主要依赖单一退化特征和单变量时间序列，尚未讨论多传感器融合对维护决策的影响；维护动作主要面向单机层面，尚未处理有限维修资源下的多机维护排队；调度动作仍采用规则选择，尚未直接学习端到端的工序—机器匹配；实验结论来自仿真平台和单一正式评估配置，后续仍需要在更多随机种子和更接近真实车间的数据上验证。
+
+[0671] block=723 type=p style=1a sup=False
+参考文献
+
+[0672] block=724 type=p style= sup=False
+Kagermann H, Helbig J, Wahlster W. Recommendations for implementing the strategic initiative INDUSTRIE 4.0: final report of the Industrie 4.0 Working Group[R]. Frankfurt: Forschungsunion, 2013
+
+[0673] block=725 type=p style= sup=False
+Luo S. Dynamic scheduling for flexible job shop with new job insertions by deep reinforcement learning[J]. Applied Soft Computing, 2020, 91: 106208
+
+[0674] block=726 type=p style= sup=False
+Luo S, Zhang L, Fan Y. Dynamic multi-objective scheduling for flexible job shop by deep reinforcement learning[J]. Computers & Industrial Engineering, 2021, 159: 107489
+
+[0675] block=727 type=p style= sup=False
+Ren F, Liu H. Dynamic scheduling for flexible job shop based on MachineRank algorithm and reinforcement learning[J]. Scientific Reports, 2024, 14: 29741
+
+[0676] block=728 type=p style= sup=False
+Zhang Y, Zhu H, Tang D, et al. Dynamic job shop scheduling based on deep reinforcement learning for multi-agent manufacturing systems[J]. Robotics and Computer-Integrated Manufacturing, 2022, 78: 102412
+
+[0677] block=729 type=p style= sup=False
+Ding C, Qiao F, Wang D, et al. Adaptive real-time scheduling for production and maintenance: integrating RUL prediction with multi-agent deep reinforcement learning[J]. Reliability Engineering & System Safety, 2025, 264: 111394
+
+[0678] block=730 type=p style= sup=False
+Mallioris P, Aivazidou E, Bechtsis D. Predictive maintenance in Industry 4.0: a systematic multi-sector mapping[J]. CIRP Journal of Manufacturing Science and Technology, 2024, 50: 80-103
+
+[0679] block=731 type=p style= sup=False
+Sutton R S, Barto A G. Reinforcement learning: an introduction[M]. 2nd ed. Cambridge: MIT Press, 2018
+
+[0680] block=732 type=p style= sup=False
+Mnih V, Kavukcuoglu K, Silver D, et al. Human-level control through deep reinforcement learning[J]. Nature, 2015, 518(7540): 529-533
+
+[0681] block=733 type=p style= sup=False
+Schulman J, Wolski F, Dhariwal P, et al. Proximal policy optimization algorithms[EB/OL]. arXiv:1707.06347, 2017[2026-05-11]. https://arxiv.org/abs/1707.06347
+
+[0682] block=734 type=p style= sup=False
+Silver D, Veness J. Monte-Carlo planning in large POMDPs[C]//Lafferty J, Williams C, Shawe-Taylor J, et al. Advances in Neural Information Processing Systems 23. Red Hook: Curran Associates, 2010: 2164-2172
+
+[0683] block=735 type=p style= sup=False
+Hagmeyer S, Mauthe F, Zeiler P. Creation of publicly available data sets for prognostics and diagnostics addressing data scenarios relevant to industrial applications[J]. International Journal of Prognostics and Health Management, 2021, 12(2). DOI: 10.36001/ijphm.2021.v12i2.3087
+
+[0684] block=736 type=p style= sup=False
+PrognosticsHSE. Preventive to predictive maintenance[DB/OL]. Kaggle, 2023[2026-05-1]. https://www.kaggle.com/datasets/prognosticshse/preventive-to-predicitve-maintenance
+
+[0685] block=737 type=p style= sup=False
+Lasi H, Fettke P, Kemper H G, et al. Industry 4.0[J]. Business & Information Systems Engineering, 2014, 6(4): 239-242
+
+[0686] block=738 type=p style= sup=False
+Oks S J, Jalowski M, Lechner M, et al. Cyber-physical systems in the context of Industry 4.0: a review, categorization and outlook[J]. Information Systems Frontiers, 2024, 26: 1731-1772
+
+[0687] block=739 type=p style= sup=False
+Kusiak A. Predictive models in digital manufacturing: research, applications, and future outlook[J]. International Journal of Production Research, 2023, 61(17): 6052-6062
+
+[0688] block=740 type=p style= sup=False
+Huang C, Bu S, Lee H H, et al. Prognostics and health management for predictive maintenance: a review[J]. Journal of Manufacturing Systems, 2024, 75: 78-101
+
+[0689] block=741 type=p style= sup=False
+Benhanifia A, Ben Cheikh Z, Moura Oliveira P, et al. Systematic review of predictive maintenance practices in the manufacturing sector[J]. Intelligent Systems with Applications, 2025, 26: 200501
+
+[0690] block=742 type=p style= sup=False
+Zonta T, da Costa C A, da Rosa Righi R, et al. Predictive maintenance in the Industry 4.0: a systematic literature review[J]. Computers & Industrial Engineering, 2020, 150: 106889
+
+[0691] block=743 type=p style= sup=False
+Carvalho T P, Soares F A A M N, Vita R, et al. A systematic literature review of machine learning methods applied to predictive maintenance[J]. Computers & Industrial Engineering, 2019, 137: 106024
+
+[0692] block=744 type=p style= sup=False
+Ferreira C, Goncalves G. Remaining useful life prediction and challenges: a literature review on the use of machine learning methods[J]. Journal of Manufacturing Systems, 2022, 63: 550-562
+
+[0693] block=745 type=p style= sup=False
+Li H, Zhang Z, Li T, et al. A review on physics-informed data-driven remaining useful life prediction: challenges and opportunities[J]. Mechanical Systems and Signal Processing, 2024, 209: 111120
+
+[0694] block=746 type=p style= sup=False
+Lei Y, Li N, Guo L, et al. Machinery health prognostics: a systematic review from data acquisition to RUL prediction[J]. Mechanical Systems and Signal Processing, 2018, 104: 799-834
+
+[0695] block=747 type=p style= sup=False
+Hochreiter S, Schmidhuber J. Long short-term memory[J]. Neural Computation, 1997, 9(8): 1735-1780
+
+[0696] block=748 type=p style= sup=False
+Cho K, van Merrienboer B, Gulcehre C, et al. Learning phrase representations using RNN encoder-decoder for statistical machine translation[C]//Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing. Doha: Association for Computational Linguistics, 2014: 1724-1734
+
+[0697] block=749 type=p style= sup=False
+Chung J, Gulcehre C, Cho K, et al. Empirical evaluation of gated recurrent neural networks on sequence modeling[EB/OL]. arXiv:1412.3555, 2014[2026-05-1]. https://arxiv.org/abs/1412.3555
+
+[0698] block=750 type=p style= sup=False
+Lin R, Wang H, Xiong M, et al. Attention-based gate recurrent unit for remaining useful life prediction in prognostics[J]. Applied Soft Computing, 2023, 143: 110419
+
+[0699] block=751 type=p style= sup=False
+Sahu P K, Rai R N. LSTM-based deep learning approach for remaining useful life prediction of rolling bearing using proposed C-MMPE feature[J]. Journal of Mechanical Science and Technology, 2024, 38: 2197-2209
+
+[0700] block=752 type=p style= sup=False
+Peng C, Chen Y, Gui W, et al. Remaining useful life prognosis of turbofan engines based on deep feature extraction and fusion[J]. Scientific Reports, 2022, 12: 6491
+
+[0701] block=753 type=p style= sup=False
+Zhang X, Guo Y, Shangguan H, et al. Predicting remaining useful life of a machine based on embedded attention parallel networks[J]. Mechanical Systems and Signal Processing, 2023, 192: 110221
+
+[0702] block=754 type=p style= sup=False
+Pinedo M L. Scheduling: theory, algorithms, and systems[M]. 5th ed. Cham: Springer, 2016
+
+[0703] block=755 type=p style= sup=False
+Panwalkar S S, Iskander W. A survey of scheduling rules[J]. Operations Research, 1977, 25(1): 45-61
+
+[0704] block=756 type=p style= sup=False
+Vepsalainen A P J, Morton T E. Priority rules for job shops with weighted tardiness costs[J]. Management Science, 1987, 33(8): 1035-1047
+
+[0705] block=757 type=p style= sup=False
+Brucker P, Schlie R. Job-shop scheduling with multi-purpose machines[J]. Computing, 1990, 45(4): 369-375
+
+[0706] block=758 type=p style= sup=False
+Brandimarte P. Routing and scheduling in a flexible job shop by tabu search[J]. Annals of Operations Research, 1993, 41(3): 157-183
+
+[0707] block=759 type=p style= sup=False
+Mastrolilli M, Gambardella L M. Effective neighbourhood functions for the flexible job shop problem[J]. Journal of Scheduling, 2000, 3(1): 3-20
+
+[0708] block=760 type=p style= sup=False
+Kacem I, Hammadi S, Borne P. Approach by localization and multiobjective evolutionary optimization for flexible job-shop scheduling problems[J]. IEEE Transactions on Systems, Man, and Cybernetics, Part C, 2002, 32(1): 1-13
+
+[0709] block=761 type=p style= sup=False
+Xue L, Zhao S, Mahmoudi A, et al. Flexible job-shop scheduling problem with parallel batch machines based on an enhanced multi-population genetic algorithm[J]. Complex & Intelligent Systems, 2024, 10: 4083-4101
+
+[0710] block=762 type=p style= sup=False
+Dauzère-Pérès S, Ding J, Shen L, et al. The flexible job shop scheduling problem: a review[J]. European Journal of Operational Research, 2024, 314(2): 409-432
+
+[0711] block=763 type=p style= sup=False
+Li X, Guo X, Tang H, et al. Survey of integrated flexible job shop scheduling problems[J]. Computers & Industrial Engineering, 2022, 174: 108786
+
+[0712] block=764 type=p style=af9 sup=False
+Ngwu C, Liu Y, Wu R. Reinforcement learning in dynamic job shop scheduling: a comprehensive review of AI-driven approaches in modern manufacturing[J]. Journal of Intelligent Manufacturing, 2026, 37: 1093-1108. DOI: 10.1007/s10845-025-02585-6
+
+[0713] block=765 type=p style= sup=False
+An Y, Chen X, Gao K, et al. Multiobjective flexible job-shop rescheduling with new job insertion and machine preventive maintenance[J]. IEEE Transactions on Cybernetics, 2023, 53(5): 3101-3113
+
+[0714] block=766 type=p style= sup=False
+Ghaleb M, Taghipour S, Zolfagharinia H. Real-time integrated production-scheduling and maintenance-planning in a flexible job shop with machine deterioration and condition-based maintenance[J]. Journal of Manufacturing Systems, 2021, 61: 423-449
+
+[0715] block=767 type=p style= sup=False
+Pal M, Mittal M L, Soni G, et al. A multi-agent system for integrated scheduling and maintenance planning of the flexible job shop[J]. Computers & Operations Research, 2023, 159: 106365
+
+[0716] block=768 type=p style= sup=False
+Zhang W, Gan J, He S, et al. An integrated framework of preventive maintenance and task scheduling for repairable multi-unit systems[J]. Reliability Engineering & System Safety, 2024, 247: 110129
+
+[0717] block=769 type=p style= sup=False
+Wang Y, Xia T, Li Y, et al. Integrated coordination of production scheduling, preventive maintenance, and energy conservation in flexible manufacturing environments[J]. Journal of Cleaner Production, 2025, 518: 145856
+
+[0718] block=770 type=p style= sup=False
+Sutton R S, Precup D, Singh S. Between MDPs and semi-MDPs: a framework for temporal abstraction in reinforcement learning[J]. Artificial Intelligence, 1999, 112(1/2): 181-211
+
+[0719] block=771 type=p style= sup=False
+Watkins C J C H, Dayan P. Q-learning[J]. Machine Learning, 1992, 8(3/4): 279-292
+
+[0720] block=772 type=p style= sup=False
+van Hasselt H, Guez A, Silver D. Deep reinforcement learning with double Q-learning[C]//Proceedings of the AAAI Conference on Artificial Intelligence. Palo Alto: AAAI Press, 2016: 2094-2100
+
+[0721] block=775 type=p style=1a sup=False
+致谢
+
+[0722] block=776 type=p style= sup=False
+首先，感谢冯颖老师对我论文的指导。以及，感谢在大学期间愿意理解、支持与陪伴我的朋友们。
+

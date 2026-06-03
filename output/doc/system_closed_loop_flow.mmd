@@ -1,0 +1,27 @@
+flowchart LR
+    D["退化序列 / 传感数据<br/>Differential_pressure"]
+    R["健康估计层<br/>GRU RUL预测<br/>输出归一化RUL / 健康状态"]
+    M["维护决策层<br/>根据健康状态与生产压力<br/>选择 DN / IM / CM"]
+    S["调度决策层<br/>根据作业、机器、交期与健康状态<br/>选择派工规则"]
+    E["事件驱动车间环境<br/>加工执行 / 维护占用 / 作业到达"]
+    O["系统结果<br/>总成本 / 拖期成本 / 故障风险 / 健康轨迹"]
+
+    D --> R
+    R --> M
+    R --> S
+    M --> E
+    S --> E
+    E --> O
+    E -->|"加工负荷改变退化过程"| D
+    E -->|"机器可用性与队列状态更新"| M
+    E -->|"作业状态与交期压力更新"| S
+
+    classDef data fill:#eef4ff,stroke:#8fb3e8,stroke-width:1.5px,color:#172033;
+    classDef layer fill:#ffffff,stroke:#d2dbe8,stroke-width:1.5px,color:#172033;
+    classDef env fill:#1f6feb,stroke:#185abc,stroke-width:2px,color:#ffffff;
+    classDef result fill:#eaf8f0,stroke:#8fd3ae,stroke-width:1.5px,color:#172033;
+
+    class D data;
+    class R,M,S layer;
+    class E env;
+    class O result;

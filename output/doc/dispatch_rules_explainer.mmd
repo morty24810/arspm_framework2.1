@@ -1,0 +1,14 @@
+flowchart TB
+    A["一条派工规则 = 工序优先级 + 机器选择方式"]
+    R1["1. 先赶最早交期<br/>EDD + Earliest Idle"]
+    R2["2. 先赶交期，再选快机器<br/>EDD + SPT Machine"]
+    R3["3. 优先抢救高风险订单<br/>Weighted Tardiness Risk + SPT"]
+    R4["4. 先清短任务<br/>SRPT + SPT Machine"]
+    R5["5. 先处理大任务<br/>LRPT + Earliest Idle"]
+    R6["6. 先救最紧急订单<br/>Minimum Slack + Earliest Idle"]
+    A --> R1
+    A --> R2
+    A --> R3
+    A --> R4
+    A --> R5
+    A --> R6

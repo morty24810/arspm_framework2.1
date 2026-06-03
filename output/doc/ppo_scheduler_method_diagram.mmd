@@ -1,0 +1,16 @@
+flowchart LR
+    S["s^S(t) ∈ R^15<br/>调度状态"]
+    PPO["PPO共享特征<br/>MLP"]
+    A["Actor πθ<br/>输出6条规则概率"]
+    C["Critic Vφ<br/>估计状态价值"]
+    PI["πθ(a|s^S(t))<br/>a ∈ A_S={0,1,2,3,4,5}"]
+    ACT["a_t<br/>派工规则"]
+    V["Vφ(s^S(t))<br/>用于GAE优势估计"]
+    OBJ["PPO clipped objective<br/>限制策略更新幅度，稳定训练"]
+
+    S --> PPO
+    PPO --> A --> PI --> ACT
+    PPO --> C --> V
+    ACT -. rollout/logπ/reward .-> OBJ
+    V -. advantage .-> OBJ
+    OBJ -. update .-> PPO

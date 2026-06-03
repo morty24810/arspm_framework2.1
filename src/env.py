@@ -754,9 +754,6 @@ class EventDrivenShopEnv:
             return 0.0
         if region_b_elapsed is None:
             region_b_elapsed = self._region_b_elapsed(mid, h=h)
-        # legacy behavior (commented): ratio-based duration by mean processing time.
-        # mean_pt = self._mean_proc_time(mid)
-        # return self.cfg.MAINT_IM_RATIO * mean_pt
         dur = float(self.cfg.MT_IM_BASE + self.cfg.MT_IM_LINEAR * max(0.0, float(region_b_elapsed)))
         im_max = float(getattr(self.cfg, "MT_IM_MAX", dur))
         return float(min(dur, im_max))
@@ -990,9 +987,6 @@ class EventDrivenShopEnv:
         m.total_im_count += 1
         m.post_im_grace_decisions = 1
 
-        # legacy behavior (commented): fixed-target repair.
-        # target_rul = max(0.0, min(1.0, float(self.cfg.IM_TARGET_RUL)))
-        # new behavior: geometric maintenance baseline, L_k = 0.8 * L_{k-1}.
         target_rul = max(0.0, min(1.0, 0.8 * float(m.maint_rul_baseline)))
         m.maint_rul_baseline = target_rul
         self.machine_operating_idx[mid] = int(self.operating_index_from_rul(mid, target_rul))
@@ -1029,9 +1023,6 @@ class EventDrivenShopEnv:
             else:
                 kind = "IM"
                 dur = self._maintenance_duration(mid, action=1, region_b_elapsed=region_b_elapsed)
-                # legacy behavior (commented): fixed-target repair.
-                # h = max(0.0, min(1.0, float(self.cfg.IM_TARGET_RUL)))
-                # new behavior: geometric maintenance baseline, L_k = 0.8 * L_{k-1}.
                 baseline_rul = self.im_target_rul(mid, baseline_rul=baseline_rul)
                 region_b_elapsed = 0.0
                 h = baseline_rul

@@ -263,7 +263,7 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
     if profile == "thesis_ppo_maint":
         cfg.TRAIN_SCHEDULER_MODES = ("PPO",)
         cfg.TRAIN_POLICY_ROUTES = ("region_off",)
-        cfg.TRAIN_MAINT_MODES = ("DQN", "POMCP")
+        cfg.TRAIN_MAINT_MODES = ("flat_ddqn", "pomcp")
         cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
         cfg.TRAIN_COMBO_MODE = "episode_fixed"
         cfg.EVAL_COMBO_MODE = "grid_full"
@@ -276,7 +276,7 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
     if profile == "thesis_ppo_maint_short":
         cfg.TRAIN_SCHEDULER_MODES = ("PPO",)
         cfg.TRAIN_POLICY_ROUTES = ("region_off",)
-        cfg.TRAIN_MAINT_MODES = ("DQN", "POMCP")
+        cfg.TRAIN_MAINT_MODES = ("flat_ddqn", "pomcp")
         cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
         cfg.TRAIN_COMBO_MODE = "episode_fixed"
         cfg.EVAL_COMBO_MODE = "grid_full"
@@ -289,7 +289,7 @@ def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = N
     if profile == "thesis_ppo_reward_ablation":
         cfg.TRAIN_SCHEDULER_MODES = ("PPO_LEGACY", "PPO_EFFICIENCY")
         cfg.TRAIN_POLICY_ROUTES = ("region_off",)
-        cfg.TRAIN_MAINT_MODES = ("DQN",)
+        cfg.TRAIN_MAINT_MODES = ("flat_ddqn",)
         cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
         cfg.TRAIN_COMBO_MODE = "episode_fixed"
         cfg.EVAL_COMBO_MODE = "grid_full"
@@ -2210,6 +2210,8 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                         "mat_cost": None,
                         "scrap_part_cost": breakdown_cost,
                     })
+                if not dispatched:
+                    break
 
         tard, maint = env.compute_costs()
         metrics = {"tard": float(tard), "maint": float(maint), "total": float(tard + maint)}
@@ -2944,26 +2946,33 @@ def evaluate_maint_only_results(base_cfg: SimConfig, seed: int, degr: Degradatio
                                 rul: RULPredictorWrapper, scenario_bank: ScenarioBank,
                                 train_policy_tag: str, train_enforce_region: bool,
                                 sched_agent: THDQNAgent,
+                                anchor_maint_variant: str,
                                 dqn_maint_agent: Optional[MaintenanceAgentDDQN]) -> Dict[str, Dict[str, Any]]:
     final_scenario = scenario_bank.final_eval_scenario
     results: Dict[str, Dict[str, Any]] = {}
-    for maint_mode in ("DQN", "POMCP"):
-        if maint_mode == "DQN" and dqn_maint_agent is None:
+    compare_variants = [str(anchor_maint_variant), "pomcp"]
+    seen_variants: List[str] = []
+    for maint_mode in compare_variants:
+        variant = maintenance_variant_for_context(
+            base_cfg,
+            maint_mode,
+            enforce_region=train_enforce_region,
+            scheduler_mode=getattr(base_cfg, "SCHEDULER_MODE", "THDQN"),
+        )
+        if variant in seen_variants:
+            continue
+        seen_variants.append(variant)
+        if maintenance_mode_family(variant) == "DQN" and dqn_maint_agent is None:
             continue
         eval_cfg = copy.deepcopy(base_cfg)
         eval_cfg.SEED = int(seed)
-        eval_cfg.MAINT_VARIANT = maintenance_variant_for_context(
-            eval_cfg,
-            maint_mode,
-            enforce_region=train_enforce_region,
-            scheduler_mode=getattr(eval_cfg, "SCHEDULER_MODE", "THDQN"),
-        )
+        eval_cfg.MAINT_VARIANT = variant
         eval_cfg.MAINT_MODE = maintenance_mode_family(eval_cfg.MAINT_VARIANT)
         eval_cfg.BASE_DEGRADATION_RATE = float(final_scenario.degradation_rate)
         eval_cfg.ENFORCE_REGION_POLICY = bool(train_enforce_region)
         policy_label = (
             f"{build_policy_context_label(eval_cfg, train_enforce_region, eval_cfg.MAINT_VARIANT)} | "
-            "Compare: maint_only | Scheduler anchor: DQN"
+            f"Compare: maint_only | Scheduler anchor: {anchor_maint_variant}"
         )
         eval_pomcp = (
             POMCPPlanner(
@@ -3003,7 +3012,7 @@ def evaluate_maint_only_results(base_cfg: SimConfig, seed: int, degr: Degradatio
             train_policy_tag,
             train_policy_tag,
             compare_type="maint_only",
-            scheduler_anchor="DQN",
+            scheduler_anchor=str(anchor_maint_variant),
         )
     return results
 
@@ -3508,6 +3517,8 @@ def train_one_mode(
                 g, rule, sched_info = scheduler_act(sched_agent, S, explore=True)
                 env.rule_log.append((env.time, S.copy(), None if g is None else int(g), int(rule)))
                 dispatched = env.dispatch(rule)
+                if not dispatched:
+                    break
                 tard, maint = env.compute_costs()
                 S2 = env.get_global_features()
                 r_s = scheduling_reward(
@@ -3960,7 +3971,7 @@ def main(profile_override: Optional[str] = None):
     all_result_rows: List[Dict[str, Any]] = []
     all_compare_rows: List[Dict[str, Any]] = []
 
-    enable_maint_only_compare = bool(getattr(cfg, "ENABLE_MAINT_ONLY_COMPARE", True))
+    enable_maint_only_compare = bool(getattr(cfg, "ENABLE_MAINT_ONLY_COMPARE", False))
 
     for seed in experiment_seeds:
         print(f"paired experiment seed={seed}")
@@ -4082,6 +4093,7 @@ def main(profile_override: Optional[str] = None):
                             train_policy_tag,
                             train_enforce_region,
                             route_results[train_policy_tag][scheduler_mode][anchor_mode]["sched_agent"],
+                            anchor_mode,
                             route_results[train_policy_tag][scheduler_mode][anchor_mode]["maint_agent"],
                         )
                         route_maint_only_results[train_policy_tag] = maint_only_results
@@ -4305,6 +4317,7 @@ def main(profile_override: Optional[str] = None):
                         unrestricted_anchor = route_maint_only_results.get(unrestricted_tag, {}).get(mode)
                         if constrained_anchor is None or unrestricted_anchor is None:
                             continue
+                        anchor_variant = str(constrained_anchor.get("scheduler_anchor", unrestricted_anchor.get("scheduler_anchor", "flat_ddqn")))
                         route_summary, route_rows = compare_mode_results(
                             constrained_anchor,
                             unrestricted_anchor,
@@ -4313,7 +4326,7 @@ def main(profile_override: Optional[str] = None):
                             compare_type="maint_only_route_compare",
                             train_policy_tag=constrained_tag,
                             eval_policy_tag=unrestricted_tag,
-                            scheduler_anchor="DQN",
+                            scheduler_anchor=anchor_variant,
                         )
                         route_summary = _finalize_compare_summary(
                             route_summary,
@@ -4338,10 +4351,10 @@ def main(profile_override: Optional[str] = None):
                         all_compare_rows.append(dict(route_summary))
                         write_mode_comparison_outputs(
                             route_compare_dir,
-                            f"route_compare_maint_only_anchor_dqn_{build_maint_mode_tag(mode)}",
+                            f"route_compare_maint_only_anchor_{anchor_variant}_{build_maint_mode_tag(mode)}",
                             route_summary,
                             route_rows,
-                            policy_label=f"Route compare | Maint-only anchor DQN | maintenance: {mode}",
+                            policy_label=f"Route compare | Maint-only anchor {anchor_variant} | maintenance: {mode}",
                         )
 
     paired_results_csv = output_root / "paired_eval_rows.csv"
