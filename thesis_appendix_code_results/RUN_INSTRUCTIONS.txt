@@ -1,0 +1,18 @@
+Thesis appendix package for the ARSPM maintenance scheduling experiment.
+
+Source code: 01_source_code
+Paper result set: 02_paper_results/maintenance_strategy_comparison_20260421
+
+To run tests:
+  cd 01_source_code
+  pytest -q
+
+To run the default experiment from source:
+  cd 01_source_code
+  python run_experiment.py
+
+The source file names are kept stable because Python imports depend on them.
+The copied paper-result files are renamed for readability.
+
+2026/6/3
+Fu, Mao-Jie

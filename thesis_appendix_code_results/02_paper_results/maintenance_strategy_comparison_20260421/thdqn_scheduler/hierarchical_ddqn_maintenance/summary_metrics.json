@@ -1,0 +1,674 @@
+{
+  "timestamp": "20260421_182654",
+  "seed": 42,
+  "experiment_profile": "default",
+  "horizon_mode": "",
+  "train_jobs_target_effective": 100,
+  "eval_jobs_target_effective": 81,
+  "scheduler_fixed_mode": "",
+  "scheduler_reward_version": "legacy_balanced",
+  "comparison_role": "supplement",
+  "maint_variant": "hier_ddqn",
+  "maint_variant_tag": "maint_hier_ddqn",
+  "maint_arch": "hier_ddqn",
+  "maint_family": "learning",
+  "policy_tag": "region_off_unrestricted",
+  "train_policy_tag": "region_off_unrestricted",
+  "eval_policy_tag": "region_off_unrestricted",
+  "policy_label": "Policy: Unrestricted (no Hx/Hy enforcement) | Scheduler: THDQN | maintenance: hier_ddqn",
+  "maint_mode_tag": "maint_hier_ddqn",
+  "maint_mode": "DQN",
+  "compare_type": "full_system",
+  "scheduler_anchor": "none",
+  "enforce_region_policy": 0,
+  "hx": 0.3,
+  "hy": 0.1,
+  "jobs_target": 81,
+  "tard": 79.17021790272328,
+  "maint": 34.0,
+  "total": 113.17021790272328,
+  "overdue_ratio_ops": 0.024822695035460994,
+  "overdue_ratio_time": 0.03242835197900097,
+  "overdue_ops": 7.0,
+  "total_ops": 282.0,
+  "breakdown_count": 0,
+  "breakdown_cost": 0.0,
+  "requeued_op_count": 0,
+  "interrupted_proc_time": 0.0,
+  "hard_breakdown_count": 0,
+  "stochastic_breakdown_count": 0,
+  "current_stress_mean": 0.01792042821989203,
+  "current_stress_max": 0.40199190378189087,
+  "scheduler_mode": "THDQN",
+  "scheduler_mode_tag": "sched_thdqn",
+  "sched_regime_feature_mode": "oracle",
+  "lam_ddt_mode": "variable",
+  "train_combo_mode": "episode_fixed",
+  "eval_combo_mode": "grid_full",
+  "fixed_arrival_lam": 40.0,
+  "fixed_ddt": 1.5,
+  "degradation_rate": 72.8,
+  "degradation_rate_scale": 1.3,
+  "machine_set_mode": "current6",
+  "machine_curve_ids": [
+    4,
+    8,
+    11,
+    17,
+    18,
+    23
+  ],
+  "rul_life_clock_mode": "label_driven_scaled",
+  "machine_replay_to_label_scale": {
+    "0": 0.06774553571428571,
+    "1": 0.0638036809815951,
+    "2": 0.17508038585209004,
+    "3": 0.28937125748502995,
+    "4": 0.3859281437125748,
+    "5": 0.12767857142857145
+  },
+  "scenario_combos": [
+    [
+      20.0,
+      1.0
+    ],
+    [
+      20.0,
+      1.5
+    ],
+    [
+      20.0,
+      2.0
+    ],
+    [
+      40.0,
+      1.0
+    ],
+    [
+      40.0,
+      1.5
+    ],
+    [
+      40.0,
+      2.0
+    ],
+    [
+      60.0,
+      1.0
+    ],
+    [
+      60.0,
+      1.5
+    ],
+    [
+      60.0,
+      2.0
+    ]
+  ],
+  "scenario_combo_seq": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
+  "combo_behavior": {
+    "lam=20.0|ddt=1.00": {
+      "rule_counts": {
+        "0": 0,
+        "1": 5,
+        "2": 19,
+        "3": 4,
+        "4": 1,
+        "5": 1
+      },
+      "goal_counts": {
+        "0": 5,
+        "1": 6,
+        "2": 0,
+        "3": 19
+      },
+      "maint_counts": {
+        "DN": 27,
+        "IM": 0,
+        "CM": 0
+      },
+      "dispatch_count": 30,
+      "maintenance_count": 27,
+      "dominant_rule": {
+        "label": "2",
+        "share": 0.6333333333333333
+      },
+      "dominant_goal": {
+        "label": "3",
+        "share": 0.6333333333333333
+      },
+      "rule_shares": {
+        "0": 0.0,
+        "1": 0.16666666666666666,
+        "2": 0.6333333333333333,
+        "3": 0.13333333333333333,
+        "4": 0.03333333333333333,
+        "5": 0.03333333333333333
+      },
+      "goal_shares": {
+        "0": 0.16666666666666666,
+        "1": 0.2,
+        "2": 0.0,
+        "3": 0.6333333333333333
+      },
+      "maint_shares": {
+        "DN": 1.0,
+        "IM": 0.0,
+        "CM": 0.0
+      }
+    },
+    "lam=20.0|ddt=1.50": {
+      "rule_counts": {
+        "0": 0,
+        "1": 3,
+        "2": 23,
+        "3": 3,
+        "4": 1,
+        "5": 0
+      },
+      "goal_counts": {
+        "0": 13,
+        "1": 9,
+        "2": 3,
+        "3": 5
+      },
+      "maint_counts": {
+        "DN": 28,
+        "IM": 0,
+        "CM": 0
+      },
+      "dispatch_count": 30,
+      "maintenance_count": 28,
+      "dominant_rule": {
+        "label": "2",
+        "share": 0.7666666666666667
+      },
+      "dominant_goal": {
+        "label": "0",
+        "share": 0.43333333333333335
+      },
+      "rule_shares": {
+        "0": 0.0,
+        "1": 0.1,
+        "2": 0.7666666666666667,
+        "3": 0.1,
+        "4": 0.03333333333333333,
+        "5": 0.0
+      },
+      "goal_shares": {
+        "0": 0.43333333333333335,
+        "1": 0.3,
+        "2": 0.1,
+        "3": 0.16666666666666666
+      },
+      "maint_shares": {
+        "DN": 1.0,
+        "IM": 0.0,
+        "CM": 0.0
+      }
+    },
+    "lam=20.0|ddt=2.00": {
+      "rule_counts": {
+        "0": 0,
+        "1": 3,
+        "2": 4,
+        "3": 16,
+        "4": 2,
+        "5": 14
+      },
+      "goal_counts": {
+        "0": 11,
+        "1": 4,
+        "2": 22,
+        "3": 2
+      },
+      "maint_counts": {
+        "DN": 40,
+        "IM": 3,
+        "CM": 0
+      },
+      "dispatch_count": 39,
+      "maintenance_count": 43,
+      "dominant_rule": {
+        "label": "3",
+        "share": 0.41025641025641024
+      },
+      "dominant_goal": {
+        "label": "2",
+        "share": 0.5641025641025641
+      },
+      "rule_shares": {
+        "0": 0.0,
+        "1": 0.07692307692307693,
+        "2": 0.10256410256410256,
+        "3": 0.41025641025641024,
+        "4": 0.05128205128205128,
+        "5": 0.358974358974359
+      },
+      "goal_shares": {
+        "0": 0.28205128205128205,
+        "1": 0.10256410256410256,
+        "2": 0.5641025641025641,
+        "3": 0.05128205128205128
+      },
+      "maint_shares": {
+        "DN": 0.9302325581395349,
+        "IM": 0.06976744186046512,
+        "CM": 0.0
+      }
+    },
+    "lam=40.0|ddt=1.00": {
+      "rule_counts": {
+        "0": 0,
+        "1": 8,
+        "2": 5,
+        "3": 2,
+        "4": 4,
+        "5": 8
+      },
+      "goal_counts": {
+        "0": 19,
+        "1": 5,
+        "2": 2,
+        "3": 1
+      },
+      "maint_counts": {
+        "DN": 28,
+        "IM": 0,
+        "CM": 0
+      },
+      "dispatch_count": 27,
+      "maintenance_count": 28,
+      "dominant_rule": {
+        "label": "1",
+        "share": 0.2962962962962963
+      },
+      "dominant_goal": {
+        "label": "0",
+        "share": 0.7037037037037037
+      },
+      "rule_shares": {
+        "0": 0.0,
+        "1": 0.2962962962962963,
+        "2": 0.18518518518518517,
+        "3": 0.07407407407407407,
+        "4": 0.14814814814814814,
+        "5": 0.2962962962962963
+      },
+      "goal_shares": {
+        "0": 0.7037037037037037,
+        "1": 0.18518518518518517,
+        "2": 0.07407407407407407,
+        "3": 0.037037037037037035
+      },
+      "maint_shares": {
+        "DN": 1.0,
+        "IM": 0.0,
+        "CM": 0.0
+      }
+    },
+    "lam=40.0|ddt=1.50": {
+      "rule_counts": {
+        "0": 0,
+        "1": 1,
+        "2": 7,
+        "3": 1,
+        "4": 11,
+        "5": 10
+      },
+      "goal_counts": {
+        "0": 10,
+        "1": 3,
+        "2": 14,
+        "3": 3
+      },
+      "maint_counts": {
+        "DN": 29,
+        "IM": 1,
+        "CM": 0
+      },
+      "dispatch_count": 30,
+      "maintenance_count": 30,
+      "dominant_rule": {
+        "label": "4",
+        "share": 0.36666666666666664
+      },
+      "dominant_goal": {
+        "label": "2",
+        "share": 0.4666666666666667
+      },
+      "rule_shares": {
+        "0": 0.0,
+        "1": 0.03333333333333333,
+        "2": 0.23333333333333334,
+        "3": 0.03333333333333333,
+        "4": 0.36666666666666664,
+        "5": 0.3333333333333333
+      },
+      "goal_shares": {
+        "0": 0.3333333333333333,
+        "1": 0.1,
+        "2": 0.4666666666666667,
+        "3": 0.1
+      },
+      "maint_shares": {
+        "DN": 0.9666666666666667,
+        "IM": 0.03333333333333333,
+        "CM": 0.0
+      }
+    },
+    "lam=40.0|ddt=2.00": {
+      "rule_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 3,
+        "3": 12,
+        "4": 0,
+        "5": 22
+      },
+      "goal_counts": {
+        "0": 18,
+        "1": 0,
+        "2": 19,
+        "3": 0
+      },
+      "maint_counts": {
+        "DN": 34,
+        "IM": 3,
+        "CM": 0
+      },
+      "dispatch_count": 37,
+      "maintenance_count": 37,
+      "dominant_rule": {
+        "label": "5",
+        "share": 0.5945945945945946
+      },
+      "dominant_goal": {
+        "label": "2",
+        "share": 0.5135135135135135
+      },
+      "rule_shares": {
+        "0": 0.0,
+        "1": 0.0,
+        "2": 0.08108108108108109,
+        "3": 0.32432432432432434,
+        "4": 0.0,
+        "5": 0.5945945945945946
+      },
+      "goal_shares": {
+        "0": 0.4864864864864865,
+        "1": 0.0,
+        "2": 0.5135135135135135,
+        "3": 0.0
+      },
+      "maint_shares": {
+        "DN": 0.918918918918919,
+        "IM": 0.08108108108108109,
+        "CM": 0.0
+      }
+    },
+    "lam=60.0|ddt=1.00": {
+      "rule_counts": {
+        "0": 0,
+        "1": 3,
+        "2": 9,
+        "3": 4,
+        "4": 2,
+        "5": 9
+      },
+      "goal_counts": {
+        "0": 12,
+        "1": 15,
+        "2": 0,
+        "3": 0
+      },
+      "maint_counts": {
+        "DN": 22,
+        "IM": 4,
+        "CM": 0
+      },
+      "dispatch_count": 27,
+      "maintenance_count": 26,
+      "dominant_rule": {
+        "label": "2",
+        "share": 0.3333333333333333
+      },
+      "dominant_goal": {
+        "label": "1",
+        "share": 0.5555555555555556
+      },
+      "rule_shares": {
+        "0": 0.0,
+        "1": 0.1111111111111111,
+        "2": 0.3333333333333333,
+        "3": 0.14814814814814814,
+        "4": 0.07407407407407407,
+        "5": 0.3333333333333333
+      },
+      "goal_shares": {
+        "0": 0.4444444444444444,
+        "1": 0.5555555555555556,
+        "2": 0.0,
+        "3": 0.0
+      },
+      "maint_shares": {
+        "DN": 0.8461538461538461,
+        "IM": 0.15384615384615385,
+        "CM": 0.0
+      }
+    },
+    "lam=60.0|ddt=1.50": {
+      "rule_counts": {
+        "0": 0,
+        "1": 3,
+        "2": 12,
+        "3": 11,
+        "4": 5,
+        "5": 1
+      },
+      "goal_counts": {
+        "0": 29,
+        "1": 0,
+        "2": 3,
+        "3": 0
+      },
+      "maint_counts": {
+        "DN": 32,
+        "IM": 0,
+        "CM": 1
+      },
+      "dispatch_count": 32,
+      "maintenance_count": 33,
+      "dominant_rule": {
+        "label": "2",
+        "share": 0.375
+      },
+      "dominant_goal": {
+        "label": "0",
+        "share": 0.90625
+      },
+      "rule_shares": {
+        "0": 0.0,
+        "1": 0.09375,
+        "2": 0.375,
+        "3": 0.34375,
+        "4": 0.15625,
+        "5": 0.03125
+      },
+      "goal_shares": {
+        "0": 0.90625,
+        "1": 0.0,
+        "2": 0.09375,
+        "3": 0.0
+      },
+      "maint_shares": {
+        "DN": 0.9696969696969697,
+        "IM": 0.0,
+        "CM": 0.030303030303030304
+      }
+    },
+    "lam=60.0|ddt=2.00": {
+      "rule_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 4,
+        "3": 3,
+        "4": 1,
+        "5": 22
+      },
+      "goal_counts": {
+        "0": 22,
+        "1": 0,
+        "2": 8,
+        "3": 0
+      },
+      "maint_counts": {
+        "DN": 24,
+        "IM": 3,
+        "CM": 3
+      },
+      "dispatch_count": 30,
+      "maintenance_count": 30,
+      "dominant_rule": {
+        "label": "5",
+        "share": 0.7333333333333333
+      },
+      "dominant_goal": {
+        "label": "0",
+        "share": 0.7333333333333333
+      },
+      "rule_shares": {
+        "0": 0.0,
+        "1": 0.0,
+        "2": 0.13333333333333333,
+        "3": 0.1,
+        "4": 0.03333333333333333,
+        "5": 0.7333333333333333
+      },
+      "goal_shares": {
+        "0": 0.7333333333333333,
+        "1": 0.0,
+        "2": 0.26666666666666666,
+        "3": 0.0
+      },
+      "maint_shares": {
+        "DN": 0.8,
+        "IM": 0.1,
+        "CM": 0.1
+      }
+    }
+  },
+  "dominant_rule_by_combo": {
+    "lam=20.0|ddt=1.00": {
+      "label": "2",
+      "share": 0.6333333333333333
+    },
+    "lam=20.0|ddt=1.50": {
+      "label": "2",
+      "share": 0.7666666666666667
+    },
+    "lam=20.0|ddt=2.00": {
+      "label": "3",
+      "share": 0.41025641025641024
+    },
+    "lam=40.0|ddt=1.00": {
+      "label": "1",
+      "share": 0.2962962962962963
+    },
+    "lam=40.0|ddt=1.50": {
+      "label": "4",
+      "share": 0.36666666666666664
+    },
+    "lam=40.0|ddt=2.00": {
+      "label": "5",
+      "share": 0.5945945945945946
+    },
+    "lam=60.0|ddt=1.00": {
+      "label": "2",
+      "share": 0.3333333333333333
+    },
+    "lam=60.0|ddt=1.50": {
+      "label": "2",
+      "share": 0.375
+    },
+    "lam=60.0|ddt=2.00": {
+      "label": "5",
+      "share": 0.7333333333333333
+    }
+  },
+  "dominant_goal_by_combo": {
+    "lam=20.0|ddt=1.00": {
+      "label": "3",
+      "share": 0.6333333333333333
+    },
+    "lam=20.0|ddt=1.50": {
+      "label": "0",
+      "share": 0.43333333333333335
+    },
+    "lam=20.0|ddt=2.00": {
+      "label": "2",
+      "share": 0.5641025641025641
+    },
+    "lam=40.0|ddt=1.00": {
+      "label": "0",
+      "share": 0.7037037037037037
+    },
+    "lam=40.0|ddt=1.50": {
+      "label": "2",
+      "share": 0.4666666666666667
+    },
+    "lam=40.0|ddt=2.00": {
+      "label": "2",
+      "share": 0.5135135135135135
+    },
+    "lam=60.0|ddt=1.00": {
+      "label": "1",
+      "share": 0.5555555555555556
+    },
+    "lam=60.0|ddt=1.50": {
+      "label": "0",
+      "share": 0.90625
+    },
+    "lam=60.0|ddt=2.00": {
+      "label": "0",
+      "share": 0.7333333333333333
+    }
+  },
+  "rule_unique_count": 5,
+  "rule_top1_share": 0.30851063829787234,
+  "rule_distinct_count": 5,
+  "rule_avg_dominant_share": 0.5010534038311816,
+  "rule_mean_pairwise_jsd": 0.2625591645127737,
+  "final_health_mean": 0.737023811739345,
+  "final_health_min": 0.5100676098035442,
+  "final_health_p25": 0.5666763305349619,
+  "final_low_health_count_h20": 0,
+  "final_low_health_count_h10": 0,
+  "im_invalid_filtered_count": 93,
+  "dn_veto_count": 0,
+  "cm_emergency_override_count": 0,
+  "cm_preference_penalty_count": 0,
+  "gate_dn_count": 264,
+  "gate_maint_count": 18,
+  "gate_penalty_count": 282,
+  "type_penalty_count": 16,
+  "post_im_grace_forced_dn_count": 8,
+  "flat_dqn_cm_remap_count": 0,
+  "pomcp_cm_block_count": 0,
+  "pomcp_force_cm_count": 0,
+  "pomcp_dn_conservative_veto_count": 0,
+  "sched_safe_block_count": 0,
+  "high_health_cm_count": 0,
+  "cm_after_single_im_count": 0,
+  "ppo_train_temperature": 1.15
+}
