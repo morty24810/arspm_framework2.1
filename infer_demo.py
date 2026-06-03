@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 import torch
 
-from config import SimConfig, resolve_machine_set
+from config import SimConfig
 from src.utils import set_seed
 from src.agents import HierMaintenanceAgentDDQN, MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
 from src.pomcp import POMCPPlanner
@@ -114,7 +114,6 @@ def build_infer_route_result(metrics: Dict[str, Any], env: Any, overdue_stats: D
                              policy_label: str, maint_mode_tag: str) -> Dict[str, Any]:
     cfg_env = getattr(env, "cfg", None)
     maint_variant = maint_mode_tag.replace("maint_", "").lower()
-    maint_mode = maintenance_mode_family(maint_variant)
     return {
         "metrics": metrics,
         "env": env,

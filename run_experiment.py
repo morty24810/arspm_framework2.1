@@ -3,7 +3,7 @@ import csv
 import json
 import math
 import hashlib
-import os, random
+import random
 import copy
 from dataclasses import dataclass
 from pathlib import Path
@@ -255,49 +255,58 @@ def effective_experiment_profile(cfg: SimConfig, profile_override: Optional[str]
     return profile or "default"
 
 
+EXPERIMENT_PROFILE_OVERRIDES: Dict[str, Dict[str, Any]] = {
+    "thesis_ppo_maint": {
+        "TRAIN_SCHEDULER_MODES": ("PPO",),
+        "TRAIN_POLICY_ROUTES": ("region_off",),
+        "TRAIN_MAINT_MODES": ("flat_ddqn", "pomcp"),
+        "SCHED_REGIME_FEATURE_MODE": "oracle",
+        "TRAIN_COMBO_MODE": "episode_fixed",
+        "EVAL_COMBO_MODE": "grid_full",
+        "TRAIN_JOBS_TARGET": 200,
+        "COMBO_SEGMENT_JOBS": 18,
+        "PPO_SCHED_REWARD_VERSION": "legacy_balanced",
+        "ENABLE_MAINT_ONLY_COMPARE": False,
+        "ENABLE_OOD_DIAGNOSTIC_EVAL": False,
+    },
+    "thesis_ppo_maint_short": {
+        "TRAIN_SCHEDULER_MODES": ("PPO",),
+        "TRAIN_POLICY_ROUTES": ("region_off",),
+        "TRAIN_MAINT_MODES": ("flat_ddqn", "pomcp"),
+        "SCHED_REGIME_FEATURE_MODE": "oracle",
+        "TRAIN_COMBO_MODE": "episode_fixed",
+        "EVAL_COMBO_MODE": "grid_full",
+        "TRAIN_JOBS_TARGET": 100,
+        "COMBO_SEGMENT_JOBS": 9,
+        "PPO_SCHED_REWARD_VERSION": "legacy_balanced",
+        "ENABLE_MAINT_ONLY_COMPARE": False,
+        "ENABLE_OOD_DIAGNOSTIC_EVAL": False,
+    },
+    "thesis_ppo_reward_ablation": {
+        "TRAIN_SCHEDULER_MODES": ("PPO_LEGACY", "PPO_EFFICIENCY"),
+        "TRAIN_POLICY_ROUTES": ("region_off",),
+        "TRAIN_MAINT_MODES": ("flat_ddqn",),
+        "SCHED_REGIME_FEATURE_MODE": "oracle",
+        "TRAIN_COMBO_MODE": "episode_fixed",
+        "EVAL_COMBO_MODE": "grid_full",
+        "TRAIN_JOBS_TARGET": 200,
+        "COMBO_SEGMENT_JOBS": 18,
+        "PPO_SCHED_REWARD_VERSION": "legacy_balanced",
+        "ENABLE_MAINT_ONLY_COMPARE": False,
+        "ENABLE_OOD_DIAGNOSTIC_EVAL": False,
+    },
+}
+
+
 def apply_experiment_profile(cfg: SimConfig, profile_override: Optional[str] = None) -> SimConfig:
     profile = effective_experiment_profile(cfg, profile_override)
     cfg.EXPERIMENT_PROFILE = profile
     if profile == "default":
         return cfg
-    if profile == "thesis_ppo_maint":
-        cfg.TRAIN_SCHEDULER_MODES = ("PPO",)
-        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
-        cfg.TRAIN_MAINT_MODES = ("flat_ddqn", "pomcp")
-        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
-        cfg.TRAIN_COMBO_MODE = "episode_fixed"
-        cfg.EVAL_COMBO_MODE = "grid_full"
-        cfg.TRAIN_JOBS_TARGET = 200
-        cfg.COMBO_SEGMENT_JOBS = 18
-        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
-        cfg.ENABLE_MAINT_ONLY_COMPARE = False
-        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
-        return cfg
-    if profile == "thesis_ppo_maint_short":
-        cfg.TRAIN_SCHEDULER_MODES = ("PPO",)
-        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
-        cfg.TRAIN_MAINT_MODES = ("flat_ddqn", "pomcp")
-        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
-        cfg.TRAIN_COMBO_MODE = "episode_fixed"
-        cfg.EVAL_COMBO_MODE = "grid_full"
-        cfg.TRAIN_JOBS_TARGET = 100
-        cfg.COMBO_SEGMENT_JOBS = 9
-        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
-        cfg.ENABLE_MAINT_ONLY_COMPARE = False
-        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
-        return cfg
-    if profile == "thesis_ppo_reward_ablation":
-        cfg.TRAIN_SCHEDULER_MODES = ("PPO_LEGACY", "PPO_EFFICIENCY")
-        cfg.TRAIN_POLICY_ROUTES = ("region_off",)
-        cfg.TRAIN_MAINT_MODES = ("flat_ddqn",)
-        cfg.SCHED_REGIME_FEATURE_MODE = "oracle"
-        cfg.TRAIN_COMBO_MODE = "episode_fixed"
-        cfg.EVAL_COMBO_MODE = "grid_full"
-        cfg.TRAIN_JOBS_TARGET = 200
-        cfg.COMBO_SEGMENT_JOBS = 18
-        cfg.PPO_SCHED_REWARD_VERSION = "legacy_balanced"
-        cfg.ENABLE_MAINT_ONLY_COMPARE = False
-        cfg.ENABLE_OOD_DIAGNOSTIC_EVAL = False
+    overrides = EXPERIMENT_PROFILE_OVERRIDES.get(profile)
+    if overrides is not None:
+        for name, value in overrides.items():
+            setattr(cfg, name, value)
         return cfg
     raise ValueError(f"unsupported experiment profile: {profile}")
 
@@ -390,10 +399,6 @@ def scheduler_reward_version_for_mode(cfg: SimConfig, scheduler_mode: Optional[s
     if mode.endswith("_LEGACY"):
         return "legacy_balanced"
     if mode.endswith("_EFFICIENCY"):
-        return "efficiency_balanced"
-    if mode == "PPO_LEGACY":
-        return "legacy_balanced"
-    if mode == "PPO_EFFICIENCY":
         return "efficiency_balanced"
     return str(getattr(cfg, "PPO_SCHED_REWARD_VERSION", "legacy_balanced")).strip().lower() or "legacy_balanced"
 
@@ -1675,7 +1680,6 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
             if "last_slack_pressure" in env_state:
                 env.last_slack_pressure = env_state["last_slack_pressure"]
 
-        prev_tard, prev_maint = 0.0, 0.0
         last_h = {m.mid: None for m in env.machines}
         decision_log = [] if (generate_outputs or collect_decision_log) else None
         p_fail_plot = [] if generate_outputs else None
@@ -1798,7 +1802,7 @@ def evaluate_once(cfg: SimConfig, rng: random.Random, degr: DegradationReplay, r
                                     "slack_pressure": float(slack_pressure),
                                     "current_stress": float(current_stress),
                                     "local_urgency": float(local_urgency),
-                                    "im_count": int(im_since_cm_raw),
+                                    "im_count": int(rec.get("im_since_cm_raw", 0)),
                                     "im_damage": float(getattr(m, "im_damage", 0.0)),
                                     "risk_h": float(risk_now),
                                     "risk_trend": 0.0,
@@ -3125,7 +3129,6 @@ def train_one_mode(
                         current_stress = env.get_current_stress(slack_pressure)
                         local_urgency = env.get_local_urgency(mid)
                         arrivals, lambda_hat, _, _, ddt_hat, rush = env.get_obs_estimates(avg_slack, slack_pressure)
-                        risk_now = env.failure_prob(h_now)
                         action_now = enforce_action_by_region(rec["action"], h_now, cfg, enforce_region_train)
                         execute_now = (
                             action_now == 0

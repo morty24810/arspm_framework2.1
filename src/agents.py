@@ -1,8 +1,7 @@
 from __future__ import annotations
-import math, random
+import random
 import numpy as np
 import torch
-import torch.nn as nn
 from torch.distributions import Categorical
 
 from .rl import MLP, ReplayBuffer, ddqn_update

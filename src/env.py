@@ -1353,7 +1353,6 @@ class EventDrivenShopEnv:
 
             jid = payload["job_id"]
             pt = float(payload.get("pt", 0.0))
-            t0 = float(payload.get("t0", self.time - pt))
             delta_idx = float(payload.get("delta_idx", 0.0))
 
             self.observer.update_on_op_complete(self.time, op_duration=pt)

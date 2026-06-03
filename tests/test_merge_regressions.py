@@ -29,7 +29,6 @@ from run_experiment import (
     filter_non_improving_im,
     maintenance_agent_arch_for_context,
     maintenance_agent_store_transition,
-    maintenance_dn_imminent_breakdown,
     maintenance_cm_preference_penalty,
     maintenance_hier_metrics,
     maintenance_hier_rewards,
@@ -48,7 +47,7 @@ from run_experiment import (
     strip_ppo_reward_suffix,
     summarize_final_machine_health,
 )
-from src.agents import HierMaintenanceAgentDDQN, MaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
+from src.agents import HierMaintenanceAgentDDQN, PPOSchedulerAgent, THDQNAgent
 from src.compare import combo_dominant_maps, combo_rule_diversity_metrics, compare_mode_results, summarize_combo_conditioned_behavior, summarize_scheduling_strategy
 from src.env import EventDrivenShopEnv
 from src.viz import plot_gantt, plot_rul_curves, plot_rule_vs_features
@@ -1043,7 +1042,6 @@ class MergeRegressionTests(unittest.TestCase):
         self.assertLess(planner.last_reward, 0.0)
 
     def test_non_improving_im_is_removed_from_allowed_actions(self):
-        cfg = SimConfig()
         allowed = filter_non_improving_im(_ImGainEnvStub(False), 0, 0.9, [0, 1, 2])
         self.assertEqual(allowed, [0, 2])
 
